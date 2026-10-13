@@ -3514,7 +3514,7 @@ function abrirPainelFundo(c, onde = "analise") {
   }
   else if (st.xp) secoes.push(bloco("XP · confidencial", [["Situação", '<span class="fora-xp">não está na XP</span>']], "pf-xp"));
   for (const [nome, filtro] of PF_SECOES.slice(1)) secoes.push(bloco(nome, itens(filtro)));
-  $("#pfConteudo").innerHTML = kpis + grafs + `<div class="pf-grade">${secoes.join("")}</div>`;
+  $("#pfConteudo").innerHTML = kpis + grafs + mensalPF(f, l.Fundo) + `<div class="pf-grade">${secoes.join("")}</div>`;
   $("#mini").hidden = true;
   for (const id of ["gPfAcum", "gPfDd"]) { st.graficos[id]?.destroy(); delete st.graficos[id]; }   // cada fundo começa sem zoom
   semZoom("gPfAcum", "gPfDd");
@@ -4067,6 +4067,41 @@ document.addEventListener("click", async (e) => {
     const r = await salvarNaNuvem({ tipo: "carteira", nome, compartilhado: false, conteudo: { cart: x.cart } }); if (!r.ok) $("#cartAviso").innerHTML = `<span class="neg">${esc(r.erro)}</span>`; return renderCarteirasSalvas(); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "ctNome") { e.preventDefault(); salvarCarteiraAtual(); } });
+
+// ---------- painel do fundo: rentabilidade histórica mês a mês contra o CDI (todo o histórico de cotas)
+// mês = cota do último dia do mês ÷ cota do último dia do mês anterior − 1; o CDI é medido nas mesmas datas
+const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+function mensalPF(f, nome) {
+  if (!f?.d || f.d.length < 2) return "";
+  const d = f.d, q = f.q, cdi = st.idx.niveis.CDI;
+  const nivCDI = (dia) => { if (!cdi?.d.length) return null; const i = upperBound(cdi.d, dia) - 1; return i >= 0 ? cdi.L[i] : null; };
+  const ret = (i0, i1) => { const rf = q[i1] / q[i0] - 1, c0 = nivCDI(d[i0]), c1 = nivCDI(d[i1]), rc = c0 && c1 ? c1 / c0 - 1 : null;
+    return { rf, rc, pc: rc && Math.abs(rc) > 1e-9 ? (rf / rc) * 100 : null }; };
+  const meses = new Map();                                                   // ano*12+mês -> 1º e último índice do mês
+  for (let i = 0; i < d.length; i++) { const [a, m] = partes(d[i]), k = a * 12 + m - 1, x = meses.get(k); if (!x) meses.set(k, { ini: i, fim: i }); else x.fim = i; }
+  const anos = new Map();
+  for (const [k, { ini, fim }] of meses) {
+    const a = Math.floor(k / 12), base = ini > 0 ? ini - 1 : ini;            // 1º mês do fundo: a partir da 1ª cota
+    if (fim === base) continue;
+    const A = anos.get(a) || anos.set(a, { m: Array(12).fill(null), ini: base, fim }).get(a);
+    A.m[k % 12] = { ...ret(base, fim), parcial: ini === 0 }; A.fim = fim;
+  }
+  if (!anos.size) return "";
+  const pct = (v, cor = true) => (v == null || !Number.isFinite(v) ? "–" : `<span style="${cor ? corSinal(v) : ""}">${br(v * 100, 2)}</span>`);
+  const pcdi = (v) => (v == null || !Number.isFinite(v) ? "–" : br(v, 2));
+  const lista = [...anos.keys()].sort((a, b) => b - a);
+  return `<section class="pf-mensal"><h3>Rentabilidade histórica <small class="nota">(% ao mês · cota líquida de taxas, contra o CDI)</small></h3>` +
+    lista.map((a, i) => {
+      const A = anos.get(a), tot = ret(A.ini, A.fim), cel = (x, f2) => A.m.map((v) => `<td>${v ? f2(v) : "–"}</td>`).join("");
+      const parcial = A.m.some((v) => v?.parcial);
+      return `<details class="pf-ano"${i === 0 ? " open" : ""}><summary>Retorno mensal ${a}</summary><div class="pf-mes-rola"><table class="tb pf-mes-tab">
+        <thead><tr><th class="t"><span class="sr-only">Linha</span></th>${MESES_ABREV.map((m) => `<th>${m}</th>`).join("")}<th>Acumulado</th></tr></thead><tbody>
+        <tr><th class="t" scope="row">Rentabilidade</th>${cel(0, (v) => pct(v.rf) + (v.parcial ? `<sup title="Mês de início do fundo: a partir da 1ª cota">*</sup>` : ""))}<td><b>${pct(tot.rf)}</b></td></tr>
+        <tr><th class="t" scope="row">CDI</th>${cel(0, (v) => pct(v.rc, false))}<td><b>${pct(tot.rc, false)}</b></td></tr>
+        <tr><th class="t" scope="row">% sobre CDI</th>${cel(0, (v) => pcdi(v.pc))}<td><b>${pcdi(tot.pc)}</b></td></tr>
+        </tbody></table></div>${parcial ? `<p class="nota">* Mês de início do fundo: rentabilidade a partir da 1ª cota.</p>` : ""}</details>`;
+    }).join("") + `</section>`;
+}
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
