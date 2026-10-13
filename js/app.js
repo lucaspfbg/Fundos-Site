@@ -943,7 +943,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
 
 // ---------- tabela de métricas
 const CAMPOS_GRUPO = {
-  "Classificação": (l) => l._classif, "Categoria XP": (l) => l.Categoria, "Gestora (XP)": (l) => l.Gestora,                   // a mesma da coluna da tabela (XP com login; senão ANBIMA)
+  "Classificação": (l) => l._classif, "Categoria XP": (l) => l.Categoria, "Tipo XP": (l) => l["Tipo XP"], "Gestora (XP)": (l) => l.Gestora,                   // a mesma da coluna da tabela (XP com login; senão ANBIMA)
   "Classificação CVM": (l) => l["Classificação CVM"], "Classificação ANBIMA": (l) => l["Classificação ANBIMA"],
   "Objetivo de retorno": (l) => (l["Objetivo de retorno"] === "N/D" ? "" : l["Objetivo de retorno"]), "Gestor": (l) => l._gestor,
 };
@@ -3057,7 +3057,7 @@ function desenharEquipe() {
   $("#equipeBox").hidden = !EQUIPE_URL;
   $("#abaXP").hidden = !st.xp;
   $$("#agrupar option[data-xp]").forEach((o) => (o.hidden = !st.xp));
-  if (!st.xp && ["Categoria XP", "Gestora (XP)"].includes(st.agrupar)) { st.agrupar = ""; $("#agrupar").value = ""; }
+  if (!st.xp && ["Categoria XP", "Gestora (XP)", "Tipo XP"].includes(st.agrupar)) { st.agrupar = ""; $("#agrupar").value = ""; }
   if (!st.xp && st.pagina === "xp") mostrarPagina("analise", { rolar: false });
   const on = !!st.equipe;
   $("#equipeEntrar").hidden = on; $("#equipeLogado").hidden = !on;
@@ -3072,6 +3072,12 @@ async function carregarDadosEquipe() {
   if (!r.ok) { sairEquipe(true); if (r.erro) avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return; }
   st.xpCols = r.colunas;
   st.xp = new Map(Object.entries(r.fundos).map(([c, linhas]) => [c, linhas.map((l) => Object.fromEntries(r.colunas.map((k, i) => [k, l[i]])))]));
+  st.xpPrev = 0;
+  for (const [c, linhas] of Object.entries(r.prev?.fundos || {})) {                     // fundos de previdência (aba "Previdencia XP")
+    const ofs = linhas.map((l) => traduzirPrev(Object.fromEntries(r.prev.colunas.map((k, i) => [k, l[i]]))));
+    if (st.xp.has(c)) st.xp.get(c).push(...ofs); else st.xp.set(c, ofs);
+    st.xpPrev++;
+  }
   st.xpOfertas = r.linhas;
   carregarNuvem();                                                    // grupos e rankings salvos na conta (em paralelo)
   if (!r.colunas.includes("ID") || (r.versao && r.versao < VERSAO_MIN_EQUIPE))
@@ -3188,11 +3194,13 @@ const NOMES_DOC = { REGULAMENTO: "Regulamento", LAMINA: "Lâmina", CARACTERISTIC
 function docsXP(o) {
   const out = [], vistos = new Set();
   const add = (rot, url) => { url = limpaXP(url); if (!/^https?:\/\//i.test(url) || vistos.has(url)) return; vistos.add(url); out.push({ rot, url }); };
-  add("Regulamento", o.DOCUMENTREGULATION); add("Características", o.DOCUMENTPROMOTIONALMATERIAL);
+  add("Regulamento", o.DOCUMENTREGULATION); add(o._prev ? "Material de divulgação" : "Características", o.DOCUMENTPROMOTIONALMATERIAL);
+  if (o._prev) add("Material de divulgação", o.DOC_CARACTERISTICA);
   for (const [k, v] of Object.entries(o)) { const m = k.match(/^DOC_([A-Z]+)/); if (m) add(NOMES_DOC[m[1]] || m[1].toLowerCase(), v); }
   return out;
 }
-const publicoDe = (t) => { const s = limpaXP(t).toLowerCase(); return /profission/.test(s) ? "IP" : /qualificad/.test(s) ? "IQ" : /geral/.test(s) ? "IG" : null; };
+const publicoDe = (t) => { const s = limpaXP(t).toLowerCase();
+  return /profission/.test(s) ? "IP" : /n[ãa]o\s*qualificad/.test(s) || /geral/.test(s) ? "IG" : /qualificad/.test(s) ? "IQ" : null; };
 function camposXPNovos(cnpj, o, abertas) {
   const ofs = st.xp.get(cnpj), soma = (k) => { const v = ofs.map((x) => numXP(x[k])).filter(Number.isFinite); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
   const pub = limpaXP(o.TARGETAUDIENCE), pubSigla = publicoDe(pub);
@@ -3205,7 +3213,11 @@ function camposXPNovos(cnpj, o, abertas) {
     "Tributação": limpaXP(o.TAXATION) || null, IOF: limpaXP(o.IOFRATE) || null, "Taxa perf. máx.": numXP(o.MAXPERFORMANCERATE),
     Objetivo: limpaXP(o.OBJECTIVE) || null, "Política": limpaXP(o.MANAGEMENTPOLICY) || null, _motivoFechado: motivo,
     "Na lista da rede": o.NALISTAREDE == null || o.NALISTAREDE === "" ? null : verdadeiro(o.NALISTAREDE) ? "Sim" : "Não",
-    _tags: tags, Clientes: soma("QTDCLIENTES"), "Volume clientes": soma("VOLUMECLIENTES"), _docs: docsXP(o) };
+    _tags: tags, Clientes: soma("QTDCLIENTES"), "Volume clientes": soma("VOLUMECLIENTES"), _docs: docsXP(o),
+    "Tipo XP": o._prev ? "Previdência" : "Fundo de investimento", _prev: !!o._prev,
+    ...(o._prev ? { Seguradora: limpaXP(o.PREV_SEGURADORA) || null, "SUSEP PGBL": limpaXP(o.PREV_SUSEP_PGBL) || null, "SUSEP VGBL": limpaXP(o.PREV_SUSEP_VGBL) || null,
+      "Política do plano": limpaXP(o.PREV_POLITICA) || null, "RV mín.": numXP(o.PREV_RV_MIN), "RV máx.": numXP(o.PREV_RV_MAX),
+      Carregamento: numXP(o.PREV_CARREGAMENTO), "Crédito do resgate": limpaXP(o.PREV_CREDITO) || null } : {}) };
 }
 // risco da XP pela faixa: baixo verde, médio amarelo, alto vermelho
 const faixaRisco = (d) => { const t = String(d || "").toLowerCase(); return t.startsWith("baix") ? "rb" : t.startsWith("m") ? "rm" : t.startsWith("alt") ? "ra" : ""; };
@@ -3425,6 +3437,8 @@ function colunasXPRel() {
     { nome: "Classificação XP", tipo: "txt", v: (q) => q["Classificação XP"] ?? "" }, { nome: "Taxa de adm.", tipo: "pct", v: (q) => pct(q["Taxa adm."]) },
     { nome: "Taxa de perf.", tipo: "pct", v: (q) => pct(q["Taxa perf."]) }, { nome: "ROA", tipo: "pct", v: (q) => pct(q.ROA) },
     { nome: "Risco XP", tipo: "int", v: (q) => q.Risco ?? null }, { nome: "Aplicação mínima", tipo: "valor", v: (q) => q["Aplicação mín."] ?? null },
+    { nome: "Tipo (XP)", tipo: "txt", v: (q) => q["Tipo XP"] ?? "" }, { nome: "Seguradora (previdência)", tipo: "txt", v: (q) => q.Seguradora ?? "" },
+    { nome: "SUSEP PGBL", tipo: "txt", v: (q) => q["SUSEP PGBL"] ?? "" }, { nome: "SUSEP VGBL", tipo: "txt", v: (q) => q["SUSEP VGBL"] ?? "" },
     { nome: "Categoria XP", tipo: "txt", v: (q) => q.Categoria ?? "" }, { nome: "Gestora (XP)", tipo: "txt", v: (q) => q.Gestora ?? "" },
     { nome: "Público-alvo (XP)", tipo: "txt", v: (q) => q["Público-alvo"] ?? "" }, { nome: "Tributação", tipo: "txt", v: (q) => q["Tributação"] ?? "" },
     { nome: "Cotização da aplicação", tipo: "txt", v: (q) => q["Cotização da aplicação"] ?? "" }, { nome: "Aplicação adicional mínima", tipo: "valor", v: (q) => q["Aplicação adicional"] ?? null },
@@ -3558,7 +3572,7 @@ function abrirPainelFundo(c, onde = "analise") {
   if (q._naXP) {
     const R$ = (v, d = 0) => (v != null ? `R$ ${br(v, d)}` : "–"), txt = (v) => esc(v || "–");
     const linkHub = q._hubId ? `<a class="hub-link pf-hub" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">Página do Hub ↗</a>` : "";
-    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"])], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
+    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"])], ["Tipo", q._prev ? '<span class="xp-tag xp-tag-prev">Previdência</span>' : "Fundo de investimento"], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
       ["Gestora", txt(q.Gestora)], ["Investidor", (badgeInv(q.Investidor) || "–") + (q._publicoDiverge ? ` <span class="xp-aviso-pub" title="O público-alvo escrito pela XP é diferente das marcações de qualificado/profissional">⚠ ${esc(q["Público-alvo"])}</span>` : "")],
       ["Captação", `${cadeado(q["Captação"], q._motivoFechado)} ${esc(q["Captação"] || "")}${q._motivoFechado ? ` <small class="nota">(${esc(q._motivoFechado)})</small>` : ""}`],
       ["Dinheiro novo", q._dinheiroNovo == null ? "Não" : `${dinheiroNovo(q._dinheiroNovo)} ${esc(q._dinheiroNovo || "Sim")}`],
@@ -3572,6 +3586,11 @@ function abrirPainelFundo(c, onde = "analise") {
       ["Resgate mínimo", R$(q["Resgate mínimo"])], ["Saldo mínimo de permanência", R$(q["Saldo de permanência"])], ["IOF", txt(q.IOF)],
       ["Clientes no fundo", q.Clientes != null ? `${br(q.Clientes, 0)} cliente(s) · ${q["Volume clientes"] != null ? `R$ ${br(q["Volume clientes"] / 1e6, 2)} mi` : "–"}` : "–"],
       ["Na lista da rede", txt(q["Na lista da rede"])], ["Administradora (XP)", txt(q.Administradora)], ["Custodiante", txt(q.Custodiante)], ["Auditoria", txt(q.Auditoria)]], "pf-xp", linkHub));
+    if (q._prev) secoes.push(bloco("Previdência (XP)", [["Seguradora", txt(q.Seguradora)], ["Processo SUSEP (PGBL)", txt(q["SUSEP PGBL"])], ["Processo SUSEP (VGBL)", txt(q["SUSEP VGBL"])],
+      ["Política do plano", txt(q["Política do plano"])],
+      ["Renda variável (mín. – máx.)", q["RV mín."] != null || q["RV máx."] != null ? `${br(q["RV mín."] ?? 0, 0)}% a ${br(q["RV máx."] ?? 0, 0)}%` : "–"],
+      ["Taxa de carregamento", q.Carregamento != null ? `${br(q.Carregamento, 2)}%` : "–"], ["Crédito do resgate na conta", txt(q["Crédito do resgate"])],
+      ["ROA", q.ROA != null ? `${br(q.ROA, 2)}% (comissão de administração)` : "–"]], "pf-xp pf-prev"));
     if (q.Objetivo || q["Política"] || q._docs?.length) secoes.push(`<section class="pf-sec pf-xp pf-textos"><h3>Objetivo, política e documentos (XP)</h3>
       ${q._docs?.length ? `<div class="pf-docs">${q._docs.map((d) => `<a class="hub-link" href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">📄 ${esc(d.rot)}</a>`).join("")}</div>` : ""}
       ${q.Objetivo ? `<h4>Objetivo</h4><p class="pf-longo">${esc(q.Objetivo)}</p>` : ""}${q["Política"] ? `<h4>Política de gestão</h4><p class="pf-longo">${esc(q["Política"])}</p>` : ""}</section>`);
@@ -3652,7 +3671,7 @@ function renderXPGeral() {
   const cs = [...st.xp.keys()], n = cs.length, q = new Map(cs.map((c) => [c, camposXP(c)]));
   const add = (m, k, c) => { if (k == null) return; (m.get(k) || m.set(k, []).get(k)).push(c); };
   const classif = new Map(), inv = new Map(), risco = new Map(), prazo = new Map(), pl = new Map(), minimo = new Map(), roa = new Map(), adm = new Map(), cvm = new Map();
-  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map();
+  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map();
   const naBase = cs.filter((c) => st.porCnpj.has(c) && !st.porCnpj.get(c)._soXP);
   for (const c of cs) {
     const x = q.get(c), o = ofertaXP(c);
@@ -3666,6 +3685,7 @@ function renderXPGeral() {
     add(roa, faixaROA(x.ROA), c);
     add(adm, x["Taxa adm."] == null ? "Sem informação" : faixaDe(x["Taxa adm."], [["até 0,5%", 0.5], ["0,5% a 1%", 1], ["1% a 2%", 2], ["acima de 2%", Infinity]]), c);
     add(cvm, o?.CLASSIFICATIONCVM || "Sem classificação", c);
+    add(tipoF, x._prev ? "Previdência" : "Fundos de investimento", c);
     add(categoria, x.Categoria || "Sem categoria", c); add(gestora, x.Gestora || "Sem gestora", c); add(trib, tribCurta(x["Tributação"]) || "sem informação", c);
     add(volCli, !x["Volume clientes"] ? "Sem clientes" : faixaDe(x["Volume clientes"], [["até R$ 100 mil", 1e5], ["R$ 100 mil–1 mi", 1e6], ["R$ 1–5 mi", 5e6], ["R$ 5–20 mi", 2e7], ["acima de R$ 20 mi", Infinity]]), c);
   }
@@ -3681,7 +3701,7 @@ function renderXPGeral() {
   const avisoDados = cerquilhas || numerosCortados ? `<p class="nota xp-aviso-dados">⚠ A planilha da XP tem ${cerquilhas ? `${br(cerquilhas, 0)} célula(s) "########"` : ""}${cerquilhas && numerosCortados ? " e " : ""}${numerosCortados ? `${br(numerosCortados, 0)} número(s) arredondado(s) como "1,92E+09"` : ""}:
     os valores foram colados como apareciam na tela do Excel. Os sim/não foram interpretados corretamente, mas para ter os números exatos importe o arquivo no Google Sheets (Arquivo → Importar → Substituir página atual).</p>` : "";
   $("#xpGeral").innerHTML = avisoDados + `<div class="kpis xp-kpis">
-    ${kpi("Fundos na XP", br(n, 0), `${br(st.xpOfertas || n, 0)} ofertas`)}
+    ${kpi("Fundos na XP", br(n, 0), `${br(n - (st.xpPrev || 0), 0)} de investimento · ${br(st.xpPrev || 0, 0)} de previdência`)}
     ${kpi("Com cotas na CVM", br(naBase.length, 0), `${br(n - naBase.length, 0)} sem dados (FIDC, FII, FIP…)`)}
     ${kpi("Abertos para aplicação", br(abertos, 0), `${br(n - abertos, 0)} fechados`)}
     ${kpi("Dinheiro novo", br(conta((x) => x._dinheiroNovo != null), 0))}
@@ -3694,6 +3714,7 @@ function renderXPGeral() {
       return kpi("Clientes nos fundos", br(cli.reduce((a, b) => a + b, 0), 0), `em ${br(com, 0)} fundo(s)`) +
         kpi("Volume dos clientes", `R$ ${br(vol.reduce((a, b) => a + b, 0) / 1e6, 1)} mi`, `mediana R$ ${br((mediana(vol.filter((v) => v > 0)) || 0) / 1e6, 2)} mi por fundo`); })()}
   </div><div class="xp-cards">
+    ${cartaoBarras("Tipo de fundo", tipoF, n, { ordem: ["Fundos de investimento", "Previdência"], cores: { "Fundos de investimento": "#1f5aa6", "Previdência": "#c9a23a" } })}
     ${cartaoBarras("Classificação XP", classif, n)}
     ${cartaoBarras("Tipo de investidor", inv, n, { ordem: ["Geral (IG)", "Qualificado (IQ)", "Profissional (IP)"], cores: { "Geral (IG)": "#087040", "Qualificado (IQ)": "#f0b400", "Profissional (IP)": "#b35000" } })}
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
@@ -4264,6 +4285,37 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); aplicarPopFiltro(); }
   if (e.key === "Escape") { e.preventDefault(); p.hidden = true; $(`button.fnum[data-ftab="${CSS.escape(p.dataset.tab)}"][data-fcol="${CSS.escape(p.dataset.col)}"]`)?.focus(); }
 });
+
+// ============================== previdência XP: colunas da aba "Previdencia XP" -> nomes da aba "Fundos XP" ==============================
+// assim selos, cadeado, classificação, prazos, taxas, risco, ROA e documentos funcionam igual; o resto vira campos PREV_*
+const MAPA_PREV = {
+  ID: "ID", NAME: "NAME", MINIMALINITIALINVESTMENT: "MINIMALINITIALINVESTMENT", APPLICATIONANDREDEMPTION_MINIMALINVESTMENT: "MINIMALINVESTMENT",
+  APPLICATIONANDREDEMPTION_TARGETAUDIENCE: "TARGETAUDIENCE", APPLICATIONANDREDEMPTION_TAXATION: "TAXATION",
+  APPLICATIONANDREDEMPTION_INVESTMENTQUOTATION: "INVESTMENTQUOTATION", APPLICATIONANDREDEMPTION_REDEMPTIONQUOTATION: "REDEMPTIONQUOTATION",
+  APPLICATIONANDREDEMPTION_REDEMPTIONSETTLEMENT: "REDEMPTIONSETTLEMENT", INFORMATION_AUDITOR: "AUDITOR", INFORMATION_ADMINISTRATOR: "ADMINISTRATOR",
+  INFORMATION_FUNDMANAGER: "MANAGER", INFORMATION_CUSTODIAN: "CUSTODIAN", DOWNLOAD_PROMOTIONALMATERIALURLPDF: "DOC_CARACTERISTICA",
+  DOWNLOAD_REGULATIONFUNDURLPDF: "DOC_REGULAMENTO", CHARACTERISTICS_CVMCLASSIFICATION: "CLASSIFICATIONCVM", CHARACTERISTICS_ANBIMACLASSIFICATION: "ANBIMADESCRIPTION",
+  CHARACTERISTICS_STARTON: "STARTDATE", CHARACTERISTICS_NETEQUITY: "NETEQUITY", CHARACTERISTICS_AVERAGENETEQUITY12M: "AVERAGENETEQUITY12M",
+  ADMINISTRATIONRATE: "ADMINISTRATIONRATE", CHARACTERISTICS_MAXADMINISTRATIONRATE: "MAXADMINISTRATIONRATE", CHARACTERISTICS_PERFORMANCERATE: "PERFORMANCERATE",
+  CHARACTERISTICS_MAXPERFORMANCERATE: "MAXPERFORMANCERATE", XPCLASSIFICATION_DESCRIPTION: "CLASSIFICATIONXP", CATEGORY: "CATEGORY",
+  ADMINISTRATIONCOMISSIONRATE: "RETURNONASSETS",                                       // a comissão de administração é o ROA da previdência
+  ISQUALIFIEDINVESTOR: "ONLYQUALIFIED", ISBLOCKED: "FUNDINGBLOCKED", RISK_RISKGENIUS: "RISKGENIUS", RISK_RISKGENIUSCOLOR: "RISKGENIUSCOLOR",
+  RISK_RISKGENIUSDESCRIPTION: "RISKGENIUSDESCRIPTION", PROFITABILITY_SHAREVALUE: "QUOTAVALUE", PROFITABILITY_PROFITABILITYYEAR: "PROFITABILITYYEAR",
+  PROFITABILITY_PROFITABILITYMONTH: "PROFITABILITYMONTH", PROFITABILITY_PROFITABILITY12: "PROFITABILITY12",
+  // só da previdência
+  INFORMATION_INSURER: "PREV_SEGURADORA", PLAN_PROCESSSUSEPPGBL: "PREV_SUSEP_PGBL", PLAN_PROCESSSUSEPVGBL: "PREV_SUSEP_VGBL",
+  PLAN_INVESTMENTPOLICY: "PREV_POLITICA", PLAN_MINIMUMINVESTMENTVARIABLEINCOME: "PREV_RV_MIN", PLAN_MAXIMUMINVESTMENTVARIABLEINCOME: "PREV_RV_MAX",
+  APPLICATIONANDREDEMPTION_LOADINGRATE: "PREV_CARREGAMENTO", APPLICATIONANDREDEMPTION_REDEMPTIONTERMFORCREDITINGTHEACCOUNT: "PREV_CREDITO",
+};
+function traduzirPrev(o) {
+  const x = { _prev: true };
+  for (const [de, para] of Object.entries(MAPA_PREV)) if (o[de] != null && o[de] !== "") x[para] = o[de];
+  // risco marcado como inválido pela XP não entra
+  if (o.RISK_RISKGENIUSISVALID != null && !verdadeiro(o.RISK_RISKGENIUSISVALID)) { delete x.RISKGENIUS; delete x.RISKGENIUSDESCRIPTION; }
+  // profissional: só pelo texto do público-alvo (a previdência não tem a marcação)
+  x.ONLYPROFESSIONAL = /profission/i.test(String(o.APPLICATIONANDREDEMPTION_TARGETAUDIENCE || ""));
+  return x;
+}
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.

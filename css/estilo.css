@@ -995,3 +995,5 @@ button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background
 
 .quad-tab .tb th, .quad-tab .tb td { padding: 4px 6px; }
 .quad-tab .tb thead tr.filtros select, .quad-tab .tb thead tr.filtros input, .quad-tab button.fnum { min-width: 54px; }
+
+.xp-tag-prev { background: color-mix(in srgb, var(--ouro) 24%, var(--card)); }
