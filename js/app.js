@@ -623,15 +623,23 @@ document.addEventListener("click", (e) => {
   const el = b.previousElementSibling; el.dataset.aberto = el.dataset.aberto === "1" ? "" : "1"; recolhivel(el);
 });
 
-// linha de filtros fixa logo abaixo da linha de títulos: mede a altura real (títulos podem ter 2 linhas)
-function ajustarFiltrosFixos(raiz) {
-  for (const tb of raiz?.querySelectorAll("table") || []) {
-    const cab = tb.querySelector("thead tr:not(.filtros)"), f = tb.querySelectorAll("thead tr.filtros th"); if (!cab || !f.length) continue;
-    const h = cab.getBoundingClientRect().height;
-    if (!h) { requestAnimationFrame(() => ajustarFiltrosFixos(raiz)); return; }      // ainda escondida: mede quando aparecer
-    for (const th of f) th.style.top = `${h}px`;
+// cabeçalho fixo com várias linhas (grupos, títulos e filtros): cada linha gruda logo abaixo da anterior,
+// com as alturas medidas (títulos podem ter 2 linhas). Roda sempre que uma tabela com filtros é desenhada.
+function ajustarFiltrosFixos(raiz = document) {
+  for (const tb of raiz.querySelectorAll("table")) {
+    const linhas = [...tb.querySelectorAll(":scope > thead > tr")];
+    if (!linhas.some((r) => r.classList.contains("filtros"))) continue;
+    const alturas = linhas.map((r) => r.getBoundingClientRect().height);
+    if (alturas.some((h) => !h)) continue;                                   // tabela escondida: mede quando aparecer
+    let acc = 0;
+    linhas.forEach((r, i) => { if (i) for (const th of r.children) th.style.top = `${acc}px`; acc += alturas[i]; });
   }
 }
+let filtrosPend = false;
+const agendarFiltrosFixos = () => { if (filtrosPend) return; filtrosPend = true; requestAnimationFrame(() => { filtrosPend = false; ajustarFiltrosFixos(); }); };
+new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.("table, .tb-wrap") || n.querySelector?.("tr.filtros"))))) agendarFiltrosFixos(); })
+  .observe(document.body, { childList: true, subtree: true });
+addEventListener("resize", agendarFiltrosFixos);
 // ============================== cálculo ==============================
 function apelidos(cnpjs) {
   const out = {}, usados = new Set();
@@ -2999,6 +3007,7 @@ function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
   if (st.idx) sincronizarUrl();
   if (rolar) scrollTo({ top: 0, behavior: "auto" });
   if (pg === "xp") { renderXPGeral(); renderROA(); }
+  agendarFiltrosFixos();                                                     // tabelas que estavam escondidas
 }
 // durante o relatório todas as páginas ficam visíveis (as imagens dos gráficos saem da tela)
 function mostrarTodasPaginas() { for (const el of $$(".pagina")) el.hidden = false; Object.values(st.graficos).forEach((g) => { try { g?.resize(); } catch { /* */ } }); }

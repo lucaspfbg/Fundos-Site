@@ -974,7 +974,7 @@ button.fav:hover { color: var(--ouro); }
 .pf-mensal details.pf-ano:last-child { border-bottom: 0; }
 
 /* filtros por coluna */
-.tb thead tr.filtros th { top: auto; background: var(--card); padding: 4px 5px; border-bottom: 1px solid var(--borda); vertical-align: middle; }
+.tb thead tr.filtros th { background: var(--card); padding: 4px 5px; border-bottom: 1px solid var(--borda); vertical-align: middle; z-index: 2; }   /* fixa abaixo dos títulos (top medido no JS) */
 .tb thead tr.filtros th.fx { z-index: 3; }
 .tb thead tr.filtros select, .tb thead tr.filtros input { width: 100%; min-width: 64px; font: 12px Manrope, sans-serif; padding: 3px 5px; border: 1px solid var(--borda); border-radius: 6px; color: var(--txt); background: var(--campo); }
 .tb thead tr.filtros select.ativo, .tb thead tr.filtros input:not(:placeholder-shown) { border-color: var(--ouro); box-shadow: 0 0 0 1px var(--ouro); }
