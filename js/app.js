@@ -181,11 +181,21 @@ function perguntar(titulo, texto, botoes) {
 }
 
 // ---------- tabela de fundos (lista, colar CNPJs e janela de seleção)
+// tipo do fundo: previdência pela XP (aba "Previdencia XP"), pela classificação ANBIMA ("Previdência …") ou pelo nome (PREV, PREVIDÊNCIA, FIE)
+const RE_PREV_NOME = /\bPREV\b|PREVID|\bFIE\b|\bPGBL\b|\bVGBL\b/i;
+function tipoFundo(c) {
+  if (st.xp?.get(c)?.some((o) => o._prev)) return "Previdência";
+  const cad = st.porCnpj.get(c);
+  if (/previd/i.test(cad?.CLASSIFICACAO_ANBIMA || "") || RE_PREV_NOME.test(cad?.NOME || "")) return "Previdência";
+  return "Fundo de investimento";
+}
+const seloTipo = (t) => (t === "Previdência" ? `<span class="xp-tag xp-tag-prev" title="Fundo de previdência">Previdência</span>` : `<span class="tipo-fi" title="Fundo de investimento">Investimento</span>`);
 const COLS_BASE = [
   { k: "NOME", nome: "Fundo", tipo: "txt", filtro: "txt" },
   { k: "CNPJ", nome: "CNPJ", tipo: "cnpj", filtro: "txt" },
   { k: "CLASSIFICACAO_CVM", nome: "Classificação CVM", tipo: "txt", filtro: "lista" },
   { k: "CLASSIFICACAO_ANBIMA", nome: "Classificação ANBIMA", tipo: "txt", filtro: "lista" },
+  { k: "_tipo", nome: "Tipo", tipo: "tipo", filtro: "lista", dica: "Fundo de investimento ou de previdência (pela XP, pela classificação ANBIMA ou pelo nome)" },
   { k: "GESTOR", nome: "Gestor", tipo: "txt", filtro: "txt" },
   { k: "_ini", nome: "1ª cota", tipo: "data" },
   { k: "_dia", nome: "Última cota", tipo: "data" },
@@ -198,13 +208,14 @@ function colsFundo() {
   if (!st.xp) return COLS_BASE;
   const b = Object.fromEntries(COLS_BASE.map((c) => [c.k, c]));
   return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap" }, b.CNPJ,
-    { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" },
+    { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" }, b._tipo,
     { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv" },
     { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg" }, b.GESTOR, b._ini, b._dia, b.RET_12M, b.ACUMULADO, b.VL_PATRIM_LIQ];
 }
 // campos da XP por CNPJ, guardados enquanto os dados da equipe não mudam
 const xpDe = (c) => { const m = (st._xpMemo ??= new Map()); if (!m.has(c)) m.set(c, camposXP(c)); return m.get(c); };
 const valFundo = (f, k) => {
+  if (k === "_tipo") return tipoFundo(f.CNPJ);
   if (k === "_ini") return (f._ini ??= f.DATA_PRIMEIRA_COTA ? diaDe(f.DATA_PRIMEIRA_COTA) : null);
   if (k[0] === "_" && k.startsWith("_xp")) { const q = st.xp ? xpDe(f.CNPJ) : {};
     if (k === "_xpClassif") return q["Classificação XP"] || f.CLASSIFICACAO_ANBIMA || f.CLASSIFICACAO_CVM || "";
@@ -224,6 +235,7 @@ function situacaoCadastro(f) {
   return null;
 }
 function celFundo(f, c) {
+  if (c.tipo === "tipo") return `<td>${seloTipo(valFundo(f, c.k))}</td>`;
   const v = valFundo(f, c.k);
   if (c.tipo === "cnpj") return `<td>${cnpjFmt(v)}</td>`;
   if (c.tipo === "data") return `<td>${v ? fmtData(v) : ""}</td>`;
@@ -282,6 +294,7 @@ function abrirSeletor(inicial = null, aoAplicar = null, titulo = "Lista de fundo
   $("#selTit").textContent = titulo;
   if (!dlg.opcoes.CLASSIFICACAO_CVM) for (const k of ["CLASSIFICACAO_CVM", "CLASSIFICACAO_ANBIMA"])
     dlg.opcoes[k] = [...new Set(st.lista.map((f) => f[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  dlg.opcoes._tipo = ["Fundo de investimento", "Previdência"];
   if (st.xp) dlg.opcoes._xpClassif = [...new Set(st.lista.map((f) => valFundo(f, "_xpClassif")).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("#dlgSoSel").checked = false;
   renderSeletor(); renderSelDialogo();
@@ -328,6 +341,7 @@ function renderSeletor() {
   $("#dlgTabela").innerHTML = `<table class="tb tab-fundos">${cabFundos("sel", true)}<tbody>${linhas.map((f) =>
     `<tr class="linha-f${marcados.has(f.CNPJ) ? " marcado" : ""}" data-c="${f.CNPJ}" tabindex="0" title="${marcados.has(f.CNPJ) ? "Selecionado · clique para tirar" : "Clique para selecionar"}">` +
     colsFundo().map((c) => celFundo(f, c)).join("") + "</tr>").join("")}</tbody></table>` + (linhas.length ? "" : `<p class="nota" style="padding:12px">Nenhum fundo com esses filtros.</p>`);
+  ajustarFiltrosFixos($("#dlgTabela"));
   if (foco) { const el = $(`#dlgTabela [data-filtro="${foco}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch { /* number */ } } }
   $("#dlgMarcarVis").textContent = `Selecionar todos os mostrados (${linhas.length})`;
   const selVis = linhas.filter((f) => marcados.has(f.CNPJ)).length;
@@ -608,6 +622,16 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest?.(".recolhe-btn"); if (!b) return;
   const el = b.previousElementSibling; el.dataset.aberto = el.dataset.aberto === "1" ? "" : "1"; recolhivel(el);
 });
+
+// linha de filtros fixa logo abaixo da linha de títulos: mede a altura real (títulos podem ter 2 linhas)
+function ajustarFiltrosFixos(raiz) {
+  for (const tb of raiz?.querySelectorAll("table") || []) {
+    const cab = tb.querySelector("thead tr:not(.filtros)"), f = tb.querySelectorAll("thead tr.filtros th"); if (!cab || !f.length) continue;
+    const h = cab.getBoundingClientRect().height;
+    if (!h) { requestAnimationFrame(() => ajustarFiltrosFixos(raiz)); return; }      // ainda escondida: mede quando aparecer
+    for (const th of f) th.style.top = `${h}px`;
+  }
+}
 // ============================== cálculo ==============================
 function apelidos(cnpjs) {
   const out = {}, usados = new Set();
@@ -961,6 +985,8 @@ function colunasResumoMetricas() {
     { chave: "Fundo", nome: "Fundo", tipo: "txt", g: "Fundo", html: nomeFundoHTML, titulo: () => "" },
     { chave: "CNPJ", nome: "CNPJ", tipo: "txt", g: "Fundo", centro: true },
     colunaClassif("Fundo"),
+    { chave: "_tipo", nome: "Tipo", tipo: "txt", g: "Fundo", centro: true, dica: "Fundo de investimento ou de previdência (pela XP, pela classificação ANBIMA ou pelo nome)",
+      valor: (l) => (l._c ? tipoFundo(l._c) : ""), html: (v) => (v ? seloTipo(v) : "") },
     { chave: "_pl", nome: "PL (R$ mi)", linhas: ["PL", "(R$ mi)"], tipo: "valor", escala: 1e-6, g: "Fundo",
       dica: "Patrimônio líquido mais recente, em R$ milhões; entre parênteses, a captação líquida no período (verde entrada, vermelho saída)",
       html: (v, l) => `${miR(v)}${typeof l._capt === "number" ? ` (<span style="${corSinal(l._capt)}">${miR(l._capt)}</span>)` : ""}` },
