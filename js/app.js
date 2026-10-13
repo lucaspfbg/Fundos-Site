@@ -3706,7 +3706,7 @@ function renderXPGeral() {
   const cs = [...st.xp.keys()], n = cs.length, q = new Map(cs.map((c) => [c, camposXP(c)]));
   const add = (m, k, c) => { if (k == null) return; (m.get(k) || m.set(k, []).get(k)).push(c); };
   const classif = new Map(), inv = new Map(), risco = new Map(), prazo = new Map(), pl = new Map(), minimo = new Map(), roa = new Map(), adm = new Map(), cvm = new Map();
-  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map();
+  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map(), capt = new Map();
   const naBase = cs.filter((c) => st.porCnpj.has(c) && !st.porCnpj.get(c)._soXP);
   for (const c of cs) {
     const x = q.get(c), o = ofertaXP(c);
@@ -3721,6 +3721,7 @@ function renderXPGeral() {
     add(adm, x["Taxa adm."] == null ? "Sem informação" : faixaDe(x["Taxa adm."], [["até 0,5%", 0.5], ["0,5% a 1%", 1], ["1% a 2%", 2], ["acima de 2%", Infinity]]), c);
     add(cvm, o?.CLASSIFICATIONCVM || "Sem classificação", c);
     add(tipoF, x._prev ? "Previdência" : "Fundos de investimento", c);
+    add(capt, x["Captação"] === "Fechado" ? "Fechados para aplicação" : "Abertos para aplicação", c);
     add(categoria, x.Categoria || "Sem categoria", c); add(gestora, x.Gestora || "Sem gestora", c); add(trib, tribCurta(x["Tributação"]) || "sem informação", c);
     add(volCli, !x["Volume clientes"] ? "Sem clientes" : faixaDe(x["Volume clientes"], [["até R$ 100 mil", 1e5], ["R$ 100 mil–1 mi", 1e6], ["R$ 1–5 mi", 5e6], ["R$ 5–20 mi", 2e7], ["acima de R$ 20 mi", Infinity]]), c);
   }
@@ -3750,6 +3751,7 @@ function renderXPGeral() {
         kpi("Volume dos clientes", `R$ ${br(vol.reduce((a, b) => a + b, 0) / 1e6, 1)} mi`, `mediana R$ ${br((mediana(vol.filter((v) => v > 0)) || 0) / 1e6, 2)} mi por fundo`); })()}
   </div><div class="xp-cards">
     ${cartaoBarras("Tipo de fundo", tipoF, n, { ordem: ["Fundos de investimento", "Previdência"], cores: { "Fundos de investimento": "#1f5aa6", "Previdência": "#c9a23a" } })}
+    ${cartaoBarras("Captação", capt, n, { ordem: ["Abertos para aplicação", "Fechados para aplicação"], cores: { "Abertos para aplicação": "#087040", "Fechados para aplicação": "#c4222a" } })}
     ${cartaoBarras("Classificação XP", classif, n)}
     ${cartaoBarras("Tipo de investidor", inv, n, { ordem: ["Geral (IG)", "Qualificado (IQ)", "Profissional (IP)"], cores: { "Geral (IG)": "#087040", "Qualificado (IQ)": "#f0b400", "Profissional (IP)": "#b35000" } })}
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
