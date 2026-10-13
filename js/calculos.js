@@ -53,7 +53,8 @@ const fimDoMes = (n) => { const [a, m] = partes(n); return somarMeses(diaYMD(a, 
 export function lowerBound(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; }
 export function upperBound(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= x) lo = m + 1; else hi = m; } return lo; }
 
-export function janela(d, periodo, { ref, ini, fim, fimComum } = {}) {
+// início e fim teóricos do período (antes de procurar as cotas)
+export function limitesPeriodo(d, periodo, { ref, ini, fim, fimComum } = {}) {
   if (!d.length) return null;
   let limIni, limFim;
   if (periodo === "Mês") { const [a, m] = partes(ref); limIni = diaYMD(a, m, 1); limFim = fimDoMes(ref); }
@@ -63,6 +64,11 @@ export function janela(d, periodo, { ref, ini, fim, fimComum } = {}) {
   else if (MESES_PERIODO[periodo]) { limFim = fimComum ?? d[d.length - 1]; limIni = somarMeses(limFim, -MESES_PERIODO[periodo]); }
   else if (periodo === "Vida Toda") { limIni = d[0]; limFim = d[d.length - 1]; }
   else { limIni = ini; limFim = fim; }
+  return [limIni, limFim];
+}
+export function janela(d, periodo, opc = {}) {
+  const lim = limitesPeriodo(d, periodo, opc); if (!lim) return null;
+  const [limIni, limFim] = lim;
   const iIni = lowerBound(d, limIni), iFim = upperBound(d, limFim) - 1;
   if (iIni >= d.length || iFim < 0 || iIni > iFim) return null;
   return [iIni, iFim];
@@ -163,11 +169,26 @@ export function calcularFundo(f, ibov, periodo, pesoTotal = 1, opc = {}) {
   let maior = q[0], dMaior = d[0], mdd = 0, poco = null, dPoco = null, pico = null, dPico = null;
   const passo = pesoTotal / ((n + 1) * (n / 2));
   let peso = passo, ponderada = 0;
+  // Opcional (opc.posicaoPeriodo = { du: dias úteis entre datas, fim }): o peso de cada dia é a posição da data no período inteiro
+  // (1 = 1º dia útil do período … N = último), com passo = pesoTotal ÷ (1 + … + N). Quem existe o período todo soma pesoTotal;
+  // um fundo que começou no meio só soma os pesos dos dias que tem (menos que pesoTotal).
+  // posição = dias úteis do período antes da 1ª cota do fundo + a ordem da cota no próprio fundo; N também conta os dias úteis
+  // depois da última cota (fundo parado). Assim, quem existe o período todo fica idêntico ao VBA (pesos 1, 2, …, n), com ou sem
+  // cota em feriado, e só fundos mais novos (ou parados) perdem peso.
+  const PP = opc.posicaoPeriodo, limP = PP ? limitesPeriodo(f.d, periodo, opc) : null;
+  let NP = 0, passoP = 0, antes = 0;
+  if (PP && limP) {
+    const fimP = Math.min(limP[1], PP.fim ?? limP[1]);
+    antes = d[0] > limP[0] ? PP.du(limP[0] - 1, d[0] - 1) : 0;
+    const depois = d[nSub - 1] < fimP ? PP.du(d[nSub - 1], fimP) : 0;
+    NP = antes + nSub + depois; passoP = pesoTotal / ((NP + 1) * (NP / 2));
+  }
   for (let i = 0; i < nSub; i++) {
     if (q[i] > maior) { maior = q[i]; dMaior = d[i]; }
     else if (q[i] / maior - 1 < mdd) { mdd = q[i] / maior - 1; poco = q[i]; dPoco = d[i]; pico = maior; dPico = dMaior; }
     const v = Number.isNaN(vari[i]) ? 0 : vari[i];
-    ponderada = (ponderada + 1) * (1 + v * peso) - 1;
+    const pesoDia = NP > 0 ? (antes + i + 1) * passoP : peso;
+    ponderada = (ponderada + 1) * (1 + v * pesoDia) - 1;
     peso += passo;
   }
   r["Var Diária Ponderada"] = ponderada;

@@ -2,7 +2,7 @@
 import Chart from "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/+esm";
 import * as D from "./dados.js";
 import { COLUNAS, PERIODOS, calcularFundo, prepararFundo, serieAcumulada, fmtData, diaDe, diaYMD, partes, lowerBound, upperBound, somarMeses } from "./calculos.js";
-import { INDICES, corIndice, nomeIndice, serieIndice, retornoVol, nivelEm } from "./indices.js";
+import { INDICES, corIndice, nomeIndice, serieIndice, retornoVol, nivelEm, diasUteis } from "./indices.js";
 import { janelaMovel, resumoJanela, retornosFundo, retornosDiarios, matrizCorrelacao } from "./analises.js";
 import { simularCarteira, estatisticas, curvaDrawdown } from "./carteira.js";
 import { EQUIPE_URL } from "./config.js";
@@ -651,7 +651,7 @@ function apelidos(cnpjs) {
   return out;
 }
 const paramsAtuais = () => JSON.stringify({ sel: st.sel, per: [...st.periodos], mes: $("#refMes").value, ano: $("#refAno").value,
-  ini: $("#pIni").value, fim: $("#pFim").value, peso: $("#peso").value });
+  ini: $("#pIni").value, fim: $("#pFim").value, peso: $("#peso").value, pp: !!st.pesoPeriodo });
 
 // Fundo que parou de enviar cotas antes da data final comum: cancelado, em liquidação ou sem dados recentes.
 // Atrasos curtos (até 7 dias) são normais no envio à CVM e não são marcados.
@@ -695,7 +695,7 @@ async function calcular() {
       const linhas = [], semDados = [], series = new Map();
       for (const c of sel) {
         const f = fundos.get(c);
-        const r = f ? calcularFundo(f, st.idx.ibov, per, peso, { ...opc, ref }) : null;
+        const r = f ? calcularFundo(f, st.idx.ibov, per, peso, { ...opc, ref, ...opcPeso() }) : null;
         if (!r) { semDados.push(c); continue; }
         const cad = st.porCnpj.get(c) || {};
         Object.assign(r, { _c: c, _parado: situacaoParado(f, cad, fimComum), _gestor: cad.GESTOR || "", "Fundo": cad.NOME, "CNPJ": cnpjFmt(c),
@@ -1913,7 +1913,7 @@ function renderCartResumo() {
 const cacheAtivo = new Map();             // métricas dos ativos não mudam com os pesos: guardadas por ativo + período
 function renderCartMetricas() {
   const R = st.cartRes; if (!R) return;
-  const peso = Number($("#peso").value) / 100, opc = { ini: R.d0, fim: R.dN };
+  const peso = Number($("#peso").value) / 100, opc = { ini: R.d0, fim: R.dN, ...opcPeso() };
   const linhaDe = (nome, f, extra = {}) => { const r = f ? calcularFundo(f, st.idx.ibov, "Personalizado", peso, opc) : null; return r && Object.assign(r, { Fundo: nome }, extra); };
   const linhas = [linhaDe(`Carteira${R.rebal ? ` (rebalanceamento ${REBAL[R.rebal]})` : ""}`, pseudoFundo(R.sim.dias, R.sim.valor), { _cart: true })];
   if (R.simBH) linhas.push(linhaDe("Mesma carteira sem rebalancear", pseudoFundo(R.simBH.dias, R.simBH.valor), { _cart: true }));
@@ -3024,7 +3024,7 @@ document.addEventListener("keydown", (e) => {                      // setas entr
 // ---------- backup completo das configurações (grupos, rankings, tipos de cálculo, carteira e preferências)
 // As configurações ficam no navegador e presas ao endereço do site: mudar de computador, de navegador ou de endereço
 // (ex.: trocar o usuário do GitHub) começa do zero. O backup leva tudo num arquivo.
-const CHAVES_BACKUP = ["carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados",
+const CHAVES_BACKUP = ["pesoPeriodo", "carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados",
   "minimizados", "pagina", "relFmt", "relSel", "riscoEixo", "travar", "guardar"];
 function salvarBackup() {
   const dados = {};
@@ -3566,7 +3566,7 @@ function fontePainel(c, onde) {
   if (l) return { l, f: st.res?.fundos.get(c), dIni: st.ctx.dIni, dFim: st.ctx.dFim, rotulo: `período ${st.perAtivo || ""}` };
   // fundo carregado mas fora da análise: últimos 12 meses até a cota mais recente
   const f = fundoCart(c); if (!f?.d.length) return null;
-  const r = calcularFundo(f, st.idx.ibov, "12 Meses", Number($("#peso").value) / 100, { fimComum: f.d[f.d.length - 1] });
+  const r = calcularFundo(f, st.idx.ibov, "12 Meses", Number($("#peso").value) / 100, { fimComum: f.d[f.d.length - 1], ...opcPeso() });
   return r && { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f, dIni: r["Data Inicial"], dFim: r["Data Final"], rotulo: "últimos 12 meses" };
 }
 function abrirPainelFundo(c, onde = "analise") {
@@ -4351,6 +4351,16 @@ function traduzirPrev(o) {
   x.ONLYPROFESSIONAL = /profission/i.test(String(o.APPLICATIONANDREDEMPTION_TARGETAUDIENCE || ""));
   return x;
 }
+
+// ---------- opção: Var. Diária Ponderada pela posição da data no período inteiro (fundos mais novos recebem menos peso)
+st.pesoPeriodo = pref("pesoPeriodo", false);
+queueMicrotask(() => { const el = $("#pesoPeriodo"); if (el) el.checked = !!st.pesoPeriodo; });
+const opcPeso = () => (st.pesoPeriodo ? { posicaoPeriodo: { du: diasUteis, fim: fimBase() } } : {});
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "pesoPeriodo") return;
+  st.pesoPeriodo = e.target.checked; salvar("pesoPeriodo", st.pesoPeriodo);
+  $("#pesoPeriodoAviso").hidden = !(st.res || st.rk || st.cartRes);
+});
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
@@ -4495,7 +4505,7 @@ function rodarRanking(M, itens, fim, detalhe) {
     if (f.d[0] > fim) { fora.push({ c, motivo: "ainda não existia nessa data" }); continue; }
     const ult = f.d[upperBound(f.d, fim) - 1];
     if (fim - ult > 10) { fora.push({ c, motivo: `sem cota desde ${fmtData(ult)}` }); continue; }
-    const r = calcularFundo(f, st.idx.ibov, M.periodo, peso, { fimComum: fim });
+    const r = calcularFundo(f, st.idx.ibov, M.periodo, peso, { fimComum: fim, ...opcPeso() });
     if (!r) { fora.push({ c, motivo: "sem dados no período" }); continue; }
     const kObj = indiceObjetivo(cad.INDICADOR_DESEMPENHO);
     let obj = null;

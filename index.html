@@ -75,6 +75,8 @@
       <section class="bloco">
         <h2 class="h-lat">Opções</h2>
         <label class="campo">Peso total da carteira (%) <input id="peso" type="number" value="100" min="0" step="1"></label>
+        <label class="tog" title="Var. Diária Ponderada: o peso de cada dia é a posição da data no período inteiro analisado. Fundos que começaram no meio do período (ou pararam antes) somam menos peso. Em Vida Toda não muda nada."><input id="pesoPeriodo" type="checkbox"> Var. ponderada pela posição no período</label>
+        <p id="pesoPeriodoAviso" class="nota" hidden>Clique em Calcular (e recalcule rankings e carteira) para aplicar.</p>
         <label class="tog"><input id="guardar" type="checkbox" checked> Guardar dados neste computador</label>
         <p class="nota">Deixa as próximas consultas mais rápidas.<span id="espaco" hidden></span></p>
         <div class="backup">
