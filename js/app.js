@@ -826,6 +826,56 @@ function tituloQuebrado(nome) {
 // texto longo (nome, classificação, gestor…) à esquerda; o resto (números, datas, CNPJ, selos e símbolos) centralizado
 const aEsquerda = (c) => c.esquerda ?? (c.tipo === "txt" && !c.centro);
 const tituloHTML = (c) => (c.linhas ? c.linhas.map((x) => `<span class="th-l">${esc(x)}</span>`).join("<br>") : tituloQuebrado(c.nome));
+// ---------- filtros por coluna (todas as tabelas ordenáveis): texto = lista dos valores (ou "contém…"); números = maior/menor/igual/entre
+// os valores digitados estão na unidade da tela: % já multiplicado por 100; PL em R$ milhões
+st.filtrosTab = {};
+const FILTRO_MIN_LINHAS = 10, FILTRO_MAX_OPCOES = 60;
+const OPS_FILTRO = { ">": "maior que", ">=": "maior ou igual a", "<": "menor que", "<=": "menor ou igual a", "=": "igual a", "entre": "entre" };
+const valorCol = (c, l) => (c.valor ? c.valor(l) : l[c.chave]);
+const semTags = (h) => String(h ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
+const escalaFiltro = (c) => c.escala ?? (c.tipo === "pct" ? 100 : 1);
+const colNumerica = (c) => ["pct", "num", "num2", "int", "valor"].includes(c.tipo);
+const colFiltravel = (c) => c.ord !== false && c.tipo !== "data" && c.chave !== "_hubId" && !c.semFiltro;
+function textoCel(c, l) {                                   // o texto que aparece na célula (ou o valor cru, quando a célula é só um símbolo)
+  const v = valorCol(c, l), raw = l[c.chave];
+  const t = c.html ? semTags(c.html(v, l)) : String((FMT[c.tipo] || FMT.txt)(v) ?? "");
+  return t || (raw == null ? "" : String(raw));
+}
+function passaFiltros(tab, colunas, l) {
+  const fs = st.filtrosTab[tab]; if (!fs) return true;
+  for (const [k, f] of Object.entries(fs)) {
+    const c = colunas.find((x) => x.chave === k); if (!c) continue;
+    if (f.t === "s") { if (textoCel(c, l) !== f.v) return false; }
+    else if (f.t === "c") { if (!semAcento(textoCel(c, l)).includes(semAcento(f.v))) return false; }
+    else if (f.t === "n") {
+      const v0 = valorCol(c, l); if (typeof v0 !== "number" || !Number.isFinite(v0)) return false;
+      const v = v0 * escalaFiltro(c), tol = c.tipo === "int" ? 0.5 : 0.005;
+      if (f.op === ">" && !(v > f.a)) return false; if (f.op === ">=" && !(v >= f.a - 1e-9)) return false;
+      if (f.op === "<" && !(v < f.a)) return false; if (f.op === "<=" && !(v <= f.a + 1e-9)) return false;
+      if (f.op === "=" && !(Math.abs(v - f.a) <= tol)) return false;
+      if (f.op === "entre" && !(v >= Math.min(f.a, f.b) - 1e-9 && v <= Math.max(f.a, f.b) + 1e-9)) return false;
+    }
+  }
+  return true;
+}
+// linhas que passam nos filtros (usado também pelo gráfico de quadrantes)
+const filtrarLinhas = (tab, colunas, linhas) => linhas.filter((l) => l._cab || passaFiltros(tab, colunas, l));
+const filtrosAtivos = (tab) => Object.keys(st.filtrosTab[tab] || {}).length;
+const resumoFiltroNum = (f) => (f.op === "entre" ? `${br(f.a, 2)}–${br(f.b, 2)}` : `${{ ">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "=" }[f.op]} ${br(f.a, 2)}`);
+function linhaFiltros(tab, colunas, linhas, fx) {
+  const dados = linhas.filter((l) => !l._cab), fs = st.filtrosTab[tab] || {};
+  return `<tr class="filtros">${colunas.map((c, j) => {
+    if (!colFiltravel(c)) return `<th${fx(j)}><span class="sr-only">Sem filtro</span></th>`;
+    const f = fs[c.chave], rot = esc(c.nome || c.nomeOculto || c.chave), dados_ = `data-ftab="${esc(tab)}" data-fcol="${esc(c.chave)}"`;
+    if (colNumerica(c) && dados.some((l) => typeof valorCol(c, l) === "number")) {
+      return `<th${fx(j)}><button type="button" class="fnum${f ? " ativo" : ""}" ${dados_} data-un="${escalaFiltro(c) === 100 ? "pct" : escalaFiltro(c) === 1e-6 ? "mi" : ""}" title="Filtrar ${rot} (maior, menor, igual, entre)" aria-label="Filtrar ${rot}">${f ? esc(resumoFiltroNum(f)) : "⏷ filtrar"}</button></th>`;
+    }
+    const valores = [...new Set(dados.map((l) => textoCel(c, l)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+    if (valores.length > FILTRO_MAX_OPCOES || c.chave === "Fundo" || c.chave === "CNPJ")
+      return `<th${fx(j)}><input type="search" class="fctxt" ${dados_} value="${esc(f?.t === "c" ? f.v : "")}" placeholder="contém…" aria-label="Filtrar ${rot} (contém)" autocomplete="off"></th>`;
+    return `<th${fx(j)}><select class="fsel${f ? " ativo" : ""}" ${dados_} aria-label="Filtrar ${rot}"><option value="">Todos</option>${valores.map((v) => `<option${f?.v === v ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></th>`;
+  }).join("")}</tr>`;
+}
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
   altura = 460, ordenavel = null, classes = [] }) {
   const esq = larguras.map((_, j) => larguras.slice(0, j).reduce((s, x) => s + x, 0));
@@ -847,8 +897,22 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     h += `<th${fx(j, aEsquerda(c) ? " t" : "")}${at ? ` aria-sort="${o.dir > 0 ? "ascending" : "descending"}"` : ""}><button class="ord" data-ord="${esc(ordenavel)}" data-col="${esc(c.chave)}"
       data-txt="${texto ? 1 : 0}" title="${c.dica ? esc(c.dica) + " · clique para ordenar" : "Ordenar"}"><span class="th-txt${c.linhas ? " th-fixo" : ""}">${tituloHTML(c)}${at ? (o.dir > 0 ? " ▲" : " ▼") : ""}</span></button></th>`;
   });
-  h += "</tr></thead><tbody>";
+  // filtros: linha de filtros nas tabelas com muitos fundos (ou com filtro ativo); as linhas filtradas somem
+  const nDados = linhas.filter((l) => !l._cab).length, comFiltro = ordenavel && (nDados >= FILTRO_MIN_LINHAS || filtrosAtivos(ordenavel));
+  let antes = "";
+  h += "</tr>";                                                            // fecha a linha dos títulos
+  if (comFiltro) {
+    h += linhaFiltros(ordenavel, colunas, linhas, (j) => fx(j, ""));
+    if (filtrosAtivos(ordenavel)) {
+      const nPassa = linhas.filter((l) => !l._cab && passaFiltros(ordenavel, colunas, l)).length;
+      antes = `<div class="filtro-info" role="status">Filtro: <b>${nPassa}</b> de ${nDados} fundo(s) · <button type="button" class="link" data-flimpar="${esc(ordenavel)}">Limpar filtros</button></div>`;
+    }
+  }
+  const passa = linhas.map((l) => !comFiltro || l._cab || passaFiltros(ordenavel, colunas, l));
+  const gruposVivos = new Set(linhas.filter((l, i) => passa[i] && !l._cab && l._g).map((l) => l._g));
+  h += "</thead><tbody>";
   linhas.forEach((l, i) => {
+    if (!passa[i] || (l._cab && comFiltro && filtrosAtivos(ordenavel) && !gruposVivos.has(l.chave))) return;
     if (l._cab) {
       const fech = st.fechados.has(l.chave);
       h += `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
@@ -874,7 +938,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     });
     h += "</tr>";
   });
-  return h + "</tbody></table></div>";
+  return antes + h + "</tbody></table></div>";
 }
 
 // ---------- tabela de métricas
@@ -897,7 +961,7 @@ function colunasResumoMetricas() {
     { chave: "Fundo", nome: "Fundo", tipo: "txt", g: "Fundo", html: nomeFundoHTML, titulo: () => "" },
     { chave: "CNPJ", nome: "CNPJ", tipo: "txt", g: "Fundo", centro: true },
     colunaClassif("Fundo"),
-    { chave: "_pl", nome: "PL (R$ mi)", linhas: ["PL", "(R$ mi)"], tipo: "valor", g: "Fundo",
+    { chave: "_pl", nome: "PL (R$ mi)", linhas: ["PL", "(R$ mi)"], tipo: "valor", escala: 1e-6, g: "Fundo",
       dica: "Patrimônio líquido mais recente, em R$ milhões; entre parênteses, a captação líquida no período (verde entrada, vermelho saída)",
       html: (v, l) => `${miR(v)}${typeof l._capt === "number" ? ` (<span style="${corSinal(l._capt)}">${miR(l._capt)}</span>)` : ""}` },
   ];
@@ -3778,7 +3842,7 @@ function eixosROA() {
     minimo: xp("Aplicação mínima (R$)", "aplicação mínima", -1, "Aplicação mín.", (v) => `R$ ${br(v, 0)}`),
     jm: { ...EIXOS_ROA.jm, grupo: "Janela móvel" },
     ...eixosRankingXP(),
-    volCli: { titulo: "Volume dos clientes (R$, escala logarítmica)", curto: "volume dos clientes", melhor: 1, grupo: "Clientes", bom: "volume alto", ruim: "volume baixo", log: true,
+    volCli: { titulo: "Volume dos clientes (R$, escala logarítmica)", curto: "volume dos clientes", melhor: 1, grupo: "Clientes", bom: "volume alto", ruim: "volume baixo", log: true, mi: true,
       fmt: (v) => (v >= 1e6 ? `R$ ${br(v / 1e6, v >= 1e7 ? 0 : 1)} mi` : `R$ ${br(v / 1e3, 0)} mil`), valor: (l, q) => (q["Volume clientes"] > 0 ? q["Volume clientes"] : null) },
     qtdCli: { titulo: "Quantidade de clientes (escala logarítmica)", curto: "quantidade de clientes", melhor: 1, grupo: "Clientes", bom: "muitos clientes", ruim: "poucos clientes", log: true,
       fmt: (v) => br(v, 0), valor: (l, q) => (q.Clientes > 0 ? q.Clientes : null) },
@@ -3786,7 +3850,7 @@ function eixosROA() {
   for (const [g, n, t] of COLUNAS) {
     if (!fmtT[t] || ROA_FORA.has(n) || !ROA_GRUPOS[g]) continue;
     const melhor = ROA_MENOR_MELHOR.has(n) ? -1 : 1;
-    out[`m:${n}`] = { titulo: t === "pct" ? `${n} (%)` : n, curto: n, melhor, grupo: ROA_GRUPOS[g], bom: `${n}: melhor`, ruim: `${n}: pior`, fmt: fmtT[t], pct: t === "pct", valor: (l) => l[n] };
+    out[`m:${n}`] = { titulo: t === "pct" ? `${n} (%)` : n, curto: n, melhor, grupo: ROA_GRUPOS[g], bom: `${n}: melhor`, ruim: `${n}: pior`, fmt: fmtT[t], pct: t === "pct", mi: t === "valor", valor: (l) => l[n] };
   }
   return out;
 }
@@ -3821,6 +3885,26 @@ function renderROA() {
     pts.push({ _c: l._c, nome: q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : st.res.apelidos[l._c], cor: st.ctx.cores[l._c], x, y, tipo: "fundo",
       forte: marcado, apagado: algum && !marcado, t: ET ? ET.valor(l, q) : null, cli: q.Clientes, vol: q["Volume clientes"] });
   }
+  // tabela à direita do gráfico (nome, eixo Y, eixo X e tamanho); o filtro dela vale também para os pontos do gráfico
+  const tipoQ = (E) => (E.pct ? "pct" : E.mi ? "valor" : "num");
+  // título curto (máx. 2 linhas) com a unidade; o título completo aparece ao passar o mouse
+  const titCurto = (E) => {                                  // até 2 linhas equilibradas: "Volume dos" / "clientes (R$)"
+    const n = E.curto.charAt(0).toLocaleUpperCase("pt-BR") + E.curto.slice(1), un = E.pct ? "(%)" : E.mi ? "(R$)" : "";
+    const pal = `${n}${un ? " " + un : ""}`.split(" "); if (pal.join(" ").length <= 12) return [pal.join(" ")];
+    let melhor = 1, dif = Infinity;
+    for (let i = 1; i < pal.length; i++) { const d = Math.abs(pal.slice(0, i).join(" ").length - pal.slice(i).join(" ").length); if (d < dif) { dif = d; melhor = i; } }
+    return [pal.slice(0, melhor).join(" "), pal.slice(melhor).join(" ")];
+  };
+  const colQ = (chave, E) => ({ chave, nome: E.titulo, linhas: titCurto(E), dica: E.titulo, tipo: tipoQ(E), escala: E.mi ? 1e-6 : undefined, crescente: E.melhor < 0,
+    html: (v) => (Number.isFinite(v) ? esc(E.fmt(v)) : "–") });
+  const colsQ = [{ chave: "Fundo", nome: "Fundo", tipo: "txt", titulo: () => "", html: (v, l) => `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` },
+    colQ("y", EY), colQ("x", EX), ...(ET ? [colQ("t", ET)] : [])];
+  const linhasQ = pts.map((p) => ({ _c: p._c, Fundo: p.nome, y: p.y, x: p.x, t: Number.isFinite(p.t) ? p.t : null }));
+  const vivos = new Set(filtrarLinhas("quad", colsQ, linhasQ).map((l) => l._c)), totalQ = pts.length;
+  for (let i = pts.length - 1; i >= 0; i--) if (!vivos.has(pts[i]._c)) pts.splice(i, 1);
+  const ordQ = ordenar(linhasQ, "quad", colsQ);
+  $("#quadTab").innerHTML = tabelaHTML({ colunas: colsQ, linhas: ordQ, fixas: 1, larguras: [150], ordenavel: "quad", altura: 470,
+    destacar: ordQ.map((l) => algum && casa(st.destaque, l.Fundo)) });
   // tamanho: área proporcional ao valor; valor ≤ 0 ou ausente = ponto vazado; métrica toda negativa (ex.: quedas) usa o valor sem sinal
   const R_MIN = 4, R_MAX = 28;
   if (ET) {
@@ -3845,7 +3929,7 @@ function renderROA() {
     if (qq === 2) verde.push(n); if (qq === 0) vermelho.push(n);
   }
   const quad = pts.length >= 2 && medX != null && medY != null ? { x: medX, y: medY, melhorX: EX.melhor, melhorY: EY.melhor, rotulos: rot } : null;
-  $("#roaNota").innerHTML = esc(`${pts.length} fundo(s) no gráfico · período ${st.perAtivo} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
+  $("#roaNota").innerHTML = esc(`${pts.length} fundo(s) no gráfico${pts.length !== totalQ ? ` (filtro da tabela: ${pts.length} de ${totalQ})` : ""} · período ${st.perAtivo} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
     (quad ? ` · medianas: ${esc(EY.curto)} <b>${esc(EY.fmt(medY))}</b> · ${esc(EX.curto)} <b>${esc(EX.fmt(medX))}</b> —
       ${[1, 2, 3, 4].map((n) => `<span class="roa-q${verde.includes(n) ? " bom" : vermelho.includes(n) ? " ruim" : ""}">Q${n}: ${cont[n]}</span>`).join(" · ")}` : "") +
     esc((semCli ? ` · ${semCli} sem clientes (ocultos)` : "") + (semY ? ` · ${semY} sem ${EY.curto}` : "") + (semX ? ` · ${semX} sem ${EX.curto}` : "") +
@@ -4102,6 +4186,84 @@ function mensalPF(f, nome) {
         </tbody></table></div>${parcial ? `<p class="nota">* Mês de início do fundo: rentabilidade a partir da 1ª cota.</p>` : ""}</details>`;
     }).join("") + `</section>`;
 }
+
+// ============================== filtros por coluna: redesenho, janelinha numérica e tratadores ==============================
+// tabela -> função que a redesenha (a mesma usada pela ordenação)
+function funcaoTab(tab) {
+  const LEGENDAS = { acum: renderAcum, dd: renderDd, jm: renderJM, cartAcum: renderCartAcum, cartDd: renderCartDd, cartJM: renderCartJM, rkJM: renderRkJM };
+  return tab.startsWith("leg:") ? LEGENDAS[tab.slice(4)] : ({ met: renderMetricas, risco: renderTabRisco, jm: renderTabJM, cartMet: renderCartMetricas,
+    cartRisco: renderTabCartRisco, cartJM: renderTabCartJM, cartAtivos: renderCartResumo, rk: renderRkTabela, rkPts: renderRkPontos, rkJMt: renderRkJMTab, quad: renderROA })[tab];
+}
+// redesenha mantendo a página e a rolagem lateral da tabela; devolve o foco ao filtro usado
+function redesenharFiltro(tab, col = null, tipo = null) {
+  const fn = funcaoTab(tab); if (!fn) return;
+  const y = scrollY, ant = $(`[data-ftab="${CSS.escape(tab)}"]`)?.closest(".tb-wrap"), sx = ant?.scrollLeft || 0, sy = ant?.scrollTop || 0;
+  fn();
+  const novo = $(`[data-ftab="${CSS.escape(tab)}"]`)?.closest(".tb-wrap"); if (novo) { novo.scrollLeft = sx; novo.scrollTop = sy; }
+  scrollTo(0, y);
+  if (col) { const el = $(`[data-ftab="${CSS.escape(tab)}"][data-fcol="${CSS.escape(col)}"]${tipo ? "." + tipo : ""}`); if (el) { el.focus({ preventScroll: true }); if (el.tagName === "INPUT") el.setSelectionRange?.(el.value.length, el.value.length); } }
+}
+function definirFiltro(tab, col, f) {
+  const fs = (st.filtrosTab[tab] ||= {});
+  if (f) fs[col] = f; else delete fs[col];
+  if (!Object.keys(fs).length) delete st.filtrosTab[tab];
+}
+// janelinha do filtro numérico (uma só para todas as tabelas)
+function popFiltro() {
+  let p = $("#popFiltro"); if (p) return p;
+  document.body.insertAdjacentHTML("beforeend", `<div id="popFiltro" class="pop-filtro" role="dialog" aria-label="Filtro numérico" hidden>
+    <b id="pfTitulo"></b>
+    <select id="pfOp" aria-label="Comparação">${Object.entries(OPS_FILTRO).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+    <div class="pf-vals"><input id="pfA" type="number" step="any" aria-label="Valor"><span id="pfE" hidden>e</span><input id="pfB" type="number" step="any" aria-label="Segundo valor" hidden></div>
+    <p id="pfUn" class="nota"></p>
+    <div class="pf-bts"><button type="button" class="sec mini-btn" id="pfLimpar">Limpar</button><button type="button" class="prim mini-btn" id="pfAplicar">Aplicar</button></div></div>`);
+  return $("#popFiltro");
+}
+function abrirPopFiltro(btn) {
+  const p = popFiltro(), tab = btn.dataset.ftab, col = btn.dataset.fcol, f = st.filtrosTab[tab]?.[col];
+  const th = btn.closest("table").querySelectorAll("thead tr.h2 th, thead tr:not(.filtros):not(:first-child) th, thead tr:only-child th");
+  const nome = btn.getAttribute("aria-label").replace(/^Filtrar /, "");
+  p.dataset.tab = tab; p.dataset.col = col;
+  $("#pfTitulo").textContent = nome;
+  $("#pfOp").value = f?.op || ">="; $("#pfA").value = f ? f.a : ""; $("#pfB").value = f?.b ?? "";
+  $("#pfUn").textContent = btn.dataset.un === "pct" ? "Valores em % (ex.: 5 = 5%)." : btn.dataset.un === "mi" ? "Valores em R$ milhões (ex.: 50 = R$ 50 mi)." : "";
+  mostrarEntre();
+  const r = btn.getBoundingClientRect(); p.hidden = false;
+  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
+  $("#pfA").focus();
+}
+const mostrarEntre = () => { const e = $("#pfOp").value === "entre"; $("#pfB").hidden = !e; $("#pfE").hidden = !e; };
+function aplicarPopFiltro(limpar = false) {
+  const p = $("#popFiltro"), tab = p.dataset.tab, col = p.dataset.col, op = $("#pfOp").value;
+  const a = parseFloat(String($("#pfA").value).replace(",", ".")), b = parseFloat(String($("#pfB").value).replace(",", "."));
+  if (limpar || !Number.isFinite(a) || (op === "entre" && !Number.isFinite(b))) definirFiltro(tab, col, null);
+  else definirFiltro(tab, col, { t: "n", op, a, ...(op === "entre" ? { b } : {}) });
+  p.hidden = true; redesenharFiltro(tab, col, "fnum");
+}
+let tFiltroTxt = null;
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.matches?.("select.fsel")) { definirFiltro(t.dataset.ftab, t.dataset.fcol, t.value ? { t: "s", v: t.value } : null); redesenharFiltro(t.dataset.ftab, t.dataset.fcol, "fsel"); }
+  if (t.id === "pfOp") mostrarEntre();
+});
+document.addEventListener("input", (e) => {
+  const t = e.target; if (!t.matches?.("input.fctxt")) return;
+  clearTimeout(tFiltroTxt);
+  tFiltroTxt = setTimeout(() => { definirFiltro(t.dataset.ftab, t.dataset.fcol, t.value.trim() ? { t: "c", v: t.value.trim() } : null); redesenharFiltro(t.dataset.ftab, t.dataset.fcol, "fctxt"); }, 300);
+});
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  const bn = t.closest?.("button.fnum"); if (bn) { e.stopPropagation(); abrirPopFiltro(bn); return; }
+  if (t.id === "pfAplicar") return aplicarPopFiltro();
+  if (t.id === "pfLimpar") return aplicarPopFiltro(true);
+  const lim = t.closest?.("[data-flimpar]"); if (lim) { delete st.filtrosTab[lim.dataset.flimpar]; redesenharFiltro(lim.dataset.flimpar); return; }
+  const p = $("#popFiltro"); if (p && !p.hidden && !t.closest("#popFiltro")) p.hidden = true;     // clique fora fecha
+});
+document.addEventListener("keydown", (e) => {
+  const p = $("#popFiltro"); if (!p || p.hidden || !e.target.closest?.("#popFiltro")) return;
+  if (e.key === "Enter") { e.preventDefault(); aplicarPopFiltro(); }
+  if (e.key === "Escape") { e.preventDefault(); p.hidden = true; $(`button.fnum[data-ftab="${CSS.escape(p.dataset.tab)}"][data-fcol="${CSS.escape(p.dataset.col)}"]`)?.focus(); }
+});
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
@@ -4911,9 +5073,7 @@ document.addEventListener("click", (e) => {
   const ord = t.closest("button.ord");
   if (ord) {
     const tab = ord.dataset.ord; clicarOrdem(tab, ord.dataset.col, ord.dataset.txt === "1");
-    const LEGENDAS = { acum: renderAcum, dd: renderDd, jm: renderJM, cartAcum: renderCartAcum, cartDd: renderCartDd, cartJM: renderCartJM, rkJM: renderRkJM };
-    const fn = tab.startsWith("leg:") ? LEGENDAS[tab.slice(4)] : ({ met: renderMetricas, risco: renderTabRisco, jm: renderTabJM, cartMet: renderCartMetricas,
-      cartRisco: renderTabCartRisco, cartJM: renderTabCartJM, cartAtivos: renderCartResumo, rk: renderRkTabela, rkPts: renderRkPontos, rkJMt: renderRkJMTab })[tab];
+    const fn = funcaoTab(tab);
     if (fn) manterRolagem(ord, fn);
     return;
   }

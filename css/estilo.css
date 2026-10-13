@@ -972,3 +972,26 @@ button.fav:hover { color: var(--ouro); }
 .pf-mes-tab tbody tr:nth-child(even) td, .pf-mes-tab tbody tr:nth-child(even) th { background: none; }
 .pf-mensal details.pf-ano { border: 0; border-bottom: 1px solid color-mix(in srgb, var(--ouro) 38%, transparent); margin: 0; padding: 0; border-radius: 0; background: none; }
 .pf-mensal details.pf-ano:last-child { border-bottom: 0; }
+
+/* filtros por coluna */
+.tb thead tr.filtros th { top: auto; background: var(--card); padding: 4px 5px; border-bottom: 1px solid var(--borda); vertical-align: middle; }
+.tb thead tr.filtros th.fx { z-index: 3; }
+.tb thead tr.filtros select, .tb thead tr.filtros input { width: 100%; min-width: 64px; font: 12px Manrope, sans-serif; padding: 3px 5px; border: 1px solid var(--borda); border-radius: 6px; color: var(--txt); background: var(--campo); }
+.tb thead tr.filtros select.ativo, .tb thead tr.filtros input:not(:placeholder-shown) { border-color: var(--ouro); box-shadow: 0 0 0 1px var(--ouro); }
+button.fnum { width: 100%; min-width: 64px; font: 600 11.5px Manrope, sans-serif; padding: 3px 5px; border: 1px dashed var(--borda); border-radius: 6px; color: var(--sub); background: var(--campo); cursor: pointer; white-space: nowrap; }
+button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background: color-mix(in srgb, var(--ouro) 16%, var(--campo)); font-weight: 800; }
+.filtro-info { margin: 0 0 6px; padding: 4px 10px; border-left: 3px solid var(--ouro); background: color-mix(in srgb, var(--ouro) 10%, var(--card)); border-radius: 0 8px 8px 0; font-size: 13px; }
+.pop-filtro { position: absolute; z-index: 1000; display: grid; gap: 8px; width: 250px; padding: 12px; border: 1px solid var(--ouro); border-radius: 12px; background: var(--card); color: var(--txt); box-shadow: 0 12px 30px -12px rgba(20,26,74,.55); }
+.pop-filtro[hidden] { display: none; }
+.pop-filtro select, .pop-filtro input { font: 13px Manrope, sans-serif; padding: 5px 7px; border: 1px solid var(--borda); border-radius: 7px; background: var(--campo); color: var(--txt); }
+.pop-filtro .pf-vals { display: flex; align-items: center; gap: 6px; } .pop-filtro .pf-vals input { flex: 1; min-width: 0; }
+.pop-filtro .pf-bts { display: flex; justify-content: flex-end; gap: 6px; } .pop-filtro .nota { margin: 0; }
+
+/* gráfico de quadrantes + tabela à direita */
+.quad-grade { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 38%); gap: 14px; align-items: start; }
+@media (max-width: 1200px) { .quad-grade { grid-template-columns: 1fr; } }
+.quad-tab .tb-wrap { max-height: 470px; }
+.quad-tab .tb th, .quad-tab .tb td { font-size: 12.5px; }
+
+.quad-tab .tb th, .quad-tab .tb td { padding: 4px 6px; }
+.quad-tab .tb thead tr.filtros select, .quad-tab .tb thead tr.filtros input, .quad-tab button.fnum { min-width: 54px; }
