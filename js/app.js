@@ -1228,7 +1228,7 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
   const rotuloRR = rotulo || ((it) => `${it.raw.nome}: volatilidade ${brPct(it.parsed.y)} · ${tituloX.startsWith("Retorno") ? "retorno " + brPct(it.parsed.x) + " a.a." : "Sharpe " + br(it.parsed.x, 2)}`);
   const grupo = (tipo, estilo) => {
     const ps = pts.filter((p) => p.tipo === tipo);
-    return { label: tipo, data: ps.map((p) => ({ x: p.x, y: p.y, nome: p.nome, rotulo: p.tipo !== "fundo" || p.forte })),
+    return { label: tipo, data: ps.map((p) => ({ x: p.x, y: p.y, nome: p.nome, rotulo: p.tipo !== "fundo" || p.forte, _c: p._c || null })),
       backgroundColor: ps.map((p) => (p.vazio ? "transparent" : p.cor + (p.apagado ? "33" : p.alfa || ""))),
       borderColor: ps.map((p) => (p.forte ? (escuro() ? "#fff" : ANIL) : p.vazio ? p.cor : tipo === "fundo" ? "#ffffff" : OURO)),
       borderWidth: ps.map((p) => (p.forte ? 2 : p.vazio ? 1.5 : 1)), pointRadius: ps.map((p) => (p.r != null ? (p.forte ? Math.max(p.r, 9) : p.r) : p.forte ? 9 : estilo.r)),
@@ -1255,6 +1255,15 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
     type: "scatter",
     data: { datasets },
     options: {
+      // clique numa bolha de fundo abre o painel dele (como clicar no nome); não vale logo depois de um zoom nem com a lupa ligada
+      onClick: (ev, els, ch) => {
+        const cv = ch.canvas, d = cv._apertou, n = ev.native;
+        if (Date.now() - (cv._zoomEm || 0) < 400 || cv.dataset.lupa === "1") return;
+        if (d && n && Math.hypot(n.clientX - d.x, n.clientY - d.y) > 6) return;    // foi um arrasto, não um clique
+        const el = els[0], raw = el && ch.data.datasets[el.datasetIndex]?.data[el.index];
+        if (raw?._c) abrirPainelFundo(raw._c, ondePainel(cv));
+      },
+      onHover: (ev, els, ch) => { const el = els[0], raw = el && ch.data.datasets[el.datasetIndex]?.data[el.index]; ch.canvas.style.cursor = raw?._c ? "pointer" : ""; },
       animation: false, responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, linhaRef: { x: refX }, quadrantes: quad,
         tooltip: { callbacks: { label: rotuloRR } } },
@@ -1387,7 +1396,7 @@ function renderRisco() {
   const algum = pts.some((p) => !p.bench && casa(st.destaque, p.nome, p.cnpj));
   graficoRR("gRisco", pts.filter((p) => p[chaveX] != null).map((p) => {
     const marcado = !p.bench && algum && casa(st.destaque, p.nome, p.cnpj);
-    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.bench ? "bench" : "fundo", forte: marcado, apagado: algum && !p.bench && !marcado };
+    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.bench ? "bench" : "fundo", forte: marcado, apagado: algum && !p.bench && !marcado, _c: p.bench ? null : p.c };
   }), { fmtX: chaveX === "ret" ? (v) => brPct(v, 1) : (v) => br(v, 2), tituloX: chaveX === "ret" ? "Retorno (% a.a.)" : "Sharpe (sobre o CDI)",
     refX: chaveX === "sharpe" ? 0 : null });
   renderTabRisco();
@@ -2047,7 +2056,7 @@ function renderCartRisco() {
   const algum = pts.some((p) => p.tipo === "fundo" && casa(st.destaque, p.nome));
   graficoRR("gCartRR", pts.filter((p) => p[chaveX] != null).map((p) => {
     const m = p.tipo === "fundo" && algum && casa(st.destaque, p.nome);
-    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.tipo, forte: m, apagado: algum && p.tipo === "fundo" && !m };
+    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.tipo, forte: m, apagado: algum && p.tipo === "fundo" && !m, _c: p.tipo === "fundo" ? p.c || p._c || null : null };
   }), { fmtX: chaveX === "anual" ? (v) => brPct(v, 1) : (v) => br(v, 2), tituloX: chaveX === "anual" ? "Retorno (% a.a.)" : "Sharpe (sobre o CDI)", refX: chaveX === "sharpe" ? 0 : null });
   renderTabCartRisco();
 }
@@ -2974,10 +2983,12 @@ function ativarZoom(id) {
       y: m === "x" ? (topo?.y || null) : [sy.getValueForPixel(r.y1), sy.getValueForPixel(r.y0)],
     };
     (st.zoomG[id] ||= []).push(novo);
+    cv._zoomEm = Date.now();                                              // o "clique" que vem junto com o fim do arrasto não abre nada
     aplicarZoomG(ch, id); ch.update("none");
     ligarLupa(id, false);                                                 // a lupa vale para uma seleção
   };
   cv.addEventListener("pointerup", terminar);
+  cv.addEventListener("pointerdown", (e) => { cv._apertou = { x: e.clientX, y: e.clientY }; }, true);   // para distinguir clique de arrasto
   cv.addEventListener("pointercancel", () => { ini = null; desenharSelecao(caixa, null, null); const ch = st.graficos[id]; if (ch) ch.options.plugins.tooltip.enabled = ch.$tt ?? true; });
   cv.addEventListener("dblclick", () => voltarZoom(id, true));
   cv.title = "Arraste para dar zoom (na diagonal, na horizontal ou na vertical). Clique duplo volta ao gráfico inteiro.";
