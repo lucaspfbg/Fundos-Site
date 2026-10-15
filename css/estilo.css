@@ -489,14 +489,14 @@ dialog.dlg-pergunta { width: min(460px, 92vw); border: 0; border-top: 3px solid 
 .rel-op[hidden] { display: none; }
 #relProg { min-height: 1.2em; font-weight: 600; }
 /* área usada só para gerar os PNGs (fora da tela, sempre clara e sem cores calculadas) */
-.rel-render { position: fixed; left: -20000px; top: 0; width: 1400px; background: #ffffff; color: #1b1f3b; font: 13px Manrope, Arial, sans-serif; padding: 0; }
+.rel-render { position: fixed; left: -20000px; top: 0; width: max-content; min-width: 1400px; background: #ffffff; color: #1b1f3b; font: 13px Manrope, Arial, sans-serif; padding: 0; }
 .rel-render .rel-parte { padding: 24px 28px; background: #ffffff; }
 .rel-render h2 { font: 700 22px Cinzel, Georgia, serif; color: #2b2c78; margin: 0 0 4px; border-bottom: 2px solid #c9a23a; padding-bottom: 6px; }
 .rel-render h3 { font-size: 14px; color: #2b2c78; margin: 16px 0 6px; }
 .rel-render .rel-sub { color: #5b6386; font-size: 12px; margin: 4px 0; }
 .rel-render img { display: block; margin: 10px 0; max-width: 1340px; }
 .rel-render table { border-collapse: collapse; font-size: 12px; }
-.rel-render th { background: #2b2c78; color: #ffffff; padding: 5px 8px; text-align: right; white-space: nowrap; }
+.rel-render th { background: #2b2c78; color: #ffffff; padding: 5px 8px; text-align: right; white-space: normal; max-width: 120px; min-width: 44px; line-height: 1.2; vertical-align: bottom; }
 .rel-render th:first-child, .rel-render td.t { text-align: left; }
 .rel-render td { padding: 4px 8px; border-bottom: 1px solid #e3e6ee; text-align: right; white-space: nowrap; color: #1b1f3b; }
 .rel-render tr:nth-child(even) td { background: #f6f8fd; }
@@ -999,3 +999,21 @@ button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background
 .xp-tag-prev { background: color-mix(in srgb, var(--ouro) 24%, var(--card)); }
 
 .tipo-fi { font-size: 12px; color: var(--sub); font-weight: 600; }
+
+/* relatório (imagem): textos com largura máxima e quebra de linha; números numa linha */
+.rel-render td.t { white-space: normal; max-width: 160px; line-height: 1.25; }
+.rel-render td.t.nome { max-width: 240px; }
+.rel-render th.t { text-align: left; }
+.rel-render table.compacta { font-size: 11px; }
+.rel-render table.compacta th { padding: 4px 5px; } .rel-render table.compacta td { padding: 3px 5px; }
+/* botão "Colunas" e a lista de colunas */
+.tab-ferr { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+.cols-btn.ativo { border-color: var(--ouro); background: color-mix(in srgb, var(--ouro) 14%, var(--card)); }
+.pop-cols { width: 300px; max-height: 60vh; }
+.pc-lista { display: grid; gap: 4px; overflow-y: auto; max-height: 46vh; padding-right: 4px; }
+.pc-lista .tog { white-space: normal; align-items: flex-start; } .pc-lista .tog span { line-height: 1.3; }
+
+.rel-render .rc { white-space: normal; max-width: 150px; line-height: 1.25; }
+.rel-render .rc.rc-nome { max-width: 240px; }
+.rel-render .rc.rc-cab { max-width: 112px; }
+.rel-render th.t .rc { text-align: left; } .rel-render th:not(.t) .rc { margin-left: auto; text-align: right; }

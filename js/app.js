@@ -207,9 +207,9 @@ const COLS_BASE = [
 function colsFundo() {
   if (!st.xp) return COLS_BASE;
   const b = Object.fromEntries(COLS_BASE.map((c) => [c.k, c]));
-  return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap" }, b.CNPJ,
+  return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap" },
+    { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv" }, b.CNPJ,
     { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" }, b._tipo,
-    { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv" },
     { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg" }, b.GESTOR, b._ini, b._dia, b.RET_12M, b.ACUMULADO, b.VL_PATRIM_LIQ];
 }
 // campos da XP por CNPJ, guardados enquanto os dados da equipe não mudam
@@ -908,8 +908,25 @@ function linhaFiltros(tab, colunas, linhas, fx) {
     return `<th${fx(j)}><select class="fsel${f ? " ativo" : ""}" ${dados_} aria-label="Filtrar ${rot}"><option value="">Todos</option>${valores.map((v) => `<option${f?.v === v ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></th>`;
   }).join("")}</tr>`;
 }
+// colunas escondidas por tabela (escolha da pessoa, guardada neste computador); o nome do fundo sempre aparece
+st.colsOcultas = pref("colsOcultas", {});
+const tabColunas = new Map();                          // tabela -> todas as colunas (para a lista do botão "Colunas")
+const COLS_SEMPRE = new Set(["Fundo"]);
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
   altura = 460, ordenavel = null, classes = [] }) {
+  let ferr = "";
+  if (ordenavel) {
+    tabColunas.set(ordenavel, colunas);
+    const oc = new Set(st.colsOcultas[ordenavel] || []), manter = colunas.map((c) => COLS_SEMPRE.has(c.chave) || !oc.has(c.chave));
+    const nOc = manter.filter((m) => !m).length;
+    if (nOc) {                                                     // tira as colunas escondidas (e ajusta o bloco fixo)
+      larguras = larguras.filter((_, k) => k >= fixas || manter[k]); fixas = manter.slice(0, fixas).filter(Boolean).length;
+      if (grupos) grupos = grupos.filter((_, k) => manter[k]);
+      colunas = colunas.filter((_, k) => manter[k]);
+    }
+    if (tabColunas.get(ordenavel).length > 5)
+      ferr = `<div class="tab-ferr"><button type="button" class="sec mini-btn cols-btn${nOc ? " ativo" : ""}" data-ctab="${esc(ordenavel)}" aria-haspopup="dialog">☰ Colunas${nOc ? ` · ${nOc} oculta(s)` : ""}</button></div>`;
+  }
   const esq = larguras.map((_, j) => larguras.slice(0, j).reduce((s, x) => s + x, 0));
   const fx = (j, extra = "") => (j < fixas ? ` class="fx${extra}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px"` : extra ? ` class="${extra.trim()}"` : "");
   const o = ordenavel ? st.ord[ordenavel] : null;
@@ -970,7 +987,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     });
     h += "</tr>";
   });
-  return antes + h + "</tbody></table></div>";
+  return ferr + antes + h + "</tbody></table></div>";
 }
 
 // ---------- tabela de métricas
@@ -988,8 +1005,10 @@ function colunasResumoMetricas() {
   const gu = (l) => (l._gu ? `<sup class="gu" title="Com gross up: fundo isento de IR para pessoa física (equivalente com IR de 15%)">GU</sup>` : "");
   const pct = (chave, linhas, g, dica, { cor = true, guOk = false } = {}) => ({ chave, nome: linhas.join(" "), linhas, tipo: "pct", g, dica,
     html: (v, l) => `<span style="${cor ? corSinal(v) : ""}">${n2(v)}</span>${guOk ? gu(l) : ""}` });
+  const x = st.xp ? Object.fromEntries(colunasXP("XP · confidencial", false, true).map((c) => [c.chave, c])) : null, g = "XP · confidencial";
   const cols = [
-    ...(st.xp ? [colunaHub(), colunaCadeado()] : []),
+    // com login: Hub, cadeado, investidor e risco XP antes do nome (ficam fixos com ele ao rolar para o lado)
+    ...(st.xp ? [colunaHub(), colunaCadeado(), { ...x.Investidor, g: "XP" }, { ...x.Risco, g: "XP", linhas: ["Risco", "XP"] }] : []),
     { chave: "Fundo", nome: "Fundo", tipo: "txt", g: "Fundo", html: nomeFundoHTML, titulo: () => "" },
     { chave: "CNPJ", nome: "CNPJ", tipo: "txt", g: "Fundo", centro: true },
     colunaClassif("Fundo"),
@@ -1000,13 +1019,11 @@ function colunasResumoMetricas() {
       html: (v, l) => `${miR(v)}${typeof l._capt === "number" ? ` (<span style="${corSinal(l._capt)}">${miR(l._capt)}</span>)` : ""}` },
   ];
   if (st.xp) {
-    const x = Object.fromEntries(colunasXP("XP · confidencial", false, true).map((c) => [c.chave, c])), g = "XP · confidencial";
-    cols.push(x.Investidor, x.Isento, { ...x.Resgate, linhas: ["Resgate", "(Dias)"] },
+    cols.push(x.Isento, { ...x.Resgate, linhas: ["Resgate", "(Dias)"] },
       { chave: "_taxas", nome: "Taxas (%)", linhas: ["Taxas", "(%)"], tipo: "txt", g, centro: true, valor: (l) => l["Taxa adm."] ?? null, crescente: true,
         dica: "Taxa de administração + taxa de performance (% ao ano)",
         html: (v, l) => (l._naXP ? `<span class="xp-resg" title="${esc(`Taxa de administração: ${l["Taxa adm."] != null ? br(l["Taxa adm."], 2) + "% a.a." : "–"}\nTaxa de performance: ${l["Taxa perf."] != null ? br(l["Taxa perf."], 2) + "%" : "–"}`)}">${l["Taxa adm."] != null ? br(l["Taxa adm."], 2) : "–"}+${l["Taxa perf."] != null ? br(l["Taxa perf."], 2) : "–"}</span>` : "") },
       { chave: "ROA", nome: "ROA (%)", linhas: ["ROA", "(%)"], tipo: "num2", g, dica: "ROA (% ao ano)", html: (v) => (v == null ? "" : br(v, 2)) },
-      { ...x.Risco, linhas: ["Risco", "XP"] },
       { chave: "Aplicação mín.", nome: "Mínimo (R$)", linhas: ["Mínimo", "(R$)"], tipo: "valor", g, dica: "Aplicação mínima na XP (R$)", html: (v) => (v == null ? "" : br(v, v % 1 ? 2 : 0)) });
   }
   cols.push(
@@ -1055,7 +1072,7 @@ function tabelaMetricas(dados) {
     (cancelado, em liquidação ou sem envio recente). O cálculo usa o mesmo início dos demais e vai até a última cota de cada um.
     Passe o mouse sobre o símbolo para ver a data.</p>` : "");
   const dicaClique = `<p class="nota">Clique na linha de um fundo para ver o painel com todas as métricas, o cadastro${st.xp ? ", os dados da XP" : ""} e os gráficos.</p>`;
-  return tabelaHTML({ colunas, linhas, fixas: st.xp ? 4 : 2, larguras: st.xp ? [64, 58, 260, 136] : [260, 136], grupos, destacar: dest, classes, altura: 520, ordenavel: "met",
+  return tabelaHTML({ colunas, linhas, fixas: st.xp ? 5 : 2, larguras: st.xp ? [64, 58, 48, 56, 260] : [260, 136], grupos, destacar: dest, classes, altura: 520, ordenavel: "met",
     atrLinha: (l) => (l._c && !l._cab ? ` data-fundo="${esc(l._c)}" tabindex="0" title="Ver o painel do fundo"` : "") }) + nota + dicaClique;
 }
 
@@ -1949,7 +1966,7 @@ function renderCartMetricas() {
   });
   const ord = [...vis.filter((l) => l._cart), ...ordenar(vis.filter((l) => !l._cart), "cartMet", colunas)];
   R.metricas = { colunas: colunasRel, linhas: ord };
-  $("#cartMetricas").innerHTML = tabelaHTML({ colunas, linhas: ord, fixas: st.xp ? 4 : 2, larguras: st.xp ? [64, 58, 240, 136] : [240, 136],
+  $("#cartMetricas").innerHTML = tabelaHTML({ colunas, linhas: ord, fixas: st.xp ? 5 : 2, larguras: st.xp ? [64, 58, 48, 56, 240] : [240, 136],
     grupos: colunas.map((c) => c.g), ordenavel: "cartMet", destacar: ord.map((l) => !l._cart && casa(st.destaque, l.Fundo, l._nomeCVM)),
     classes: ord.map((l) => (l._cart ? "cart-total" : "")), altura: 420,
     atrLinha: (l) => (l._c && !l._cart ? ` data-fundo="${esc(l._c)}" tabindex="0" title="Ver o painel do fundo"` : "") }) +
@@ -2555,13 +2572,14 @@ async function gerarPDF(partes, prog) {
         const yTab = y;
         b._dest = st.destExtra ? b.linhas.map(linhaDestacada) : null;
         doc.autoTable({ startY: y, margin: { left: M, right: M, top: 12, bottom: 12 }, theme: "grid",
-          head: [b.colunas.map((c) => pdfTxt(c.nome))], body: b.linhas.map((l) => l.map((v, j) => pdfTxt(fmtCel(v, b.colunas[j].tipo)))),
+          head: [b.colunas.map((c) => pdfTxt(cab3(c.nome, b.pdfCompacto ? 12 : 14)))], body: b.linhas.map((l) => l.map((v, j) => pdfTxt(fmtCel(v, b.colunas[j].tipo)))),
           // pdfCompacto: { coluna: largura em mm } -> a tabela inteira cabe na largura da página (letra menor, textos cortados com "...")
           styles: b.pdfCompacto ? { fontSize: 5.6, cellPadding: 0.8, overflow: "ellipsize", minCellWidth: 6, lineColor: [221, 226, 239], lineWidth: 0.1 }
+            : b.colunas.length > 12 ? { fontSize: 5.8, cellPadding: 0.8, overflow: "linebreak", minCellWidth: 11, lineColor: [221, 226, 239], lineWidth: 0.1 }   // muitas colunas: menos espaço
             : { fontSize: 6.5, cellPadding: 1.2, overflow: "linebreak", minCellWidth: 15, lineColor: [221, 226, 239], lineWidth: 0.1 },
           headStyles: { fillColor: [43, 44, 120], textColor: 255, fontStyle: "bold", fontSize: b.pdfCompacto ? 5.6 : 6.5, overflow: "linebreak" },
           alternateRowStyles: { fillColor: [246, 248, 253] },
-          columnStyles: b.pdfCompacto ? Object.fromEntries(Object.entries(b.pdfCompacto).map(([i, w]) => [i, { cellWidth: w }])) : { 0: { cellWidth: 55, fontStyle: "bold" } },
+          columnStyles: b.pdfCompacto ? Object.fromEntries(Object.entries(b.pdfCompacto).map(([i, w]) => [i, { cellWidth: w }])) : { 0: { cellWidth: 44, fontStyle: "bold" } },
           horizontalPageBreak: !b.pdfCompacto, horizontalPageBreakRepeat: 0,
           ...(lado ? { tableWidth: largTab, margin: { left: M, right: W - M - largTab, top: 12, bottom: 12 } } : {}),
           didParseCell: (d) => { if (d.section === "body" && d.column.index > 0 && b.colunas[d.column.index]?.tipo !== "txt") d.cell.styles.halign = "right";
@@ -2590,15 +2608,23 @@ async function gerarPDF(partes, prog) {
 
 // ---------- PNG (cada parte vira uma imagem; várias vão num .zip)
 const LIMITE_LINHAS_PNG = 80;
+// título de coluna com no máximo 3 linhas: corta no fim de uma palavra e põe "…" (cpl = letras por linha na largura da coluna)
+function cab3(nome, cpl = 17) {
+  const t = String(nome ?? "").replace(/\s+/g, " ").trim(), max = cpl * 3; if (t.length <= max) return t;
+  const corte = t.slice(0, max - 1), sp = corte.lastIndexOf(" ");
+  return (sp > max * 0.6 ? corte.slice(0, sp) : corte) + "…";
+}
 function htmlParte(p) {
   let h = `<section class="rel-parte"><h2>${esc(p.titulo)}</h2><p class="rel-sub">${esc(cabecalhoRel())}</p>` + (p.nota ? `<p class="rel-sub">${esc(p.nota)}</p>` : "");
   for (const b of p.blocos) {
     if (b.tipo === "img") h += (b.mostrarTitulo ? `<h3>${esc(b.titulo)}</h3>` : "") + `<img src="${b.url}" style="width:${Math.min(b.meia ? 640 : 1300, b.w)}px;height:auto" alt="">`;
     else if (b.tipo === "tabela" && !b.soExcel) {
       const lin = b.linhas.slice(0, LIMITE_LINHAS_PNG);
-      h += `<h3>${esc(b.nome)}</h3><table><thead><tr>${b.colunas.map((c) => `<th>${esc(c.nome)}</th>`).join("")}</tr></thead><tbody>${lin.map((l, li) => `<tr${linhaDestacada(l) ? ' class="dest"' : ""}${b.corLinha?.[li] ? ` style="--fundo-linha:${b.corLinha[li]}" data-cor-linha="1"` : ""}>${l.map((v, j) => {
+      h += `<h3>${esc(b.nome)}</h3><table><thead><tr>${b.colunas.map((c, j) => `<th class="${j === 0 || c.tipo === "txt" ? "t" : ""}"><div class="rc rc-cab">${esc(cab3(c.nome, 15))}</div></th>`).join("")}</tr></thead><tbody>${lin.map((l, li) => `<tr${linhaDestacada(l) ? ' class="dest"' : ""}${b.corLinha?.[li] ? ` style="--fundo-linha:${b.corLinha[li]}" data-cor-linha="1"` : ""}>${l.map((v, j) => {
         const t = b.colunas[j].tipo, cor = t === "pct" && typeof v === "number" ? (v > 0 ? "color:#087040" : v < 0 ? "color:#b81f25" : "") : "";
-        return `<td class="${t === "txt" ? "t" : ""}" style="${cor}">${esc(fmtCel(v, t))}</td>`; }).join("")}</tr>`).join("")}</tbody></table>` +
+        // textos: caixa com largura máxima (o navegador ignora max-width direto na célula) e no máximo 3 linhas
+        return t === "txt" ? `<td class="t"><div class="rc${j === 0 ? " rc-nome" : ""}">${esc(cab3(fmtCel(v, t), j === 0 ? 30 : 22))}</div></td>`
+          : `<td style="${cor}">${esc(fmtCel(v, t))}</td>`; }).join("")}</tr>`).join("")}</tbody></table>` +
         (b.linhas.length > LIMITE_LINHAS_PNG ? `<p class="rel-sub">Mostrando ${LIMITE_LINHAS_PNG} de ${b.linhas.length} linhas; a tabela completa sai no Excel.</p>` : "");
     }
   }
@@ -2609,6 +2635,8 @@ async function gerarPNG(partes, prog, umaSo) {
   const area = document.createElement("div"); area.className = "rel-render";
   area.innerHTML = partes.map(htmlParte).join("");
   document.body.appendChild(area);
+  // tabela mais larga que a página: espaçamento e letra menores (a imagem cresce até caber a tabela inteira)
+  for (const tb of $$("table", area)) if (tb.offsetWidth > 1344) tb.classList.add("compacta");
   try {
     await Promise.all($$("img", area).map((im) => (im.complete ? 1 : new Promise((r) => { im.onload = im.onerror = r; }))));
     const capturar = async (el) => (await window.html2canvas(el, { backgroundColor: "#ffffff", scale: 1.5, logging: false, useCORS: true }));
@@ -3024,7 +3052,7 @@ document.addEventListener("keydown", (e) => {                      // setas entr
 // ---------- backup completo das configurações (grupos, rankings, tipos de cálculo, carteira e preferências)
 // As configurações ficam no navegador e presas ao endereço do site: mudar de computador, de navegador ou de endereço
 // (ex.: trocar o usuário do GitHub) começa do zero. O backup leva tudo num arquivo.
-const CHAVES_BACKUP = ["pesoPeriodo", "carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados",
+const CHAVES_BACKUP = ["colsOcultas", "pesoPeriodo", "carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados",
   "minimizados", "pagina", "relFmt", "relSel", "riscoEixo", "travar", "guardar"];
 function salvarBackup() {
   const dados = {};
@@ -4363,6 +4391,48 @@ document.addEventListener("change", (e) => {
   st.pesoPeriodo = e.target.checked; salvar("pesoPeriodo", st.pesoPeriodo);
   $("#pesoPeriodoAviso").hidden = !(st.res || st.rk || st.cartRes);
 });
+
+// ---------- botão "Colunas": marcar/desmarcar as colunas de cada tabela
+function popCols() {
+  let p = $("#popCols"); if (p) return p;
+  document.body.insertAdjacentHTML("beforeend", `<div id="popCols" class="pop-filtro pop-cols" role="dialog" aria-label="Colunas da tabela" hidden>
+    <b>Colunas mostradas</b><div id="pcLista" class="pc-lista"></div>
+    <div class="pf-bts"><button type="button" class="sec mini-btn" id="pcTodas">Mostrar todas</button><button type="button" class="prim mini-btn" id="pcFechar">Fechar</button></div></div>`);
+  return $("#popCols");
+}
+function listaPopCols(tab) {
+  const oc = new Set(st.colsOcultas[tab] || []), cols = tabColunas.get(tab) || [];
+  $("#pcLista").innerHTML = cols.map((c) => {
+    const nome = (c.nome || c.nomeOculto || c.dica || c.chave).replace(/\s+/g, " "), fixa = COLS_SEMPRE.has(c.chave);
+    return `<label class="tog"><input type="checkbox" data-pccol="${esc(c.chave)}"${oc.has(c.chave) ? "" : " checked"}${fixa ? " disabled" : ""}> <span>${esc(nome)}${c.g && c.g !== nome ? ` <small class="nota">· ${esc(c.g)}</small>` : ""}${fixa ? ' <small class="nota">(sempre)</small>' : ""}</span></label>`;
+  }).join("");
+}
+function abrirPopCols(btn) {
+  const p = popCols(), tab = btn.dataset.ctab; p.dataset.tab = tab; listaPopCols(tab);
+  const r = btn.getBoundingClientRect(); p.hidden = false;
+  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
+  $("#pcLista input:not(:disabled)")?.focus();
+}
+function salvarColsOcultas(tab, lista) {
+  if (lista.length) st.colsOcultas[tab] = lista; else delete st.colsOcultas[tab];
+  salvar("colsOcultas", st.colsOcultas); redesenharFiltro(tab);
+  const b = $(`.cols-btn[data-ctab="${CSS.escape(tab)}"]`); if (b && !$("#popCols").hidden) { const r = b.getBoundingClientRect(); $("#popCols").style.top = `${r.bottom + scrollY + 4}px`; }
+}
+document.addEventListener("click", (e) => {
+  const t = e.target, b = t.closest?.(".cols-btn");
+  if (b) { e.stopPropagation(); abrirPopCols(b); return; }
+  if (t.id === "pcFechar") { $("#popCols").hidden = true; return; }
+  if (t.id === "pcTodas") { const tab = $("#popCols").dataset.tab; salvarColsOcultas(tab, []); listaPopCols(tab); return; }
+  const p = $("#popCols"); if (p && !p.hidden && !t.closest("#popCols")) p.hidden = true;
+});
+document.addEventListener("change", (e) => {
+  const c = e.target.dataset?.pccol; if (!c) return;
+  const tab = $("#popCols").dataset.tab, oc = new Set(st.colsOcultas[tab] || []);
+  e.target.checked ? oc.delete(c) : oc.add(c);
+  salvarColsOcultas(tab, [...oc]);
+  $(`#pcLista input[data-pccol="${CSS.escape(c)}"]`)?.focus();
+});
+document.addEventListener("keydown", (e) => { const p = $("#popCols"); if (e.key === "Escape" && p && !p.hidden) { p.hidden = true; $(`.cols-btn[data-ctab="${CSS.escape(p.dataset.tab)}"]`)?.focus(); } });
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
@@ -4627,8 +4697,10 @@ function colunasRk(R, tela = false) {
 function colunasRkTela(R) {
   const rk = Object.fromEntries(colunasRk(R, true).map((c) => [c.chave, c]));
   const [v1, ...v2] = rk.var.nome.split(" ");
-  const resumo = colunasResumoMetricas().filter((c) => !["_hubId", "Captação", "Fundo"].includes(c.chave));
-  return [{ ...rk.pos }, { ...rk.var, linhas: [v1, v2.join(" ")] }, ...(st.xp ? [{ ...colunaHub(), g: "Ranking" }, { ...colunaCadeado(), g: "Ranking" }] : []),
+  const todos = colunasResumoMetricas(), naFrente = ["_hubId", "Captação", "Investidor", "Risco", "Fundo"];
+  const resumo = todos.filter((c) => !naFrente.includes(c.chave));
+  const inv = todos.find((c) => c.chave === "Investidor"), risco = todos.find((c) => c.chave === "Risco");
+  return [{ ...rk.pos }, { ...rk.var, linhas: [v1, v2.join(" ")] }, ...(st.xp ? [{ ...colunaHub(), g: "Ranking" }, { ...colunaCadeado(), g: "Ranking" }, { ...inv, g: "Ranking" }, { ...risco, g: "Ranking" }] : []),
     { ...rk.Fundo }, { ...rk.total, linhas: ["Pontuação"] }, ...resumo];
 }
 function linhaRkTela(R, x) {
@@ -4648,7 +4720,7 @@ function renderRkTabela() {
     `contra o ${esc(nomeIndice(R.M.bench))} (aplicações desde ${fmtData(R.iniJM)}) · <b>${R.ordem.length}</b> fundo(s) analisado(s)` +
     (R.nDef > R.ordem.length ? ` (de ${R.nDef} no ranking; os demais estão listados abaixo da tabela)` : "") +
     (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
-  $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 5 : 3, larguras: st.xp ? [48, 66, 64, 58, 250] : [48, 66, 270], grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
+  $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 64, 58, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
     destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)) });
   const fora = [...R.fora.map((x) => `${esc(curto(st.porCnpj.get(x.c)?.NOME || cnpjFmt(x.c), 50))} (${esc(x.motivo)})`), ...(R.foraDaBase || []).map((c) => `${cnpjFmt(c)} (fora da base)`)];
   $("#rkFora").innerHTML = (R.ordem.some((x) => x.l.curto) ? `<span class="rk-curto">⚑</span> histórico menor que o período do ranking (entra assim mesmo, com as métricas do tempo que tem). ` : "") +
