@@ -132,7 +132,7 @@ function carregarGrupo(g) {
 }
 
 // carrega vários fundos em paralelo (até 6 downloads ao mesmo tempo)
-export async function carregarFundos(cnpjs, cdiAnterior, aoAvancar) {
+export async function carregarFundos(cnpjs, cdiAnterior, aoAvancar, sinal = null) {
   // progresso contado em fundos (não em grupos), com total fixo desde o início
   // aoAvancar(feitos, total, evento): evento = { tipo: "inicio" | "fim", cnpjs, ok: Set dos que vieram com cotas }
   const porGrupo = new Map();
@@ -142,7 +142,7 @@ export async function carregarFundos(cnpjs, cdiAnterior, aoAvancar) {
   let feitos = 0;
   aoAvancar?.(0, total, null);
   const trabalhar = async () => {
-    while (fila.length) {
+    while (fila.length && !sinal?.aborted) {                // interrompido: não pega grupos novos (os já baixados ficam no cache)
       const g = fila.shift(), doGrupo = porGrupo.get(g);
       aoAvancar?.(feitos, total, { tipo: "inicio", cnpjs: doGrupo });
       const mapa = await carregarGrupo(g);
@@ -151,6 +151,7 @@ export async function carregarFundos(cnpjs, cdiAnterior, aoAvancar) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(6, fila.length) }, trabalhar));
+  if (sinal?.aborted) throw new DOMException("Interrompido", "AbortError");
   const out = new Map();
   for (const c of cnpjs) {
     let linhas = (await carregarGrupo(grupoDe(c))).get(c);

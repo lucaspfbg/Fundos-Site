@@ -251,6 +251,7 @@
             <label class="ordem">Eixo X <div id="cbROA" class="combo"></div></label>
             <label class="ordem">Tamanho <div id="cbTam" class="combo"></div></label>
             <label id="roaSoCliBox" class="tog" title="Mostra só os fundos que têm pelo menos 1 cliente"><input id="roaSoCli" type="checkbox"> Só fundos com clientes</label>
+            <button id="roaPadrao" class="sec mini-btn" type="button" title="Volta para Y = ROA, X = Sharpe, tamanho = volume dos clientes, sem filtro de clientes e sem zoom">↺ Padrão</button>
           </div>
           <p id="roaNota" class="nota"></p>
           <div class="quad-grade">
@@ -633,10 +634,10 @@
   </div>
 </dialog>
 
-
 <div id="painelCarga" class="painel-carga" role="dialog" aria-modal="false" aria-labelledby="cargaTit" hidden>
   <div class="pc-caixa">
-    <div class="pc-cab"><h2 id="cargaTit">Carregando fundos</h2><span id="cargaFase" class="nota"></span></div>
+    <div class="pc-cab"><h2 id="cargaTit">Carregando fundos</h2><span id="cargaFase" class="nota"></span>
+      <button id="cargaInterromper" class="sec mini-btn" type="button" title="Para o carregamento (também com Esc ou clicando fora)">Interromper (Esc)</button></div>
     <div class="pc-barra"><div id="cargaBarra"></div></div>
     <div id="cargaResumo" class="pc-resumo"></div>
     <div id="cargaLista" class="pc-lista"></div>

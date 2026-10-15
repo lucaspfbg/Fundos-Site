@@ -673,7 +673,7 @@ async function calcular() {
     barra.firstElementChild.style.width = "5%";
     $("#progTxt").textContent = "baixando cotas…";
     abrirCarga(sel);
-    const fundos = await D.carregarFundos(sel, st.idx.cdiAnterior, (feitos, total, ev) => {
+    const fundos = await carregarFundosCancelavel(sel, (feitos, total, ev) => {
       barra.firstElementChild.style.width = `${5 + 75 * feitos / total}%`;
       $("#progTxt").textContent = `baixando cotas · ${feitos}/${total} fundo(s)`;
       atualizarCarga(feitos, total, ev);
@@ -727,9 +727,10 @@ async function calcular() {
     if (recValor.length) avisoSel(`<span class="neg">${recValor.length} cota(s) da XP ignorada(s) por valor muito diferente da última cota da CVM: ` +
       `${recValor.slice(0, 3).map(([c]) => esc(curto(st.porCnpj.get(c)?.NOME || cnpjFmt(c), 40))).join("; ")}${recValor.length > 3 ? "…" : ""}. O cálculo usou a cota da CVM.</span>`);
   } catch (e) {
-    $("#progTxt").textContent = "erro: " + e.message;
+    $("#progTxt").textContent = e.message === INTERROMPIDO ? "carregamento interrompido" : "erro: " + e.message;
+    if (e.message === INTERROMPIDO) barra.hidden = true;
     fecharCarga(e.message);
-    console.error(e);
+    if (e.message !== INTERROMPIDO) console.error(e);
   }
 }
 function avisoDesatualizado() {
@@ -1494,7 +1495,23 @@ function baixarJM() {
 }
 
 // ============================== painel de carregamento (lista de fundos com situação) ==============================
-const carga = { itens: new Map(), timer: null };
+const carga = { itens: new Map(), timer: null, ctl: null, interrompida: false };
+const INTERROMPIDO = "Interrompido";
+// download que pode ser interrompido (Esc, clique fora do painel ou botão): a tela é liberada na hora
+function carregarFundosCancelavel(cnpjs, aoAvancar) {
+  const ctl = (carga.ctl = new AbortController());
+  const parar = new Promise((_, falha) => ctl.signal.addEventListener("abort", () => falha(new DOMException(INTERROMPIDO, "AbortError"))));
+  // depois de interromper, os downloads que já estavam em andamento terminam sem mexer no progresso
+  const baixando = D.carregarFundos(cnpjs, st.idx.cdiAnterior, (...a) => { if (!ctl.signal.aborted) aoAvancar?.(...a); }, ctl.signal);
+  baixando.catch(() => { /* o aviso de interrompido chega depois: ninguém mais espera por ele */ });
+  return Promise.race([baixando, parar]);
+}
+function interromperCarga() {
+  if (!carga.ctl || carga.ctl.signal.aborted || $("#painelCarga").hidden) return false;
+  carga.interrompida = true; carga.ctl.abort(); clearTimeout(carga.timer); $("#painelCarga").hidden = true;
+  avisoSel(`<span class="neg">Carregamento interrompido.</span> Os resultados anteriores continuam na tela; os fundos já baixados ficam guardados para a próxima vez.`);
+  return true;
+}
 function abrirCarga(cnpjs) {
   const lista = $("#cargaLista");
   lista.innerHTML = cnpjs.map((c) => `<div class="pc-item pend" data-c="${c}" title="Na fila"><span class="pc-st" aria-hidden="true"></span>` +
@@ -1502,7 +1519,7 @@ function abrirCarga(cnpjs) {
   carga.itens = new Map($$(".pc-item", lista).map((e) => [e.dataset.c, e]));
   $("#cargaTit").textContent = `Carregando ${cnpjs.length} fundo${cnpjs.length > 1 ? "s" : ""}`;
   $("#cargaFase").textContent = "baixando as cotas…";
-  $("#painelCarga").classList.remove("erro");
+  $("#painelCarga").classList.remove("erro"); carga.interrompida = false;
   atualizarCarga(0, cnpjs.length, null);
   clearTimeout(carga.timer);
   carga.timer = setTimeout(() => { $("#painelCarga").hidden = false; }, 300);   // não aparece se vier tudo do cache em menos de 0,3 s
@@ -1524,6 +1541,7 @@ function faseCarga(txt, pct) { $("#cargaFase").textContent = txt; if (pct != nul
 function fecharCarga(erro) {
   clearTimeout(carga.timer);
   const p = $("#painelCarga");
+  if (erro === INTERROMPIDO) { p.hidden = true; return; }                       // interrompido pela pessoa: não é erro
   if (erro) {
     p.hidden = false; p.classList.add("erro");
     faseCarga("erro: " + erro);
@@ -1694,6 +1712,13 @@ document.addEventListener("click", (e) => {
   if (e.target.id === "cargaFechar") { $("#painelCarga").hidden = true; e.target.remove(); }
 });
 
+
+// Esc ou clique fora da caixa do painel interrompem o carregamento
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#painelCarga").hidden && interromperCarga()) { e.preventDefault(); e.stopPropagation(); } }, true);
+document.addEventListener("click", (e) => {
+  if (e.target.id === "cargaInterromper") { interromperCarga(); return; }
+  if (e.target.id === "painelCarga") interromperCarga();                     // a área escura em volta da caixa
+});
 // ============================== caixa de escolha com busca (combo) ==============================
 // Usada em "Relativa a", no benchmark da janela móvel e na carteira. Digite para filtrar; ↑ ↓ Enter escolhem; Esc fecha.
 const combos = {};
@@ -2140,10 +2165,10 @@ async function calcularCarteiraBotao() {
   if (faltam.length) {
     abrirCarga(faltam); $("#cargaTit").textContent = `Carteira: carregando ${faltam.length} fundo(s)`;
     try {
-      const novos = await D.carregarFundos(faltam, st.idx.cdiAnterior, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
+      const novos = await carregarFundosCancelavel(faltam, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
       st.cartFundos = new Map([...(st.cartFundos || new Map()), ...novos]);
       faseCarga("calculando a carteira…", 96); await pausa();
-    } catch (e) { console.error(e); fecharCarga(e.message); return; }
+    } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return; }
   }
   semZoom("gCartEvol", "gCartDD", "gCartRR", "gCartJM");
   renderCarteira();
@@ -3106,9 +3131,15 @@ st.equipe = null; st.xp = null; st.xpCols = [];
 const SESSAO_EQUIPE = "fundos.sessaoEquipe";
 const VERSAO_MIN_EQUIPE = "2026-10-06.5";        // versão do Apps Script que envia o ID (link do Hub)
 const lerSessaoEquipe = () => { try { return localStorage.getItem(SESSAO_EQUIPE) || sessionStorage.getItem(SESSAO_EQUIPE); } catch { return null; } };
-const gravarSessaoEquipe = (t) => { try { t ? localStorage.setItem(SESSAO_EQUIPE, t) : (localStorage.removeItem(SESSAO_EQUIPE), sessionStorage.removeItem(SESSAO_EQUIPE)); } catch { /* sem armazenamento */ } };
-async function apiEquipe(acao, dados = {}) {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 30000);
+const gravarSessaoEquipe = (t) => { try { t ? localStorage.setItem(SESSAO_EQUIPE, t) : (localStorage.removeItem(SESSAO_EQUIPE), sessionStorage.removeItem(SESSAO_EQUIPE), localStorage.removeItem(PERFIL_EQUIPE)); } catch { /* sem armazenamento */ } };
+// nome e e-mail de quem entrou (não é confidencial): a tela mostra o login na hora, antes de os dados chegarem
+const PERFIL_EQUIPE = "fundos.perfilEquipe";
+const lerPerfilEquipe = () => { try { return JSON.parse(localStorage.getItem(PERFIL_EQUIPE) || "null"); } catch { return null; } };
+const gravarPerfilEquipe = (p) => { try { localStorage.setItem(PERFIL_EQUIPE, JSON.stringify({ nome: p.nome, email: p.email, expira: p.expira })); } catch { /* ok */ } };
+// só a resposta "sessão inválida" do servidor desloga; demora, falta de conexão ou erro passageiro mantêm o login
+const sessaoInvalida = (r) => !!r?.semSessao || /Sessão expirada|não autorizado/i.test(r?.erro || "");
+async function apiEquipe(acao, dados = {}, limiteMs = 30000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), limiteMs);
   try {
     const r = await fetch(EQUIPE_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ acao, ...dados }), signal: ctl.signal });
     return await r.json();
@@ -3124,15 +3155,32 @@ function desenharEquipe() {
   if (!st.xp && st.pagina === "xp") mostrarPagina("analise", { rolar: false });
   const on = !!st.equipe;
   $("#equipeEntrar").hidden = on; $("#equipeLogado").hidden = !on;
-  if (on) { $("#equipeNome").textContent = `👤 ${st.equipe.nome}`; $("#equipeInfo").textContent = st.xp ? `${st.xp.size} fundos XP` + (st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas)` : "") : "carregando dados…"; }
+  if (on) {
+    $("#equipeNome").textContent = `👤 ${st.equipe.nome}`;
+    $("#equipeInfo").innerHTML = st.xp ? esc(`${st.xp.size} fundos XP` + (st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas)` : ""))
+      : st.equipeFalha ? `<span class="neg" title="${esc(st.equipeFalha)}">⚠ dados da XP não carregaram</span> · <button type="button" class="link" id="equipeTentar">tentar agora</button>`
+      : `<span class="nota">carregando dados da XP…</span>`;
+  }
   $("#dlgFiltrosXP").hidden = !st.xp;
   if (!st.xp) { $("#dlgXP").checked = false; $("#dlgXPAberto").checked = false; }
   if ($("#seletor").open) renderSeletor();
 }
-async function carregarDadosEquipe() {
+async function carregarDadosEquipe(tentativa = 0) {
   const token = lerSessaoEquipe(); if (!token) return;
-  const r = await apiEquipe("dados", { token });
-  if (!r.ok) { sairEquipe(true); if (r.erro) avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return; }
+  clearTimeout(carregarDadosEquipe.t); st.equipeFalha = null; desenharEquipe();
+  const r = await apiEquipe("dados", { token }, 60000);
+  if (!r.ok) {
+    if (sessaoInvalida(r)) { sairEquipe(true); avisoSel(`<span class="neg">${esc(r.erro || "Sessão expirada. Entre de novo.")}</span>`); return; }
+    // falha passageira: continua logado, avisa e tenta de novo sozinho (depois de 5 s e de 15 s)
+    st.equipeFalha = r.erro || "Não foi possível carregar os dados da XP agora."; desenharEquipe();
+    if (tentativa < 2) carregarDadosEquipe.t = setTimeout(() => carregarDadosEquipe(tentativa + 1), [5000, 15000][tentativa]);
+    return;
+  }
+  st.equipeFalha = null;
+  if (r.nome) { st.equipe = { nome: r.nome, email: r.email, expira: r.expira }; gravarPerfilEquipe(st.equipe); }
+  else if (!st.equipe?.email) {                                       // Apps Script antigo: o nome vem da conferência da sessão
+    const s = await apiEquipe("sessao", { token }); if (s.ok) { st.equipe = { nome: s.nome, email: s.email, expira: s.expira }; gravarPerfilEquipe(st.equipe); }
+  }
   st.xpCols = r.colunas;
   st.xp = new Map(Object.entries(r.fundos).map(([c, linhas]) => [c, linhas.map((l) => Object.fromEntries(r.colunas.map((k, i) => [k, l[i]])))]));
   st.xpPrev = 0;
@@ -3180,7 +3228,7 @@ async function entrarEquipe() {
   b.disabled = false; b.textContent = "Entrar";
   if (!r.ok) { $("#loginErro").textContent = r.erro; $("#loginCodigo").select(); return; }
   gravarSessaoEquipe(r.token);
-  st.equipe = { nome: r.nome, email: r.email, expira: r.expira };
+  st.equipe = { nome: r.nome, email: r.email, expira: r.expira }; gravarPerfilEquipe(st.equipe);
   $("#dlgLogin").close(); desenharEquipe();
   await carregarDadosEquipe();
   if (st.xp) avisoSel(`<span class="ok">Bem-vindo, ${esc(r.nome)}! Dados da equipe carregados: ${st.xp.size} fundos XP${st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas: alguns fundos têm mais de uma)` : ""}.</span>` + avisoCotasIgnoradas());
@@ -3188,14 +3236,16 @@ async function entrarEquipe() {
 async function iniciarEquipe() {
   desenharEquipe();
   const token = EQUIPE_URL && lerSessaoEquipe(); if (!token) return;
-  const s = await apiEquipe("sessao", { token });
-  if (!s.ok) { sairEquipe(true); return; }
-  st.equipe = { nome: s.nome, email: s.email, expira: s.expira }; desenharEquipe();
+  // mostra o login na hora (nome guardado) e busca os dados num pedido só: a conferência da sessão vem junto
+  const p = lerPerfilEquipe();
+  st.equipe = p && (!p.expira || p.expira > Date.now()) ? p : { nome: "…" };
+  desenharEquipe();
   await carregarDadosEquipe();
 }
 document.addEventListener("click", (e) => {
   const id = e.target.id;
   if (id === "equipeEntrar") abrirLogin();
+  if (id === "equipeTentar") carregarDadosEquipe(2);
   else if (id === "equipeSair") sairEquipe();
   else if (id === "loginEnviar") enviarCodigo();
   else if (id === "loginEntrar") entrarEquipe();
@@ -3850,7 +3900,7 @@ async function selecionarECalcular(lista, rotulo) {
   const met = $("#xpOpMet").checked, rk = $("#xpOpRk").checked, modelo = $("#xpOpModelo").value;
   if (!met && !rk) return;
   st.rkXPMarcado = rk; if (rk) st.rkXPModelo = modelo;
-  if (met) { st.sel = []; adicionar(ok); atualizarSidebar(); atualizarXPSelInfo(); await calcular(); }
+  if (met) { st.sel = []; adicionar(ok); atualizarSidebar(); atualizarXPSelInfo(); await calcular(); if (carga.interrompida) return; }
   if (rk) {
     await calcularRankingXP(ok, modelo);
     if (st.ctx && st.roaEixo === "sharpe") st.roaEixo = "rkTotal";            // para já cruzar o ROA com a pontuação
@@ -3863,14 +3913,14 @@ const rankingXP = () => st.rk?.lista.find((x) => x._xp) || null;
 async function calcularRankingXP(cnpjs, modelo) {
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo(s)`;
   try {
-    const fundos = await D.carregarFundos(cnpjs, st.idx.cdiAnterior, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
+    const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
     faseCarga(`calculando o ranking (${modeloDe(modelo).nome})…`, 95); await pausa();
     const R = montarRanking(NOME_RK_XP, { modelo, cnpjs }, fundos); R._xp = true;
     const todos = new Map(st.rk?.fundos || []); for (const [c, f] of fundos) todos.set(c, f);
     st.rk = { lista: [R, ...(st.rk?.lista || []).filter((x) => !x._xp)], fundos: todos, ativo: 0 }; semZoom("gRkJM");
     renderRankings(); renderCarteira(); fecharCarga(); atualizarEspaco();
     st.rkXPAviso = `Ranking "${R.nome}" calculado com ${R.ordem.length} fundo(s) (${R.M.nome}); veja também na página Rankings.`;
-  } catch (e) { console.error(e); fecharCarga(e.message); }
+  } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); }
 }
 document.addEventListener("change", (e) => { if (e.target.id === "xpOpRk") $("#xpOpModBox").hidden = !e.target.checked; });
 document.addEventListener("click", (e) => {
@@ -4433,6 +4483,13 @@ document.addEventListener("change", (e) => {
   $(`#pcLista input[data-pccol="${CSS.escape(c)}"]`)?.focus();
 });
 document.addEventListener("keydown", (e) => { const p = $("#popCols"); if (e.key === "Escape" && p && !p.hidden) { p.hidden = true; $(`.cols-btn[data-ctab="${CSS.escape(p.dataset.tab)}"]`)?.focus(); } });
+
+// gráfico de quadrantes: volta os eixos e o tamanho das bolhas para o padrão (os filtros da tabela ao lado continuam)
+document.addEventListener("click", (e) => {
+  if (e.target.id !== "roaPadrao") return;
+  Object.assign(st, { eixoY: "roa", roaEixo: "sharpe", roaTam: "volCli", roaSoCli: false });
+  semZoom("gROA"); renderROA();
+});
 // ============================== rankings ==============================
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
@@ -4615,7 +4672,7 @@ async function calcularRankings() {
   $("#dlgRank").close();
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo(s)`;
   try {
-    const fundos = await D.carregarFundos(cnpjs, st.idx.cdiAnterior, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
+    const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
     const lista = [];
     for (let i = 0; i < nomes.length; i++) {
       faseCarga(`calculando o ranking ${nomes[i]} (${i + 1} de ${nomes.length})…`, 90 + 8 * i / nomes.length); await pausa();
@@ -4625,7 +4682,7 @@ async function calcularRankings() {
     faseCarga("montando as tabelas…", 99); await pausa();
     mostrarPagina("rankings");
     renderRankings(); renderCarteira(); fecharCarga(); atualizarEspaco();
-  } catch (e) { console.error(e); fecharCarga(e.message); }
+  } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); }
 }
 
 // ---------- exibição
