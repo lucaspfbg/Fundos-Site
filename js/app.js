@@ -200,17 +200,25 @@ const COLS_BASE = [
   { k: "_ini", nome: "1ª cota", tipo: "data", filtro: "data" },
   { k: "_dia", nome: "Última cota", tipo: "data", filtro: "data" },
   { k: "RET_12M", nome: "12 meses", tipo: "pct", filtro: "num" },
+  // calculadas na rotina diária (Python), nos últimos 12 meses de cada fundo; só aparecem quando a base já as tem
+  { k: "VOL_12M", nome: "Vol. 12m", tipo: "pct", filtro: "num", opcional: true, dica: "Volatilidade anualizada dos últimos 12 meses" },
+  { k: "SHARPE_12M", nome: "Sharpe 12m", tipo: "num", filtro: "num", un: "", opcional: true, dica: "Sharpe sobre o CDI dos últimos 12 meses" },
+  { k: "QUEDA_12M", nome: "Maior queda 12m", tipo: "pct", filtro: "num", opcional: true, dica: "Maior queda desde um pico nos últimos 12 meses (negativa: -10 = queda de 10%)" },
   { k: "ACUMULADO", nome: "Desde a 1ª cota", tipo: "pct", filtro: "num" },
   { k: "VL_PATRIM_LIQ", nome: "PL (R$ mi)", tipo: "mi", filtro: "num" },
 ];
 // com login, as colunas seguem o formato da tabela de métricas: nome da XP, cadeado, classificação única, investidor e prazo de resgate
+// colunas opcionais (métricas de 12 meses) só quando a base publicada já as tem
+const temColLista = (k) => ((st._temCol ??= {})[k] ??= !!st.lista?.some((f) => f[k] != null));
 function colsFundo() {
-  if (!st.xp) return COLS_BASE;
+  const base = COLS_BASE.filter((c) => !c.opcional || temColLista(c.k));
+  if (!st.xp) return base;
   const b = Object.fromEntries(COLS_BASE.map((c) => [c.k, c]));
   return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap", filtro: "lista" },
     { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv", filtro: "lista" }, b.CNPJ,
     { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" }, b._tipo,
-    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg", filtro: "num", un: "dias" }, b.GESTOR, b._ini, b._dia, b.RET_12M, b.ACUMULADO, b.VL_PATRIM_LIQ];
+    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg", filtro: "num", un: "dias" }, b.GESTOR, b._ini, b._dia, b.RET_12M,
+    ...base.filter((c) => c.opcional), b.ACUMULADO, b.VL_PATRIM_LIQ];
 }
 // campos da XP por CNPJ, guardados enquanto os dados da equipe não mudam
 const xpDe = (c) => { const m = (st._xpMemo ??= new Map()); if (!m.has(c)) m.set(c, camposXP(c)); return m.get(c); };
@@ -241,6 +249,7 @@ function celFundo(f, c) {
   if (c.tipo === "data") return `<td>${v ? fmtData(v) : ""}</td>`;
   if (c.tipo === "pct") return `<td style="${corSinal(v)}">${brPct(v)}</td>`;
   if (c.tipo === "mi") return `<td>${v != null ? br(v / 1e6, 1) : ""}</td>`;
+  if (c.tipo === "num") return `<td style="${corSinal(v)}">${v != null ? br(v, 2) : ""}</td>`;
   if (c.k === "NOME" && f._soXP) {
     const t = "Só na XP: sem cotas na base da CVM usada pelo site (ex.: FIDC, FII, FIP, FIAGRO ou fundo novo). Aparece com os dados da XP, mas não dá para calcular métricas.";
     return `<td class="t" title="${esc((v || "") + " · " + t)}"><span class="so-xp" title="${esc(t)}">⚠</span>${esc(v || "")}</td>`;
@@ -270,7 +279,7 @@ function cabFundos(tab, comFiltros, extraIni = "", extraFim = "") {
       const rot = esc(c.nome);
       if (c.filtro === "txt") return `<th><input data-filtro="${c.k}" type="search" placeholder="filtrar… (-exclui)" aria-label="Filtrar por ${rot}" title="Contém o texto. Para excluir, comece com - (ex.: -renda fixa). Vários: separe com ; (ex.: crédito; -renda fixa)" autocomplete="off" spellcheck="false" value="${esc(f[c.k] || "")}"></th>`;
       if (c.filtro === "lista") return `<th><button type="button" class="fl-btn${f[c.k]?.length ? " ativo" : ""}" data-fmulti="${c.k}" aria-haspopup="dialog" aria-label="Filtrar por ${rot}: ${esc(rotuloMulti(c.k))}">${esc(rotuloMulti(c.k))} ▾</button></th>`;
-      if (c.filtro === "num") { const un = c.un || (c.tipo === "mi" ? "R$ mi" : "%");
+      if (c.filtro === "num") { const un = c.un ?? (c.tipo === "mi" ? "R$ mi" : "%");
         return `<th><input data-filtro="${c.k}" type="text" inputmode="decimal" placeholder="mín. ${un}" aria-label="Filtrar ${rot} (${un}): número = mínimo, <5 = máximo, 5 a 10 = entre" title="Número = mínimo · <5 = até 5 · 5 a 10 = entre 5 e 10 (em ${un})" autocomplete="off" value="${esc(f[c.k] ?? "")}"></th>`; }
       if (c.filtro === "data") return `<th><button type="button" class="fl-btn${f[c.k] ? " ativo" : ""}" data-fdata="${c.k}" aria-haspopup="dialog" aria-label="Filtrar ${rot} por data: ${esc(rotuloData(f[c.k]))}">${esc(rotuloData(f[c.k]))} ▾</button></th>`;
       return `<th><span class="sr-only">Sem filtro</span></th>`;
