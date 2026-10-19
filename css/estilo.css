@@ -1021,3 +1021,11 @@ button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background
 .pc-cab #cargaInterromper { margin-left: auto; }
 
 .rkm-meses { display: flex; align-items: center; gap: 8px; } .rkm-meses input { width: 90px; } .rkm-meses small { white-space: nowrap; }
+
+/* lista de fundos: botões de filtro (várias opções, datas), caixinha e "carregar mais" */
+.tab-fundos .fl-btn { width: 100%; min-width: 70px; font: 600 12px Manrope, sans-serif; padding: 4px 6px; border: 1px solid var(--borda); border-radius: 6px; background: var(--campo); color: var(--txt); cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-fundos .fl-btn.ativo { border-color: var(--ouro); box-shadow: 0 0 0 1px var(--ouro); background: color-mix(in srgb, var(--ouro) 12%, var(--campo)); }
+.dlg-pop { position: fixed; width: 290px; max-height: 70vh; z-index: 20; }
+.dlg-pop .pc-lista { max-height: 44vh; }
+.dlg-pop .campo { display: grid; gap: 3px; font-size: 13px; }
+.dlg-mais { display: flex; justify-content: center; padding: 12px; }

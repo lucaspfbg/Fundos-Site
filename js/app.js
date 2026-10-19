@@ -197,20 +197,20 @@ const COLS_BASE = [
   { k: "CLASSIFICACAO_ANBIMA", nome: "Classificação ANBIMA", tipo: "txt", filtro: "lista" },
   { k: "_tipo", nome: "Tipo", tipo: "tipo", filtro: "lista", dica: "Fundo de investimento ou de previdência (pela XP, pela classificação ANBIMA ou pelo nome)" },
   { k: "GESTOR", nome: "Gestor", tipo: "txt", filtro: "txt" },
-  { k: "_ini", nome: "1ª cota", tipo: "data" },
-  { k: "_dia", nome: "Última cota", tipo: "data" },
-  { k: "RET_12M", nome: "12 meses", tipo: "pct", filtro: "min" },
-  { k: "ACUMULADO", nome: "Desde a 1ª cota", tipo: "pct", filtro: "min" },
-  { k: "VL_PATRIM_LIQ", nome: "PL (R$ mi)", tipo: "mi", filtro: "min" },
+  { k: "_ini", nome: "1ª cota", tipo: "data", filtro: "data" },
+  { k: "_dia", nome: "Última cota", tipo: "data", filtro: "data" },
+  { k: "RET_12M", nome: "12 meses", tipo: "pct", filtro: "num" },
+  { k: "ACUMULADO", nome: "Desde a 1ª cota", tipo: "pct", filtro: "num" },
+  { k: "VL_PATRIM_LIQ", nome: "PL (R$ mi)", tipo: "mi", filtro: "num" },
 ];
 // com login, as colunas seguem o formato da tabela de métricas: nome da XP, cadeado, classificação única, investidor e prazo de resgate
 function colsFundo() {
   if (!st.xp) return COLS_BASE;
   const b = Object.fromEntries(COLS_BASE.map((c) => [c.k, c]));
-  return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap" },
-    { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv" }, b.CNPJ,
+  return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap", filtro: "lista" },
+    { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv", filtro: "lista" }, b.CNPJ,
     { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" }, b._tipo,
-    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg" }, b.GESTOR, b._ini, b._dia, b.RET_12M, b.ACUMULADO, b.VL_PATRIM_LIQ];
+    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg", filtro: "num", un: "dias" }, b.GESTOR, b._ini, b._dia, b.RET_12M, b.ACUMULADO, b.VL_PATRIM_LIQ];
 }
 // campos da XP por CNPJ, guardados enquanto os dados da equipe não mudam
 const xpDe = (c) => { const m = (st._xpMemo ??= new Map()); if (!m.has(c)) m.set(c, camposXP(c)); return m.get(c); };
@@ -267,10 +267,12 @@ function cabFundos(tab, comFiltros, extraIni = "", extraFim = "") {
   if (comFiltros) {
     const f = dlg.f;
     h += `<tr class="filtros">${colsFundo().map((c) => {
-      if (c.filtro === "txt") return `<th><input data-filtro="${c.k}" type="search" placeholder="filtrar…" aria-label="Filtrar por ${esc(c.nome)}" autocomplete="off" spellcheck="false" value="${esc(f[c.k] || "")}"></th>`;
-      if (c.filtro === "lista") return `<th><select data-filtro="${c.k}" aria-label="Filtrar por ${esc(c.nome)}"><option value="">Todas</option>${(dlg.opcoes[c.k] || []).map((x) =>
-        `<option${f[c.k] === x ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></th>`;
-      if (c.filtro === "min") return `<th><input data-filtro="${c.k}" type="number" step="any" inputmode="decimal" placeholder="mín. ${c.tipo === "mi" ? "R$ mi" : "%"}" aria-label="Valor mínimo de ${esc(c.nome)}${c.tipo === "mi" ? " (R$ milhões)" : " (%)"}" value="${esc(f[c.k] ?? "")}"></th>`;
+      const rot = esc(c.nome);
+      if (c.filtro === "txt") return `<th><input data-filtro="${c.k}" type="search" placeholder="filtrar… (-exclui)" aria-label="Filtrar por ${rot}" title="Contém o texto. Para excluir, comece com - (ex.: -renda fixa). Vários: separe com ; (ex.: crédito; -renda fixa)" autocomplete="off" spellcheck="false" value="${esc(f[c.k] || "")}"></th>`;
+      if (c.filtro === "lista") return `<th><button type="button" class="fl-btn${f[c.k]?.length ? " ativo" : ""}" data-fmulti="${c.k}" aria-haspopup="dialog" aria-label="Filtrar por ${rot}: ${esc(rotuloMulti(c.k))}">${esc(rotuloMulti(c.k))} ▾</button></th>`;
+      if (c.filtro === "num") { const un = c.un || (c.tipo === "mi" ? "R$ mi" : "%");
+        return `<th><input data-filtro="${c.k}" type="text" inputmode="decimal" placeholder="mín. ${un}" aria-label="Filtrar ${rot} (${un}): número = mínimo, <5 = máximo, 5 a 10 = entre" title="Número = mínimo · <5 = até 5 · 5 a 10 = entre 5 e 10 (em ${un})" autocomplete="off" value="${esc(f[c.k] ?? "")}"></th>`; }
+      if (c.filtro === "data") return `<th><button type="button" class="fl-btn${f[c.k] ? " ativo" : ""}" data-fdata="${c.k}" aria-haspopup="dialog" aria-label="Filtrar ${rot} por data: ${esc(rotuloData(f[c.k]))}">${esc(rotuloData(f[c.k]))} ▾</button></th>`;
       return `<th><span class="sr-only">Sem filtro</span></th>`;
     }).join("")}</tr>`;
   }
@@ -295,54 +297,87 @@ function abrirSeletor(inicial = null, aoAplicar = null, titulo = "Lista de fundo
   if (!dlg.opcoes.CLASSIFICACAO_CVM) for (const k of ["CLASSIFICACAO_CVM", "CLASSIFICACAO_ANBIMA"])
     dlg.opcoes[k] = [...new Set(st.lista.map((f) => f[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   dlg.opcoes._tipo = ["Fundo de investimento", "Previdência"];
+  dlg.opcoes._xpCap = ["Aberto", "Fechado"]; dlg.opcoes._xpInv = ["IG", "IQ", "IP"]; dlg.limite = LIMITE_LISTA;
   if (st.xp) dlg.opcoes._xpClassif = [...new Set(st.lista.map((f) => valFundo(f, "_xpClassif")).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("#dlgSoSel").checked = false;
   renderSeletor(); renderSelDialogo();
   $("#seletor").showModal(); $("#dlgBusca").focus();
 }
+// texto com exclusão: "crédito; -renda fixa" = contém "crédito" e não contém "renda fixa" (sem diferença de acento e maiúscula)
+const termosBusca = (q) => String(q || "").split(";").map((t) => t.trim()).filter(Boolean)
+  .map((t) => { const neg = /^(-|!|n[ãa]o\s)/i.test(t); return { neg, v: semAcento(t.replace(/^(-|!|n[ãa]o\s)\s*/i, "")).trim() }; }).filter((t) => t.v);
+const casaTermos = (texto, ts) => { const s = semAcento(texto); return ts.every((t) => (t.neg ? !s.includes(t.v) : s.includes(t.v))); };
+// números como no Excel: "10" = mínimo 10 · "<5" (ou "até 5") = máximo · ">5" = mínimo · "5 a 10" = entre
+function faixaNum(txt) {
+  const s = String(txt ?? "").trim().toLowerCase(); if (!s) return null;
+  const n = (x) => { const t = String(x).trim(); const v = Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t); return Number.isFinite(v) ? v : null; };
+  let m;
+  if ((m = s.match(/^(?:<=?|≤|até|ate)\s*(-?[\d.,]+)$/))) return n(m[1]) == null ? null : { max: n(m[1]) };
+  if ((m = s.match(/^(?:>=?|≥)\s*(-?[\d.,]+)$/))) return n(m[1]) == null ? null : { min: n(m[1]) };
+  if ((m = s.match(/^(-?[\d.,]+)\s*(?:a|até|ate|\.\.|–|—|\s-\s)\s*(-?[\d.,]+)$/))) { const a = n(m[1]), b = n(m[2]); return a == null || b == null ? null : { min: Math.min(a, b), max: Math.max(a, b) }; }
+  return n(s) == null ? null : { min: n(s) };
+}
+const escalaFiltroLista = (c) => (c.tipo === "pct" ? 0.01 : c.tipo === "mi" ? 1e6 : 1);
+function rotuloMulti(k) { const a = dlg.f[k] || []; return !a.length ? "Todas" : a.length === 1 ? curto(a[0], 22) : `${a.length} selecionadas`; }
+function rotuloData(v) {
+  if (!v || (v.de == null && v.ate == null)) return "datas";
+  return v.de != null && v.ate != null ? `${fmtData(v.de)} a ${fmtData(v.ate)}` : v.de != null ? `desde ${fmtData(v.de)}` : `até ${fmtData(v.ate)}`;
+}
 function filtrarLista() {
-  const f = dlg.f, q = $("#dlgBusca").value.trim().toUpperCase(), dig = q.replace(/\D/g, "");
+  const f = dlg.f, q = $("#dlgBusca").value.trim(), tsBusca = termosBusca(q).filter((t) => t.neg || t.v.length >= 3 || /\d{3}/.test(t.v));
   const limiteDia = st.idx.cdi.d[st.idx.cdi.d.length - 1] - 30, ativos = $("#dlgAtivos").checked;
-  const soSel = $("#dlgSoSel").checked, marcados = new Set(dlg.sel);
-  const txt = colsFundo().filter((c) => c.filtro === "txt" && f[c.k]).map((c) => [c.k, f[c.k].toUpperCase(), f[c.k].replace(/\D/g, "")]);
-  const lst = colsFundo().filter((c) => c.filtro === "lista" && f[c.k]).map((c) => [c.k, f[c.k]]);
-  const mins = colsFundo().filter((c) => c.filtro === "min" && f[c.k] !== "" && f[c.k] != null && !Number.isNaN(Number(f[c.k])))
-    .map((c) => [c.k, c.tipo === "mi" ? Number(f[c.k]) * 1e6 : Number(f[c.k]) / 100]);
+  const soSel = $("#dlgSoSel").checked, marcados = new Set(dlg.sel), cols = colsFundo();
+  const txt = cols.filter((c) => c.filtro === "txt" && f[c.k]).map((c) => [c.k, termosBusca(f[c.k])]);
+  const lst = cols.filter((c) => c.filtro === "lista" && f[c.k]?.length).map((c) => [c.k, new Set(f[c.k])]);
+  const nums = cols.filter((c) => c.filtro === "num" && faixaNum(f[c.k])).map((c) => { const fx = faixaNum(f[c.k]), e = escalaFiltroLista(c);
+    return [c.k, fx.min != null ? fx.min * e : -Infinity, fx.max != null ? fx.max * e : Infinity]; });
+  const datas = cols.filter((c) => c.filtro === "data" && f[c.k]).map((c) => [c.k, f[c.k].de ?? -Infinity, f[c.k].ate ?? Infinity]);
   const soXP = st.xp && $("#dlgXP").checked, soAberto = st.xp && $("#dlgXPAberto").checked;
+  const textoCol = (x, k) => k === "NOME" ? `${x.NOME || ""} ${st.xp ? xpDe(x.CNPJ)["XP Nome"] || "" : ""}` : k === "CNPJ" ? `${x.CNPJ} ${cnpjFmt(x.CNPJ)}` : String(valFundo(x, k) ?? "");
   return st.lista.filter((x) => {
     if (soSel) return marcados.has(x.CNPJ);
     if (x._soXP && !soXP) return false;                       // fundos sem dados na CVM só aparecem com o filtro da XP
     if (soXP && !st.xp.has(x.CNPJ)) return false;
     if (soAberto && !xpAberto(x.CNPJ)) return false;
     if (ativos && !x._soXP && !(x._dia && x._dia >= limiteDia)) return false;
-    if (q.length >= 3 && !(x._busca.includes(q) || (dig.length >= 3 && x.CNPJ.includes(dig)))) return false;
-    for (const [k, t, d] of txt) { const v = k === "CNPJ" ? x.CNPJ : String(x[k] || "").toUpperCase(); if (!(v.includes(t) || (k === "CNPJ" && d && v.includes(d)))) return false; }
-    for (const [k, v] of lst) if (valFundo(x, k) !== v) return false;
-    for (const [k, m] of mins) if (!(typeof x[k] === "number" && x[k] >= m)) return false;
+    if (tsBusca.length) {                                       // busca do topo: nome, gestor ou CNPJ; "-texto" exclui
+      const b = (x._buscaN ??= semAcento(`${x._busca} ${x.CNPJ}`));
+      for (const t of tsBusca) { const d = t.v.replace(/\D/g, ""), tem = b.includes(t.v) || (d.length >= 3 && x.CNPJ.includes(d)); if (t.neg ? tem : !tem) return false; }
+    }
+    for (const [k, ts] of txt) if (!casaTermos(textoCol(x, k), ts)) return false;
+    for (const [k, vs] of lst) if (!vs.has(valFundo(x, k))) return false;
+    for (const [k, a, b] of nums) { const v = valFundo(x, k); if (!(typeof v === "number" && v >= a && v <= b)) return false; }
+    for (const [k, a, b] of datas) { const v = valFundo(x, k); if (!(typeof v === "number" && v >= a && v <= b)) return false; }
     return true;
   });
 }
-function renderSeletor() {
+function renderSeletor(soLinhas = false) {
   const soXP = !!st.xp && $("#dlgXP").checked;
-  const todos = ordenarFundos(filtrarLista(), "sel"), limite = soXP && dlg.xpTodos ? Infinity : LIMITE_LISTA;
+  const todos = ordenarFundos(filtrarLista(), "sel"), limite = soXP && dlg.xpTodos ? Infinity : (dlg.limite ||= LIMITE_LISTA);
   const linhas = todos.slice(0, limite), marcados = new Set(dlg.sel);
-  // fundos da XP: aviso de quantos ficam de fora do limite de 300, com botões para mostrar todos ou voltar ao padrão
+  // fundos da XP: aviso de quantos ficam de fora do limite, com botões para mostrar todos ou voltar ao padrão
   const av = $("#dlgXPAviso");
   av.hidden = !soXP || todos.length <= LIMITE_LISTA;
   if (!av.hidden) av.innerHTML = (dlg.xpTodos ? `Mostrando todos os <b>${br(todos.length, 0)}</b> fundos da XP.`
-      : `Mostrando ${LIMITE_LISTA} de <b>${br(todos.length, 0)}</b> fundos da XP (${br(todos.length - LIMITE_LISTA, 0)} não aparecem).`) +
+      : `Mostrando ${br(linhas.length, 0)} de <b>${br(todos.length, 0)}</b> fundos da XP.`) +
     ` <button class="link" type="button" data-xp-todos="1" ${dlg.xpTodos ? "disabled" : ""}>Mostrar todos</button> · <button class="link" type="button" data-xp-todos="0" ${dlg.xpTodos ? "" : "disabled"}>Voltar a ${LIMITE_LISTA}</button>`;
   dlg.visiveis = linhas.map((f) => f.CNPJ);
-  const nSoXP = todos.filter((f) => f._soXP).length;
-  $("#dlgInfo").innerHTML = `<b>${br(todos.length, 0)}</b> fundo(s)` + (nSoXP ? ` · <span class="so-xp">⚠</span> ${br(nSoXP, 0)} só na XP (sem dados na CVM: não dá para calcular)` : "") + (todos.length > linhas.length ? ` · mostrando os ${br(linhas.length, 0)} primeiros (use os filtros ou a ordenação)` : "") +
+  const nSoXP = todos.filter((f) => f._soXP).length, faltam = todos.length - linhas.length;
+  $("#dlgInfo").innerHTML = `<b>${br(todos.length, 0)}</b> fundo(s)` + (nSoXP ? ` · <span class="so-xp">⚠</span> ${br(nSoXP, 0)} só na XP (sem dados na CVM: não dá para calcular)` : "") + (faltam ? ` · mostrando ${br(linhas.length, 0)}` : "") +
     ` · clique no título da coluna para ordenar`;
-  // preserva o foco num campo de filtro enquanto se digita
-  const foco = document.activeElement?.dataset?.filtro, pos = document.activeElement?.selectionStart;
-  $("#dlgTabela").innerHTML = `<table class="tb tab-fundos">${cabFundos("sel", true)}<tbody>${linhas.map((f) =>
+  const corpo = linhas.map((f) =>
     `<tr class="linha-f${marcados.has(f.CNPJ) ? " marcado" : ""}" data-c="${f.CNPJ}" tabindex="0" title="${marcados.has(f.CNPJ) ? "Selecionado · clique para tirar" : "Clique para selecionar"}">` +
-    colsFundo().map((c) => celFundo(f, c)).join("") + "</tr>").join("")}</tbody></table>` + (linhas.length ? "" : `<p class="nota" style="padding:12px">Nenhum fundo com esses filtros.</p>`);
-  ajustarFiltrosFixos($("#dlgTabela"));
-  if (foco) { const el = $(`#dlgTabela [data-filtro="${foco}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch { /* number */ } } }
+    colsFundo().map((c) => celFundo(f, c)).join("") + "</tr>").join("");
+  const rodape = (linhas.length ? "" : `<p class="nota" style="padding:12px">Nenhum fundo com esses filtros.</p>`) +
+    (faltam ? `<div class="dlg-mais"><button type="button" class="sec" id="dlgCarregarMais">Carregar mais ${br(Math.min(LIMITE_LISTA, faltam), 0)} <small>(faltam ${br(faltam, 0)})</small></button></div>` : "");
+  const tb = $("#dlgTabela tbody");
+  if (soLinhas && tb) {                                        // filtros mudaram: troca só as linhas (os campos de filtro ficam intactos)
+    tb.innerHTML = corpo;
+    $("#dlgTabela .dlg-rodape").innerHTML = rodape;
+  } else {
+    $("#dlgTabela").innerHTML = `<table class="tb tab-fundos">${cabFundos("sel", true)}<tbody>${corpo}</tbody></table><div class="dlg-rodape">${rodape}</div>`;
+    ajustarFiltrosFixos($("#dlgTabela"));
+  }
   $("#dlgMarcarVis").textContent = `Selecionar todos os mostrados (${linhas.length})`;
   const selVis = linhas.filter((f) => marcados.has(f.CNPJ)).length;
   $("#dlgTirarVis").textContent = `Tirar os mostrados (${selVis})`; $("#dlgTirarVis").disabled = !selVis;
@@ -515,7 +550,7 @@ document.addEventListener("click", async (e) => {
   if (xt) { dlg.xpTodos = xt.dataset.xpTodos === "1"; renderSeletor(); return; }
   if (t.id === "dlgLimparSel") { if (dlg.sel.length && !(await perguntar("Limpar a seleção?", `Tirar os ${dlg.sel.length} fundos marcados?`, [{ rot: "Cancelar", v: false }, { rot: "Limpar", v: true, classe: "prim" }]))) return;
     dlg.sel = []; renderSeletor(); renderSelDialogo(); return; }
-  if (t.id === "dlgLimparFiltros") { dlg.f = {}; $("#dlgBusca").value = ""; $("#dlgSoSel").checked = false; delete st.ord.sel; renderSeletor(); return; }
+  if (t.id === "dlgLimparFiltros") { dlg.f = {}; dlg.limite = LIMITE_LISTA; fecharPopLista(); $("#dlgBusca").value = ""; $("#dlgSoSel").checked = false; delete st.ord.sel; renderSeletor(); return; }
   if (t.id === "dlgAplicar") {
     const lista = dlg.sel.filter((c) => st.porCnpj.has(c));
     $("#seletor").close();
@@ -584,7 +619,8 @@ document.addEventListener("input", (e) => {
   const t = e.target;
   if (t.id === "dlgBusca" || (t.dataset?.filtro && t.closest("#dlgTabela") && t.tagName === "INPUT")) {
     if (t.dataset?.filtro) dlg.f[t.dataset.filtro] = t.value;
-    clearTimeout(tFiltro); tFiltro = setTimeout(renderSeletor, 220);
+    dlg.limite = LIMITE_LISTA;
+    clearTimeout(tFiltro); tFiltro = setTimeout(() => renderSeletor(true), 220);
   }
   if (t.id === "colBusca") {
     const r = buscar(t.value, 8, (f) => !col.lista.includes(f.CNPJ));
@@ -595,7 +631,7 @@ document.addEventListener("input", (e) => {
 document.addEventListener("change", (e) => {
   const t = e.target;
   if (t.dataset?.filtro && t.tagName === "SELECT") { dlg.f[t.dataset.filtro] = t.value; renderSeletor(); }
-  else if (t.id === "dlgAtivos" || t.id === "dlgSoSel") renderSeletor();
+  else if (t.id === "dlgAtivos" || t.id === "dlgSoSel") { dlg.limite = LIMITE_LISTA; renderSeletor(true); }
   else if (t.id === "grImportar" && t.files[0]) { importarGrupos(t.files[0]); t.value = ""; }
 });
 
@@ -5404,3 +5440,67 @@ function equivalenteMeses() {
   el.textContent = n < 12 ? "" : m === 0 ? `= ${anos}` : m === 6 ? `= ${anos} e meio` : `= ${anos} e ${m} ${m > 1 ? "meses" : "mês"}`;
 }
 document.addEventListener("input", (e) => { if (e.target.id === "rkmPeriodo") equivalenteMeses(); });
+
+// ============================== lista de fundos: caixinhas de filtro (várias opções e datas), dentro da janela
+function fecharPopLista() { const p = $("#dlgPop"); if (p) p.hidden = true; }
+function abrirPopLista(btn, html, k) {
+  let p = $("#dlgPop");
+  if (!p) { $("#seletor").insertAdjacentHTML("beforeend", `<div id="dlgPop" class="pop-filtro dlg-pop" role="dialog" hidden></div>`); p = $("#dlgPop"); }
+  p.innerHTML = html; p.dataset.k = k; p.setAttribute("aria-label", btn.getAttribute("aria-label")); p.hidden = false;
+  const r = btn.getBoundingClientRect();
+  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left))}px`;
+  p.style.top = `${Math.min(innerHeight - p.offsetHeight - 8, r.bottom + 4)}px`;
+  p.querySelector("input")?.focus();
+}
+function atualizarBotaoFiltro(k) {
+  const b = $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"]`); if (!b) return;
+  const t = b.dataset.fmulti ? rotuloMulti(k) : rotuloData(dlg.f[k]);
+  b.textContent = `${t} ▾`; b.classList.toggle("ativo", b.dataset.fmulti ? !!dlg.f[k]?.length : !!dlg.f[k]);
+  b.setAttribute("aria-label", b.getAttribute("aria-label").replace(/:.*$/, `: ${t}`));
+}
+function listaMulti(k, busca = "") {
+  const sel = new Set(dlg.f[k] || []), b = semAcento(busca);
+  return (dlg.opcoes[k] || []).filter((v) => !b || semAcento(v).includes(b))
+    .map((v) => `<label class="tog"><input type="checkbox" data-fmv="${esc(v)}"${sel.has(v) ? " checked" : ""}> <span>${esc(v)}</span></label>`).join("") || `<p class="nota">Nada encontrado.</p>`;
+}
+const dataInput = (n) => (n == null ? "" : (() => { const [a, m, d] = partes(n); return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`; })());
+const deInput = (v) => (v ? diaDe(new Date(v + "T00:00:00Z")) : null);
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  const bm = t.closest?.("#dlgTabela [data-fmulti]");
+  if (bm) { const k = bm.dataset.fmulti, longa = (dlg.opcoes[k] || []).length > 10;
+    abrirPopLista(bm, `<b>${esc(colsFundo().find((c) => c.k === k)?.nome || "")}</b>${longa ? `<input type="search" id="dlgPopBusca" placeholder="procurar…" aria-label="Procurar opção" autocomplete="off">` : ""}
+      <div class="pc-lista" id="dlgPopLista">${listaMulti(k)}</div>
+      <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopTodas">Todas</button><button type="button" class="prim mini-btn" id="dlgPopFechar">Fechar</button></div>`, k); return; }
+  const bd = t.closest?.("#dlgTabela [data-fdata]");
+  if (bd) { const k = bd.dataset.fdata, v = dlg.f[k] || {};
+    abrirPopLista(bd, `<b>${esc(colsFundo().find((c) => c.k === k)?.nome || "")}</b>
+      <label class="campo">De <input type="date" id="dlgPopDe" value="${dataInput(v.de)}"></label><label class="campo">Até <input type="date" id="dlgPopAte" value="${dataInput(v.ate)}"></label>
+      <p class="nota">Ex.: para tirar fundos novos, preencha só o "Até" da 1ª cota.</p>
+      <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopLimpar">Limpar</button><button type="button" class="prim mini-btn" id="dlgPopAplicar">Aplicar</button></div>`, k); return; }
+  const p = $("#dlgPop"); if (!p || p.hidden) return;
+  const k = p.dataset.k;
+  if (t.id === "dlgPopFechar") { fecharPopLista(); $(`#dlgTabela [data-fmulti="${k}"]`)?.focus(); return; }
+  if (t.id === "dlgPopTodas") { delete dlg.f[k]; $("#dlgPopLista").innerHTML = listaMulti(k, $("#dlgPopBusca")?.value); atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true); return; }
+  if (t.id === "dlgPopLimpar" || t.id === "dlgPopAplicar") {
+    const de = t.id === "dlgPopAplicar" ? deInput($("#dlgPopDe").value) : null, ate = t.id === "dlgPopAplicar" ? deInput($("#dlgPopAte").value) : null;
+    if (de == null && ate == null) delete dlg.f[k]; else dlg.f[k] = { de, ate };
+    fecharPopLista(); atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true); $(`#dlgTabela [data-fdata="${k}"]`)?.focus(); return;
+  }
+  if (!t.closest("#dlgPop")) fecharPopLista();                                // clique fora fecha a caixinha
+});
+document.addEventListener("change", (e) => {
+  const v = e.target.dataset?.fmv; if (v == null) return;
+  const k = $("#dlgPop").dataset.k, sel = new Set(dlg.f[k] || []);
+  e.target.checked ? sel.add(v) : sel.delete(v);
+  if (sel.size) dlg.f[k] = [...sel]; else delete dlg.f[k];
+  atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true);
+});
+document.addEventListener("input", (e) => { if (e.target.id === "dlgPopBusca") $("#dlgPopLista").innerHTML = listaMulti($("#dlgPop").dataset.k, e.target.value); });
+// Esc fecha só a caixinha (sem fechar a janela da lista)
+document.addEventListener("keydown", (e) => {
+  const p = $("#dlgPop"); if (e.key !== "Escape" || !p || p.hidden) return;
+  e.preventDefault(); e.stopPropagation(); const k = p.dataset.k; fecharPopLista(); $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"]`)?.focus();
+}, true);
+// carregar mais 300
+document.addEventListener("click", (e) => { if (e.target.closest?.("#dlgCarregarMais")) { dlg.limite = (dlg.limite || LIMITE_LISTA) + LIMITE_LISTA; renderSeletor(true); } });
