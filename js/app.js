@@ -5513,3 +5513,4 @@ document.addEventListener("keydown", (e) => {
 }, true);
 // carregar mais 300
 document.addEventListener("click", (e) => { if (e.target.closest?.("#dlgCarregarMais")) { dlg.limite = (dlg.limite || LIMITE_LISTA) + LIMITE_LISTA; renderSeletor(true); } });
+
