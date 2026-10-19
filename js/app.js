@@ -217,7 +217,7 @@ function colsFundo() {
   return [b.NOME, { k: "_xpCap", nome: "Capt.", dica: "Captação: aberto ou fechado para aplicação (e dinheiro novo)", tipo: "xpcap", filtro: "lista" },
     { k: "_xpInv", nome: "Inv.", dica: "Tipo de investidor", tipo: "xpinv", filtro: "lista" }, b.CNPJ,
     { k: "_xpClassif", nome: "Classificação", tipo: "xpclassif", filtro: "lista" }, b._tipo,
-    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg", filtro: "num", un: "dias" }, b.GESTOR, b._ini, b._dia, b.RET_12M,
+    { k: "_xpResg", nome: "Resgate (Dias)", dica: "Prazo de resgate: cotização + liquidação (C = corridos, U = úteis)", tipo: "xpresg", filtro: "faixa", un: "dias" }, b.GESTOR, b._ini, b._dia, b.RET_12M,
     ...base.filter((c) => c.opcional), b.ACUMULADO, b.VL_PATRIM_LIQ];
 }
 // campos da XP por CNPJ, guardados enquanto os dados da equipe não mudam
@@ -281,6 +281,7 @@ function cabFundos(tab, comFiltros, extraIni = "", extraFim = "") {
       if (c.filtro === "lista") return `<th><button type="button" class="fl-btn${f[c.k]?.length ? " ativo" : ""}" data-fmulti="${c.k}" aria-haspopup="dialog" aria-label="Filtrar por ${rot}: ${esc(rotuloMulti(c.k))}">${esc(rotuloMulti(c.k))} ▾</button></th>`;
       if (c.filtro === "num") { const un = c.un ?? (c.tipo === "mi" ? "R$ mi" : "%");
         return `<th><input data-filtro="${c.k}" type="text" inputmode="decimal" placeholder="mín. ${un}" aria-label="Filtrar ${rot} (${un}): número = mínimo, <5 = máximo, 5 a 10 = entre" title="Número = mínimo · <5 = até 5 · 5 a 10 = entre 5 e 10 (em ${un})" autocomplete="off" value="${esc(f[c.k] ?? "")}"></th>`; }
+      if (c.filtro === "faixa") return `<th><button type="button" class="fl-btn${f[c.k] ? " ativo" : ""}" data-ffaixa="${c.k}" aria-haspopup="dialog" aria-label="Filtrar ${rot} (mínimo e máximo): ${esc(rotuloFaixa(f[c.k], c.un))}">${esc(rotuloFaixa(f[c.k], c.un))} ▾</button></th>`;
       if (c.filtro === "data") return `<th><button type="button" class="fl-btn${f[c.k] ? " ativo" : ""}" data-fdata="${c.k}" aria-haspopup="dialog" aria-label="Filtrar ${rot} por data: ${esc(rotuloData(f[c.k]))}">${esc(rotuloData(f[c.k]))} ▾</button></th>`;
       return `<th><span class="sr-only">Sem filtro</span></th>`;
     }).join("")}</tr>`;
@@ -328,6 +329,18 @@ function faixaNum(txt) {
 }
 const escalaFiltroLista = (c) => (c.tipo === "pct" ? 0.01 : c.tipo === "mi" ? 1e6 : 1);
 function rotuloMulti(k) { const a = dlg.f[k] || []; return !a.length ? "Todas" : a.length === 1 ? curto(a[0], 22) : `${a.length} selecionadas`; }
+// prazo de resgate para o filtro: a soma que aparece na tela (cotização + liquidação), sem o meio dia que a ordenação
+// soma aos dias úteis para desempatar
+function diasResgateTela(cnpj) {
+  const q = st.xp ? xpDe(cnpj) : {}, n = (v) => { const m = String(v ?? "").match(/D\s*\+\s*(\d+)/i); return m ? Number(m[1]) : null; };
+  const a = n(q["Cotização"]), d = n(q["Liquidação"]);
+  return a == null && d == null ? null : (a || 0) + (d || 0);
+}
+function rotuloFaixa(v, un = "") {
+  if (!v || (v.de == null && v.ate == null)) return "mín. e máx.";
+  const n = (x) => br(x, Number.isInteger(x) ? 0 : 1);
+  return v.de != null && v.ate != null ? `${n(v.de)} a ${n(v.ate)} ${un}` : v.de != null ? `desde ${n(v.de)} ${un}` : `até ${n(v.ate)} ${un}`;
+}
 function rotuloData(v) {
   if (!v || (v.de == null && v.ate == null)) return "datas";
   return v.de != null && v.ate != null ? `${fmtData(v.de)} a ${fmtData(v.ate)}` : v.de != null ? `desde ${fmtData(v.de)}` : `até ${fmtData(v.ate)}`;
@@ -340,7 +353,7 @@ function filtrarLista() {
   const lst = cols.filter((c) => c.filtro === "lista" && f[c.k]?.length).map((c) => [c.k, new Set(f[c.k])]);
   const nums = cols.filter((c) => c.filtro === "num" && faixaNum(f[c.k])).map((c) => { const fx = faixaNum(f[c.k]), e = escalaFiltroLista(c);
     return [c.k, fx.min != null ? fx.min * e : -Infinity, fx.max != null ? fx.max * e : Infinity]; });
-  const datas = cols.filter((c) => c.filtro === "data" && f[c.k]).map((c) => [c.k, f[c.k].de ?? -Infinity, f[c.k].ate ?? Infinity]);
+  const datas = cols.filter((c) => (c.filtro === "data" || c.filtro === "faixa") && f[c.k]).map((c) => [c.k, f[c.k].de ?? -Infinity, f[c.k].ate ?? Infinity]);
   const soXP = st.xp && $("#dlgXP").checked, soAberto = st.xp && $("#dlgXPAberto").checked;
   const textoCol = (x, k) => k === "NOME" ? `${x.NOME || ""} ${st.xp ? xpDe(x.CNPJ)["XP Nome"] || "" : ""}` : k === "CNPJ" ? `${x.CNPJ} ${cnpjFmt(x.CNPJ)}` : String(valFundo(x, k) ?? "");
   return st.lista.filter((x) => {
@@ -356,7 +369,7 @@ function filtrarLista() {
     for (const [k, ts] of txt) if (!casaTermos(textoCol(x, k), ts)) return false;
     for (const [k, vs] of lst) if (!vs.has(valFundo(x, k))) return false;
     for (const [k, a, b] of nums) { const v = valFundo(x, k); if (!(typeof v === "number" && v >= a && v <= b)) return false; }
-    for (const [k, a, b] of datas) { const v = valFundo(x, k); if (!(typeof v === "number" && v >= a && v <= b)) return false; }
+    for (const [k, a, b] of datas) { const v = k === "_xpResg" ? diasResgateTela(x.CNPJ) : valFundo(x, k); if (!(typeof v === "number" && v >= a && v <= b)) return false; }
     return true;
   });
 }
@@ -5462,8 +5475,8 @@ function abrirPopLista(btn, html, k) {
   p.querySelector("input")?.focus();
 }
 function atualizarBotaoFiltro(k) {
-  const b = $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"]`); if (!b) return;
-  const t = b.dataset.fmulti ? rotuloMulti(k) : rotuloData(dlg.f[k]);
+  const b = $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"], #dlgTabela [data-ffaixa="${k}"]`); if (!b) return;
+  const t = b.dataset.fmulti ? rotuloMulti(k) : b.dataset.ffaixa ? rotuloFaixa(dlg.f[k], colsFundo().find((c) => c.k === k)?.un) : rotuloData(dlg.f[k]);
   b.textContent = `${t} ▾`; b.classList.toggle("ativo", b.dataset.fmulti ? !!dlg.f[k]?.length : !!dlg.f[k]);
   b.setAttribute("aria-label", b.getAttribute("aria-label").replace(/:.*$/, `: ${t}`));
 }
@@ -5486,15 +5499,26 @@ document.addEventListener("click", (e) => {
     abrirPopLista(bd, `<b>${esc(colsFundo().find((c) => c.k === k)?.nome || "")}</b>
       <label class="campo">De <input type="date" id="dlgPopDe" value="${dataInput(v.de)}"></label><label class="campo">Até <input type="date" id="dlgPopAte" value="${dataInput(v.ate)}"></label>
       <p class="nota">Ex.: para tirar fundos novos, preencha só o "Até" da 1ª cota.</p>
-      <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopLimpar">Limpar</button><button type="button" class="prim mini-btn" id="dlgPopAplicar">Aplicar</button></div>`, k); return; }
+      <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopLimpar">Limpar</button><button type="button" class="prim mini-btn" id="dlgPopAplicar">Aplicar</button></div>`, k); $("#dlgPop").dataset.tipo = "data"; return; }
+  const bf = t.closest?.("#dlgTabela [data-ffaixa]");
+  if (bf) { const k = bf.dataset.ffaixa, v = dlg.f[k] || {}, c = colsFundo().find((x) => x.k === k);
+    abrirPopLista(bf, `<b>${esc(c?.nome || "")}</b>
+      <label class="campo">Mínimo (${esc(c?.un || "")}) <input type="number" id="dlgPopMin" min="0" step="1" inputmode="numeric" value="${v.de ?? ""}"></label>
+      <label class="campo">Máximo (${esc(c?.un || "")}) <input type="number" id="dlgPopMax" min="0" step="1" inputmode="numeric" value="${v.ate ?? ""}"></label>
+      <p class="nota">Total do resgate: cotização + liquidação. Deixe um dos campos vazio para não limitar.</p>
+      <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopLimpar">Limpar</button><button type="button" class="prim mini-btn" id="dlgPopAplicar">Aplicar</button></div>`, k);
+    $("#dlgPop").dataset.tipo = "faixa"; return; }
   const p = $("#dlgPop"); if (!p || p.hidden) return;
   const k = p.dataset.k;
   if (t.id === "dlgPopFechar") { fecharPopLista(); $(`#dlgTabela [data-fmulti="${k}"]`)?.focus(); return; }
   if (t.id === "dlgPopTodas") { delete dlg.f[k]; $("#dlgPopLista").innerHTML = listaMulti(k, $("#dlgPopBusca")?.value); atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true); return; }
   if (t.id === "dlgPopLimpar" || t.id === "dlgPopAplicar") {
-    const de = t.id === "dlgPopAplicar" ? deInput($("#dlgPopDe").value) : null, ate = t.id === "dlgPopAplicar" ? deInput($("#dlgPopAte").value) : null;
+    const faixa = p.dataset.tipo === "faixa", ler = (id) => { const v = $(id)?.value; return v === "" || v == null || !Number.isFinite(Number(v)) ? null : Number(v); };
+    let de = null, ate = null;
+    if (t.id === "dlgPopAplicar") { if (faixa) { de = ler("#dlgPopMin"); ate = ler("#dlgPopMax"); if (de != null && ate != null && de > ate) [de, ate] = [ate, de]; }
+      else { de = deInput($("#dlgPopDe").value); ate = deInput($("#dlgPopAte").value); } }
     if (de == null && ate == null) delete dlg.f[k]; else dlg.f[k] = { de, ate };
-    fecharPopLista(); atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true); $(`#dlgTabela [data-fdata="${k}"]`)?.focus(); return;
+    fecharPopLista(); atualizarBotaoFiltro(k); dlg.limite = LIMITE_LISTA; renderSeletor(true); $(`#dlgTabela [data-fdata="${k}"], #dlgTabela [data-ffaixa="${k}"]`)?.focus(); return;
   }
   if (!t.closest("#dlgPop")) fecharPopLista();                                // clique fora fecha a caixinha
 });
@@ -5509,8 +5533,7 @@ document.addEventListener("input", (e) => { if (e.target.id === "dlgPopBusca") $
 // Esc fecha só a caixinha (sem fechar a janela da lista)
 document.addEventListener("keydown", (e) => {
   const p = $("#dlgPop"); if (e.key !== "Escape" || !p || p.hidden) return;
-  e.preventDefault(); e.stopPropagation(); const k = p.dataset.k; fecharPopLista(); $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"]`)?.focus();
+  e.preventDefault(); e.stopPropagation(); const k = p.dataset.k; fecharPopLista(); $(`#dlgTabela [data-fmulti="${k}"], #dlgTabela [data-fdata="${k}"], #dlgTabela [data-ffaixa="${k}"]`)?.focus();
 }, true);
 // carregar mais 300
 document.addEventListener("click", (e) => { if (e.target.closest?.("#dlgCarregarMais")) { dlg.limite = (dlg.limite || LIMITE_LISTA) + LIMITE_LISTA; renderSeletor(true); } });
-
