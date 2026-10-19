@@ -1019,3 +1019,5 @@ button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background
 .rel-render th.t .rc { text-align: left; } .rel-render th:not(.t) .rc { margin-left: auto; text-align: right; }
 .painel-carga.erro #cargaInterromper { display: none; }
 .pc-cab #cargaInterromper { margin-left: auto; }
+
+.rkm-meses { display: flex; align-items: center; gap: 8px; } .rkm-meses input { width: 90px; } .rkm-meses small { white-space: nowrap; }

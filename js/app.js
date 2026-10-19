@@ -5008,7 +5008,7 @@ function abrirEditorModelo(id = null, duplicar = false) {
   Object.assign(rkMod, { id: duplicar ? null : id, nome: M ? (duplicar ? `${M.nome} (cópia)` : M.nome) : "", periodo: M?.periodo || "36 Meses", jm: M?.jmMeses || 36, bench: M?.bench || "CDI", lin: {} });
   $("#rkmJmProp").checked = !!M?.jmProporcional;
   for (const m of METRICAS_RANK) { const p = M?.pesos[m.k]; rkMod.lin[m.k] = { usar: p != null, peso: p != null ? Math.abs(p) : 0, dir: p ? Math.sign(p) : M?.dirs?.[m.k] || m.dir, g: grupoMetrica(M, m.k) }; }
-  $("#rkmNome").value = rkMod.nome; $("#rkmPeriodo").value = rkMod.periodo; $("#rkmJm").value = rkMod.jm;
+  $("#rkmNome").value = rkMod.nome; $("#rkmPeriodo").value = parseInt(rkMod.periodo, 10) || 36; equivalenteMeses(); $("#rkmJm").value = rkMod.jm;
   $("#rkmBench").innerHTML = st.idx.disponiveis.map((k) => `<option value="${k}"${k === rkMod.bench ? " selected" : ""}>${esc(nomeIndice(k))}</option>`).join("");
   mostrarTelaRk("modEd"); renderEditorModelo(); $("#rkmNome").focus();
 }
@@ -5046,7 +5046,9 @@ async function salvarModelo() {
   const dirs = {};
   for (const [k, l] of Object.entries(rkMod.lin)) if (l.usar) { pesos[k] = (Number(l.peso) || 0) * (l.dir < 0 ? -1 : 1); grupos[k] = l.g; if (!(Number(l.peso) > 0)) dirs[k] = l.dir < 0 ? -1 : 1; }
   const id = rkMod.id || `c${Date.now().toString(36)}`, salvos = modelosSalvos();
-  salvos[id] = { nome, periodo: $("#rkmPeriodo").value, jmMeses: jm, bench: $("#rkmBench").value, pesos, grupos, ...(Object.keys(dirs).length ? { dirs } : {}), ...($("#rkmJmProp").checked ? { jmProporcional: true } : {}) };
+  const mesesP = Number($("#rkmPeriodo").value);
+  if (!Number.isInteger(mesesP) || mesesP < 1 || mesesP > 360) return aviso("O período das métricas precisa ser um número inteiro de meses, de 1 a 360.");
+  salvos[id] = { nome, periodo: `${mesesP} Meses`, jmMeses: jm, bench: $("#rkmBench").value, pesos, grupos, ...(Object.keys(dirs).length ? { dirs } : {}), ...($("#rkmJmProp").checked ? { jmProporcional: true } : {}) };
   salvar("modelosRank", salvos);
   mostrarTelaRk("modelos"); renderModelos();
 }
@@ -5392,3 +5394,13 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {   
 aplicarMinimizados();
 desenharTravar();
 iniciar();
+
+// editor do tipo de cálculo: mostra o equivalente em anos ao lado do número de meses ("= 4 anos", "= 1 ano e meio")
+function equivalenteMeses() {
+  const n = Number($("#rkmPeriodo")?.value), el = $("#rkmPeriodoEq"); if (!el) return;
+  if (!Number.isInteger(n) || n < 1) { el.textContent = ""; return; }
+  const a = Math.floor(n / 12), m = n % 12;
+  const anos = a ? `${a} ano${a > 1 ? "s" : ""}` : "";
+  el.textContent = n < 12 ? "" : m === 0 ? `= ${anos}` : m === 6 ? `= ${anos} e meio` : `= ${anos} e ${m} ${m > 1 ? "meses" : "mês"}`;
+}
+document.addEventListener("input", (e) => { if (e.target.id === "rkmPeriodo") equivalenteMeses(); });

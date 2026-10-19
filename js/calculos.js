@@ -3,6 +3,8 @@
 
 export const PERIODOS = ["Mês", "Ano", "3 Meses", "12 Meses", "24 Meses", "36 Meses", "Vida Toda", "Personalizado"];
 const MESES_PERIODO = { "3 Meses": 3, "12 Meses": 12, "24 Meses": 24, "36 Meses": 36 };
+// "N Meses" com qualquer N (ex.: "18 Meses", "48 Meses"): usado pelos tipos de cálculo dos rankings
+export const mesesDoPeriodo = (p) => MESES_PERIODO[p] ?? (/^\s*(\d{1,3})\s*mes(es)?\s*$/i.test(String(p)) ? Number(String(p).match(/\d+/)[0]) : null);
 const NORMINV_95 = 1.6448536269514722;
 const RAIZ_252 = Math.sqrt(252);
 const DIA = 86400000;
@@ -24,7 +26,7 @@ export const COLUNAS = [
   ["MDD", "Máxima anterior", "num"], ["MDD", "Data da máxima anterior", "data"],
   ["MDD", "% recuperado até hoje", "pct"], ["MDD", "Quando recuperou", "txt"],
   ["MDD", "Duração Total", "int"], ["MDD", "Duração da Queda", "int"], ["MDD", "Duração da Recuperação", "int"],
-  ["MDD", "MDD/VOL", "num"],
+  ["MDD", "MDD/VOL", "num"], ["MDD", "Calmar", "num"],
   ["Underwater", "Valor Atual", "pct"], ["Underwater", "Dias em Underwater Atual", "int"],
   ["Underwater", "Maior Período em Dias Underwater", "int"],
   ["Underwater", "Data de Saída do Maior Período", "txt"],
@@ -61,7 +63,7 @@ export function limitesPeriodo(d, periodo, { ref, ini, fim, fimComum } = {}) {
   else if (periodo === "Ano") { const [a] = partes(ref); limIni = diaYMD(a, 1, 1); limFim = diaYMD(a, 12, 31); }
   // fimComum: cota mais recente entre os fundos selecionados. Todos usam o mesmo início, mesmo os que pararam antes
   // (o VBA usava a última cota de cada fundo, o que dava períodos diferentes para fundos cancelados)
-  else if (MESES_PERIODO[periodo]) { limFim = fimComum ?? d[d.length - 1]; limIni = somarMeses(limFim, -MESES_PERIODO[periodo]); }
+  else if (mesesDoPeriodo(periodo)) { limFim = fimComum ?? d[d.length - 1]; limIni = somarMeses(limFim, -mesesDoPeriodo(periodo)); }
   else if (periodo === "Vida Toda") { limIni = d[0]; limFim = d[d.length - 1]; }
   else { limIni = ini; limFim = fim; }
   return [limIni, limFim];
@@ -210,6 +212,8 @@ export function calcularFundo(f, ibov, periodo, pesoTotal = 1, opc = {}) {
     r["Duração Total"] = total; r["Duração da Recuperação"] = recup; r["Duração da Queda"] = total - recup;
   }
   r["MDD/VOL"] = vol ? -mdd / vol : null;
+  // Calmar: retorno anualizado do período ÷ maior queda (em módulo); sem queda no período, fica vazio
+  r["Calmar"] = mdd < 0 ? r["% Anualizado"] / -mdd : null;
   r["yRoa"] = mdd ? cdiMais / -mdd : null;
 
   // Underwater e Índice de Dor
