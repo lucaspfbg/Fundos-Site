@@ -19,6 +19,7 @@ export const METRICAS_RANK = [
   { k: "No. de estouros", nome: "Quantidade de estouros de VaR", g: "Risco", tipo: "int" },
   { k: "Índice de Dor", nome: "Índice de Dor", g: "Risco", tipo: "pct" },
   { k: "MDD/VOL", nome: "Drawdown máximo / volatilidade", g: "Risco", tipo: "num2" },
+  { k: "Calmar", nome: "Calmar (retorno a.a. ÷ maior queda)", g: "Risco", tipo: "num2" },
   { k: "Valor Atual", nome: "Valor atual em underwater", g: "Risco", tipo: "pct" },
   { k: "Dias em Underwater Atual", nome: "Dias em underwater atual", g: "Risco", tipo: "int" },
   { k: "Maior Período em Dias Underwater", nome: "Maior período em underwater (dias)", g: "Risco", tipo: "int" },
