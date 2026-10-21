@@ -3834,18 +3834,21 @@ const xpConjuntos = new Map();                         // título -> rótulo -> 
 function plXP(c) { const cad = st.porCnpj.get(c); if (cad && !cad._soXP && cad.VL_PATRIM_LIQ != null) return cad.VL_PATRIM_LIQ; return numXP(ofertaXP(c)?.NETEQUITY); }
 const mediana = (v) => { const a = v.filter(Number.isFinite).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
 function faixaDe(v, limites) { if (v == null || !Number.isFinite(v)) return null; for (const [rot, lim] of limites) if (v <= lim) return rot; return limites[limites.length - 1][0]; }
-function cartaoBarras(titulo, contagem, total, { ordem = null, cores = {}, max = 12, nota = "" } = {}) {
+// bloco: dentro de um quadro maior (sem borda; o arrasto continua limitado a ele) · colunas: lista em N colunas
+// todos: mostra todos os itens (sem juntar o resto em "Outras") · tituloOculto: o nome vem da aba
+function cartaoBarras(titulo, contagem, total, { ordem = null, cores = {}, max = 12, nota = "", bloco = false, colunas = 0, todos = false, tituloOculto = false, classe = "" } = {}) {
+  if (todos) max = Infinity;
   let itens = [...contagem.entries()];
   itens = ordem ? ordem.filter((k) => contagem.has(k)).map((k) => [k, contagem.get(k)]) : itens.sort((a, b) => b[1].length - a[1].length);
   if (!ordem && itens.length > max) { const resto = itens.slice(max - 1); itens = [...itens.slice(0, max - 1), ["Outras", resto.flatMap(([, v]) => v)]]; }
   const maior = Math.max(1, ...itens.map(([, v]) => v.length));
-  return `<div class="xp-card"><h3>${esc(titulo)}</h3>${itens.map(([rot, cs]) => {
+  return `<div class="xp-card${bloco ? " xp-bloco" : ""}${classe ? " " + classe : ""}"><h3${tituloOculto ? ' class="sr-only"' : ""}>${esc(titulo)}</h3><div class="xp-lista${colunas ? ` xp-cols xp-cols-${colunas}` : ""}">${itens.map(([rot, cs]) => {
     const id = `g${xpGrupos.size}`; xpGrupos.set(id, { titulo, rot, cs });
     (xpConjuntos.get(titulo) || xpConjuntos.set(titulo, new Map()).get(titulo)).set(rot, cs);
     const on = !!st.xpFiltros.get(titulo)?.has(rot);
     return `<button type="button" class="xp-barra" data-xpg="${id}" aria-pressed="${on}" title="${esc(`${rot}: ${cs.length} fundo(s) (${br(cs.length / total * 100, 1)}%) · clique para ${on ? "tirar do" : "incluir no"} filtro`)}">
       <span class="xb-rot">${esc(rot)}</span><span class="xb-trilho"><i style="width:${(cs.length / maior * 100).toFixed(1)}%;${cores[rot] ? `background:${cores[rot]}` : ""}"></i></span>
-      <span class="xb-n">${cs.length} <small>(${br(cs.length / total * 100, 0)}%)</small></span></button>`; }).join("")}${nota ? `<p class="nota">${nota}</p>` : ""}</div>`;
+      <span class="xb-n">${cs.length} <small>(${br(cs.length / total * 100, 0)}%)</small></span></button>`; }).join("")}</div>${nota ? `<p class="nota">${nota}</p>` : ""}</div>`;
 }
 function renderXPGeral() {
   if (!st.xp) return;
@@ -3896,24 +3899,27 @@ function renderXPGeral() {
       const vol = cs.map((c) => q.get(c)["Volume clientes"]).filter(Number.isFinite), com = cs.filter((c) => q.get(c).Clientes > 0).length;
       return kpi("Clientes nos fundos", br(cli.reduce((a, b) => a + b, 0), 0), `em ${br(com, 0)} fundo(s)`) +
         kpi("Volume dos clientes", `R$ ${br(vol.reduce((a, b) => a + b, 0) / 1e6, 1)} mi`, `mediana R$ ${br((mediana(vol.filter((v) => v > 0)) || 0) / 1e6, 2)} mi por fundo`); })()}
-  </div><div class="xp-cards">
-    ${cartaoBarras("Tipo de fundo", tipoF, n, { ordem: ["Fundos de investimento", "Previdência"], cores: { "Fundos de investimento": "#1f5aa6", "Previdência": "#c9a23a" } })}
-    ${cartaoBarras("Captação", capt, n, { ordem: ["Abertos para aplicação", "Fechados para aplicação"], cores: { "Abertos para aplicação": "#087040", "Fechados para aplicação": "#c4222a" } })}
-    ${cartaoBarras("Classificação XP", classif, n)}
-    ${cartaoBarras("Tipo de investidor", inv, n, { ordem: ["Geral (IG)", "Qualificado (IQ)", "Profissional (IP)"], cores: { "Geral (IG)": "#087040", "Qualificado (IQ)": "#f0b400", "Profissional (IP)": "#b35000" } })}
+  </div>
+  <section class="xp-card xp-faixa" aria-label="Perfil dos fundos"><div class="xp-faixa-grade">
+    ${cartaoBarras("Tipo de fundo", tipoF, n, { bloco: true, ordem: ["Fundos de investimento", "Previdência"], cores: { "Fundos de investimento": "#1f5aa6", "Previdência": "#c9a23a" } })}
+    ${cartaoBarras("Captação", capt, n, { bloco: true, ordem: ["Abertos para aplicação", "Fechados para aplicação"], cores: { "Abertos para aplicação": "#087040", "Fechados para aplicação": "#c4222a" } })}
+    ${cartaoBarras("Tipo de investidor", inv, n, { bloco: true, ordem: ["Geral (IG)", "Qualificado (IQ)", "Profissional (IP)"], cores: { "Geral (IG)": "#087040", "Qualificado (IQ)": "#f0b400", "Profissional (IP)": "#b35000" } })}
+  </div></section>
+  <div class="xp-cards">
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
     ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: ["até D+1", "D+2 a D+5", "D+6 a D+30", "D+31 a D+90", "D+91 a D+180", "acima de D+180", "Prazo especial"] })}
     ${cartaoBarras("Patrimônio líquido", pl, n, { ordem: ["até R$ 50 mi", "R$ 50–200 mi", "R$ 200–500 mi", "R$ 500 mi–1 bi", "R$ 1–5 bi", "acima de R$ 5 bi", "Sem PL"] })}
     ${cartaoBarras("Aplicação mínima", minimo, n, { ordem: ["até R$ 100", "até R$ 1 mil", "até R$ 5 mil", "até R$ 10 mil", "até R$ 50 mil", "acima de R$ 50 mil", "Sem informação"] })}
-    ${cartaoBarras("ROA", roa, n, { ordem: ORDEM_ROA })}
+    ${cartaoBarras("ROA", roa, n, { ordem: ORDEM_ROA, colunas: 3, classe: "xp-largo" })}
     ${cartaoBarras("Taxa de administração", adm, n, { ordem: ["até 0,5%", "0,5% a 1%", "1% a 2%", "acima de 2%", "Sem informação"] })}
-    ${cartaoBarras("Classe CVM", cvm, n)}
-    ${categoria.size > 1 || !categoria.has("Sem categoria") ? cartaoBarras("Categoria XP", categoria, n) : ""}
-    ${gestora.size > 1 || !gestora.has("Sem gestora") ? cartaoBarras("Gestora (12 maiores)", gestora, n) : ""}
-    ${trib.size > 1 || !trib.has("sem informação") ? cartaoBarras("Tributação", new Map([...trib].map(([k, v]) => [k === "sem informação" ? "Sem informação" : tribNome(k), v])), n) : ""}
     ${volCli.size > 1 || !volCli.has("Sem clientes") ? cartaoBarras("Volume dos clientes por fundo", volCli, n, { ordem: ["Sem clientes", "até R$ 100 mil", "R$ 100 mil–1 mi", "R$ 1–5 mi", "R$ 5–20 mi", "acima de R$ 20 mi"] }) : ""}
+    ${trib.size > 1 || !trib.has("sem informação") ? cartaoBarras("Tributação", new Map([...trib].map(([k, v]) => [k === "sem informação" ? "Sem informação" : tribNome(k), v])), n) : ""}
+  </div>
+  ${quadroClassificacoes([["Classificação XP", classif], ["Categoria XP", categoria.size > 1 || !categoria.has("Sem categoria") ? categoria : null],
+    ["Classe CVM", cvm], ["Gestora", gestora.size > 1 || !gestora.has("Sem gestora") ? gestora : null]], n)}
   </div>`;
   $("#xpGeral").insertAdjacentHTML("afterbegin", barraFiltrosXP());
+  filtrarAbaClassif();                                          // mantém a busca da aba depois de redesenhar
   atualizarXPSelInfo();
 }
 // descrição dos filtros: faixas seguidas de ROA viram um intervalo ("0,15 até 0,75%")
@@ -5537,3 +5543,43 @@ document.addEventListener("keydown", (e) => {
 }, true);
 // carregar mais 300
 document.addEventListener("click", (e) => { if (e.target.closest?.("#dlgCarregarMais")) { dlg.limite = (dlg.limite || LIMITE_LISTA) + LIMITE_LISTA; renderSeletor(true); } });
+
+// ============================== quadro "Classificações": listas grandes em abas, com todos os itens (sem "Outras")
+// Todas as abas são desenhadas (as escondidas também): os filtros marcados nelas continuam valendo.
+st.xpAba = "Classificação XP";
+function quadroClassificacoes(listas, n) {
+  const abas = listas.filter(([, m]) => m && m.size);
+  if (!abas.some(([t]) => t === st.xpAba)) st.xpAba = abas[0]?.[0];
+  const marcados = (t) => st.xpFiltros.get(t)?.size || 0;
+  return `<section class="xp-card xp-classif" aria-label="Classificações">
+    <div class="xp-classif-cab"><h3>Classificações</h3>
+      <div class="xp-abas" role="tablist" aria-label="Classificações">${abas.map(([t, m]) => { const k = marcados(t), on = t === st.xpAba;
+        return `<button type="button" role="tab" class="xp-aba" id="xpAba-${slug(t)}" aria-controls="xpPainel-${slug(t)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-xpaba="${esc(t)}">${esc(t)} <small>${m.size}</small>${k ? ` <b class="xp-aba-n" title="${k} filtro(s) marcado(s)">${k}</b>` : ""}</button>`; }).join("")}</div>
+      <input type="search" id="xpClassBusca" placeholder="procurar nesta aba…" aria-label="Procurar na aba de classificação" autocomplete="off" value="${esc(st.xpClassBusca || "")}">
+    </div>
+    ${abas.map(([t, m]) => `<div role="tabpanel" id="xpPainel-${slug(t)}" aria-labelledby="xpAba-${slug(t)}"${t === st.xpAba ? "" : " hidden"}>
+      ${cartaoBarras(t, m, n, { bloco: true, todos: true, colunas: 4, tituloOculto: true })}</div>`).join("")}
+    <p class="nota" id="xpClassVazio" hidden>Nada encontrado nesta aba.</p>
+  </section>`;
+}
+const slug = (t) => semAcento(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function filtrarAbaClassif() {
+  const q = semAcento($("#xpClassBusca")?.value || "").trim(), painel = $(`.xp-classif [role=tabpanel]:not([hidden])`); if (!painel) return;
+  let vis = 0;
+  for (const b of painel.querySelectorAll(".xp-barra")) { const ok = !q || semAcento(b.querySelector(".xb-rot").textContent).includes(q); b.hidden = !ok; vis += ok; }
+  $("#xpClassVazio").hidden = vis > 0;
+}
+function trocarAbaClassif(t, foco = false) {
+  st.xpAba = t;
+  for (const b of $$(".xp-classif .xp-aba")) { const on = b.dataset.xpaba === t; b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; if (on && foco) b.focus(); }
+  for (const p of $$(".xp-classif [role=tabpanel]")) p.hidden = p.id !== `xpPainel-${slug(t)}`;
+  filtrarAbaClassif();
+}
+document.addEventListener("click", (e) => { const b = e.target.closest?.(".xp-classif .xp-aba"); if (b) trocarAbaClassif(b.dataset.xpaba); });
+document.addEventListener("keydown", (e) => {                      // setas entre as abas
+  const b = e.target.closest?.(".xp-classif .xp-aba"); if (!b || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  const abas = $$(".xp-classif .xp-aba"), i = abas.indexOf(b);
+  const j = e.key === "Home" ? 0 : e.key === "End" ? abas.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + abas.length) % abas.length;
+  e.preventDefault(); trocarAbaClassif(abas[j].dataset.xpaba, true);
+});
+document.addEventListener("input", (e) => { if (e.target.id === "xpClassBusca") { st.xpClassBusca = e.target.value; filtrarAbaClassif(); } });
