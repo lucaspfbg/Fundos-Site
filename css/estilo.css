@@ -705,7 +705,7 @@ sup.gu { font-size: 10px; font-weight: 800; color: var(--link); margin-left: 2px
 
 /* títulos das colunas quebram em linhas quando são mais largos que o conteúdo; textos longos com "…" */
 .tb thead th { white-space: normal; vertical-align: bottom; }
-.tb thead th .th-txt { display: inline-block; max-width: 8.5em; white-space: normal; line-height: 1.2; text-align: inherit; }
+.tb thead th .th-txt { display: inline-block; white-space: nowrap; line-height: 1.2; text-align: inherit; }   /* as quebras vêm do JS (até 3 linhas) */
 .tb thead th.fx .th-txt { max-width: none; }
 .tb thead th.g .th-txt, .tb thead tr:not(.h2) th .th-txt { max-width: none; }
 .tb td.longo { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }

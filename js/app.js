@@ -928,7 +928,13 @@ function tituloQuebrado(nome) {
     while (t.length <= 2 && i + 1 < w.length) t += "\u00a0" + w[++i];
     if (t.length <= 2 && out.length) out[out.length - 1] += "\u00a0" + t; else out.push(t);
   }
-  return out.map((x) => esc(x)).join("<br>");
+  // no m\u00e1ximo 3 linhas, com a menor largura poss\u00edvel: at\u00e9 3 palavras, uma por linha; mais que isso, a menor largura
+  // (em letras) em que as palavras cabem em 3 linhas ("Maior Per\u00edodo / em Dias / Underwater")
+  if (out.length <= 3) return out.map((x) => esc(x)).join("<br>");
+  const quebra = (larg) => out.reduce((ls, p) => { const u = ls[ls.length - 1]; if (u && (u + " " + p).length <= larg) ls[ls.length - 1] = u + " " + p; else ls.push(p); return ls; }, []);
+  let larg = Math.max(...out.map((x) => x.length)), linhas = quebra(larg);
+  while (linhas.length > 3) linhas = quebra(++larg);
+  return linhas.map((x) => esc(x)).join("<br>");
 }
 // texto longo (nome, classificação, gestor…) à esquerda; o resto (números, datas, CNPJ, selos e símbolos) centralizado
 const aEsquerda = (c) => c.esquerda ?? (c.tipo === "txt" && !c.centro);
@@ -1150,7 +1156,7 @@ function tabelaMetricas(dados) {
     (cancelado, em liquidação ou sem envio recente). O cálculo usa o mesmo início dos demais e vai até a última cota de cada um.
     Passe o mouse sobre o símbolo para ver a data.</p>` : "");
   const dicaClique = `<p class="nota">Clique na linha de um fundo para ver o painel com todas as métricas, o cadastro${st.xp ? ", os dados da XP" : ""} e os gráficos.</p>`;
-  return tabelaHTML({ colunas, linhas, fixas: st.xp ? 5 : 2, larguras: st.xp ? [64, 58, 48, 56, 260] : [260, 136], grupos, destacar: dest, classes, altura: 520, ordenavel: "met",
+  return tabelaHTML({ colunas, linhas, fixas: st.xp ? 5 : 2, larguras: st.xp ? [80, 72, 48, 56, 260] : [260, 136], grupos, destacar: dest, classes, altura: 520, ordenavel: "met",
     atrLinha: (l) => (l._c && !l._cab ? ` data-fundo="${esc(l._c)}" tabindex="0" title="Ver o painel do fundo"` : "") }) + nota + dicaClique;
 }
 
@@ -2099,7 +2105,7 @@ function renderCartMetricas() {
   });
   const ord = [...vis.filter((l) => l._cart), ...ordenar(vis.filter((l) => !l._cart), "cartMet", colunas)];
   R.metricas = { colunas: colunasRel, linhas: ord };
-  $("#cartMetricas").innerHTML = tabelaHTML({ colunas, linhas: ord, fixas: st.xp ? 5 : 2, larguras: st.xp ? [64, 58, 48, 56, 240] : [240, 136],
+  $("#cartMetricas").innerHTML = tabelaHTML({ colunas, linhas: ord, fixas: st.xp ? 5 : 2, larguras: st.xp ? [80, 72, 48, 56, 240] : [240, 136],
     grupos: colunas.map((c) => c.g), ordenavel: "cartMet", destacar: ord.map((l) => !l._cart && casa(st.destaque, l.Fundo, l._nomeCVM)),
     classes: ord.map((l) => (l._cart ? "cart-total" : "")), altura: 420,
     atrLinha: (l) => (l._c && !l._cart ? ` data-fundo="${esc(l._c)}" tabindex="0" title="Ver o painel do fundo"` : "") }) +
@@ -4924,7 +4930,7 @@ function renderRkTabela() {
     `contra o ${esc(nomeIndice(R.M.bench))} (aplicações desde ${fmtData(R.iniJM)}) · <b>${R.ordem.length}</b> fundo${pl(R.ordem.length)} analisado${pl(R.ordem.length)}` +
     (R.nDef > R.ordem.length ? ` (de ${R.nDef} no ranking; os demais estão listados abaixo da tabela)` : "") +
     (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
-  $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 64, 58, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
+  $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 80, 72, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
     destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)) });
   const fora = [...R.fora.map((x) => `${esc(curto(st.porCnpj.get(x.c)?.NOME || cnpjFmt(x.c), 50))} (${esc(x.motivo)})`), ...(R.foraDaBase || []).map((c) => `${cnpjFmt(c)} (fora da base)`)];
   $("#rkFora").innerHTML = (R.ordem.some((x) => x.l.curto) ? `<span class="rk-curto">⚑</span> histórico menor que o período do ranking (entra assim mesmo, com as métricas do tempo que tem). ` : "") +
