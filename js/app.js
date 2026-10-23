@@ -145,14 +145,17 @@ function buscar(texto, limite, filtroExtra) {
 
 function atualizarSidebar() {
   // resultados da busca rápida
-  const caixa = $("#resBusca");
-  const achados = buscar($("#busca").value, 8, (f) => !st.sel.includes(f.CNPJ));
-  caixa.innerHTML = $("#busca").value.trim().length < 3 ? "" : achados.length
-    ? achados.map((f) => `<button class="add" data-c="${f.CNPJ}" title="${esc(f.NOME)}">＋ ${esc(curto(f.NOME, 38))}<small>${cnpjFmt(f.CNPJ)}</small></button>`).join("")
-    : `<p class="nota">Nada encontrado (ou já selecionado).</p>`;
+  // os já selecionados também aparecem, com ✓ e a mesma cor do chip deles na lista de baixo (clicar leva até o chip)
+  const caixa = $("#resBusca"), q = $("#busca").value, selSet = new Set(st.sel);
+  const achados = buscar(q, 8), jaSel = new Set(buscar(q, Infinity, (f) => selSet.has(f.CNPJ)).map((f) => f.CNPJ));
+  caixa.innerHTML = q.trim().length < 3 ? "" : achados.length
+    ? achados.map((f) => selSet.has(f.CNPJ)
+      ? `<button class="add ja" type="button" data-ja="${f.CNPJ}" title="${esc(f.NOME)} · já está nos selecionados (clique para ver na lista)">✓ ${esc(curto(f.NOME, 38))}<small>${cnpjFmt(f.CNPJ)} · já selecionado</small></button>`
+      : `<button class="add" type="button" data-c="${f.CNPJ}" title="${esc(f.NOME)}">＋ ${esc(curto(f.NOME, 38))}<small>${cnpjFmt(f.CNPJ)}</small></button>`).join("")
+    : `<p class="nota">Nada encontrado.</p>`;
   // selecionados
   $("#nSel").textContent = st.sel.length;
-  $("#selecionados").innerHTML = st.sel.map((c) => `<span class="chip" title="${esc(st.porCnpj.get(c)?.NOME)}">
+  $("#selecionados").innerHTML = st.sel.map((c) => `<span class="chip${jaSel.has(c) ? " ja" : ""}" data-chip="${c}" title="${esc(st.porCnpj.get(c)?.NOME)}">
       <span class="lk-fundo" data-pf="${c}" tabindex="0" role="button" title="Abrir o painel do fundo">${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}</span><button data-rm="${c}" type="button" aria-label="Remover ${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}">×</button></span>`).join("")
     || `<p class="nota">Nenhum fundo selecionado.</p>`;
   $("#limpar").hidden = !st.sel.length;
@@ -3847,38 +3850,52 @@ function grafPF(series, { titulo, h = 170 } = {}) {
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(titulo)}"><line x1="${m.l}" x2="${W - m.r}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" class="pf-zero"/>${marcas}
     <text x="${m.l}" y="${H - 5}">${esc(fmtData(d0))}</text><text x="${W - m.r}" y="${H - 5}" text-anchor="end">${esc(fmtData(d1))}</text>${series.map(linha).join("")}</svg></figure>`;
 }
-// de onde vêm as métricas: da análise (período ativo), do ranking (período do ranking) ou da carteira (período da carteira)
-function fontePainel(c, onde) {
+// de onde vêm as métricas: da análise (o período pedido ou o ativo), do ranking (período do ranking) ou da carteira (período da carteira)
+function fontePainel(c, onde, per = null) {
   const cad = st.porCnpj.get(c) || {};
   if (onde === "rk") {
     for (const R of [rkAtivo(), ...(st.rk?.lista || [])].filter(Boolean)) {
       const x = R.ordem.find((o) => o.id === c); if (!x) continue;
       const r = x.l.r;
       return { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f: st.rk.fundos.get(c), dIni: r["Data Inicial"], dFim: r["Data Final"],
-        rotulo: `ranking ${R.nome} · ${R.M.periodo.toLowerCase()}`, extra: `${x.pos}º lugar · pontuação ${br(x.total, 1)} (Performance ${br(x.grupos.Performance, 1)} · Consistência ${br(x.grupos["Consistência"], 1)} · Risco ${br(x.grupos.Risco, 1)})` };
+        rotulo: `Ranking ${R.nome} · ${R.M.periodo.toLowerCase()}`, extra: `${x.pos}º lugar · pontuação ${br(x.total, 1)} (Performance ${br(x.grupos.Performance, 1)} · Consistência ${br(x.grupos["Consistência"], 1)} · Risco ${br(x.grupos.Risco, 1)})` };
     }
   }
   if (onde === "cart" && st.cartRes) {
     const l = st.cartRes.metricas?.linhas.find((x) => x?._c === c);
-    if (l) return { l: { CNPJ: cnpjFmt(c), ...l, Fundo: cad.NOME || l.Fundo }, f: fundoCart(c), dIni: st.cartRes.d0, dFim: st.cartRes.dN, rotulo: "período da carteira" };
+    if (l) return { l: { CNPJ: cnpjFmt(c), ...l, Fundo: cad.NOME || l.Fundo }, f: fundoCart(c), dIni: st.cartRes.d0, dFim: st.cartRes.dN, rotulo: "Período da carteira" };
+  }
+  // outro período calculado na análise (botões do painel): as métricas e as datas desse período
+  if (per && per !== st.perAtivo && st.res?.periodos[per]) {
+    const l = st.res.periodos[per].linhas.find((x) => x._c === c);
+    if (l) return { l, f: st.res.fundos.get(c), dIni: l["Data Inicial"], dFim: l["Data Final"], rotulo: rotPer(per), per };
   }
   const l = st.ctx?.dados.linhas.find((x) => x._c === c);
-  if (l) return { l, f: st.res?.fundos.get(c), dIni: st.ctx.dIni, dFim: st.ctx.dFim, rotulo: `período ${st.perAtivo || ""}` };
+  if (l) return { l, f: st.res?.fundos.get(c), dIni: st.ctx.dIni, dFim: st.ctx.dFim, rotulo: rotPer(st.perAtivo), per: st.perAtivo };
   // fundo carregado mas fora da análise: últimos 12 meses até a cota mais recente
   const f = fundoCart(c) || st.fundosPainel?.get(c); if (!f?.d.length) return null;
   const r = calcularFundo(f, st.idx.ibov, "12 Meses", Number($("#peso").value) / 100, { fimComum: f.d[f.d.length - 1], ...opcPeso() });
-  return r && { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f, dIni: r["Data Inicial"], dFim: r["Data Final"], rotulo: "últimos 12 meses" };
+  return r && { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f, dIni: r["Data Inicial"], dFim: r["Data Final"], rotulo: "Últimos 12 meses" };
 }
-function abrirPainelFundo(c, onde = "analise") {
-  const fonte = fontePainel(c, onde); if (!fonte) return;
+// faixa "Período" no topo do painel: com mais de um período calculado na análise, um botão para cada; senão, o rótulo do período
+function barraPerPF(c, fonte) {
+  const pers = fonte.per && st.res ? Object.keys(st.res.periodos) : [];
+  const tem = (p) => st.res.periodos[p].linhas.some((x) => x._c === c);
+  return `<div class="pf-per"><span class="pf-per-rot">Período</span>` + (pers.length > 1
+    ? `<span class="pilulas mini" role="group" aria-label="Período das métricas do painel">${pers.map((p) => `<button type="button" data-pf-per="${esc(p)}" aria-pressed="${p === fonte.per}"` +
+      `${tem(p) ? "" : ' disabled title="Sem cotas neste período"'}>${esc(rotPer(p))}</button>`).join("")}</span>`
+    : `<span class="pf-per-tag">${esc(fonte.rotulo)}</span>`) + `<span class="nota">${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))}</span></div>`;
+}
+function abrirPainelFundo(c, onde = "analise", per = null) {
+  const fonte = fontePainel(c, onde, per); if (!fonte) return;
+  st.pf = { c, onde };
   const { l, f } = fonte, cad = st.porCnpj.get(c) || {}, q = st.xp ? camposXP(c) : {};
   const nomeXP = q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : null, cnpjTxt = l.CNPJ || cnpjFmt(c);
   $("#pfTit").textContent = nomeXP || l.Fundo;
   $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjTxt)}${botaoCopiar(cnpjTxt, "o CNPJ")}`;
   $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, "o nome");
   $("#pfHubTopo").innerHTML = q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "";
-  $("#pfSub").innerHTML = `${nomeXP ? `CVM: ${esc(l.Fundo)} · ` : ""}${esc(fonte.rotulo)} (${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))})` +
-    (fonte.extra ? `<br><b>${esc(fonte.extra)}</b>` : "");
+  $("#pfSub").innerHTML = [nomeXP ? `CVM: ${esc(l.Fundo)}` : "", fonte.extra ? `<b>${esc(fonte.extra)}</b>` : ""].filter(Boolean).join("<br>");
   $("#pfSelos").innerHTML = q._naXP ? `${cadeado(q["Captação"], q._motivoFechado)}${dinheiroNovo(q._dinheiroNovo)} ${badgeInv(q.Investidor)}` : "";
   const kpi = (rot, v, t = "pct", nome = "") => `<div class="kpi"><div class="l">${rot}</div><div class="v">${valorPF(t, v, nome)}</div></div>`;
   const kpis = `<div class="kpis pf-kpis">${kpi("Acumulado", l["% Acumulado"])}${kpi("Ao ano", l["% Anualizado"])}${kpi("% do CDI", l["%CDI"])}${kpi("Volatilidade", l.Volatilidade, "pct", "Volatilidade")}${kpi("Sharpe", l["Sharpe Anualizado"], "num2")}${kpi("Maior queda", l.Queda)}</div>`;
@@ -3937,11 +3954,12 @@ function abrirPainelFundo(c, onde = "analise") {
   }
   else if (st.xp) secoes.push(bloco("XP · confidencial", [["Situação", '<span class="fora-xp">não está na XP</span>']], "pf-xp"));
   for (const [nome, filtro] of PF_SECOES.slice(1)) secoes.push(bloco(nome, itens(filtro)));
-  $("#pfConteudo").innerHTML = kpis + grafs + mensalPF(f, l.Fundo) + `<div class="pf-grade">${secoes.join("")}</div>`;
+  $("#pfConteudo").innerHTML = barraPerPF(c, fonte) + kpis + grafs + mensalPF(f, l.Fundo) + `<div class="pf-grade">${secoes.join("")}</div>`;
   $("#mini").hidden = true;
   for (const id of ["gPfAcum", "gPfDd"]) { st.graficos[id]?.destroy(); delete st.graficos[id]; }   // cada fundo começa sem zoom
   semZoom("gPfAcum", "gPfDd");
-  $("#dlgFundo").showModal(); $("#dlgFundo .pf-corpo").scrollTop = 0;
+  if (!$("#dlgFundo").open) $("#dlgFundo").showModal();
+  $("#dlgFundo .pf-corpo").scrollTop = 0;
   desenhar?.();                                                              // depois de abrir: o gráfico mede o tamanho certo
   $$("#pfConteudo .pf-longo").forEach((el) => recolhivel(el));
 }
@@ -3955,6 +3973,8 @@ document.addEventListener("click", async (e) => {
   b.classList.add("ok"); b.innerHTML = ico("ok"); b.title = "Copiado";
   clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove("ok"); b.innerHTML = ico("copiar"); b.title = titulo; }, 1500);
 });
+// painel do fundo: trocar o período das métricas (só no painel; a análise continua no período dela)
+document.addEventListener("click", (e) => { const b = e.target.closest?.("[data-pf-per]"); if (b && st.pf) abrirPainelFundo(st.pf.c, st.pf.onde, b.dataset.pfPer); });
 // rentabilidade histórica: mostrar os anos mais antigos (acima de 5)
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.(".pf-mais-anos"); if (!b) return;
@@ -5654,7 +5674,13 @@ document.addEventListener("click", (e) => {
   if (t.closest("[data-fechar]") || t.id === "dlgFontes") { $("#dlgFontes").close(); return; }
   if (t.id === "jmAtualizar") { semZoom("gJM"); calcularJM(); renderJM(); return; }
   if (t.id === "jmBaixar") { baixarJM(); return; }
-  if (t.closest("#resBusca button.add")) { adicionar([t.closest("button.add").dataset.c]); }
+  if (t.closest("#resBusca button.add[data-c]")) { adicionar([t.closest("button.add").dataset.c]); }
+  else if (t.closest("#resBusca button.ja")) {                         // já selecionado: abre a lista (se estiver oculta) e leva até o chip
+    if ($("#selecionados").hidden) $("#selMostrar").click();
+    const chip = $(`#selecionados [data-chip="${t.closest("button.ja").dataset.ja}"]`);
+    chip?.scrollIntoView({ block: "nearest", behavior: rolagemSuave() });
+    chip?.classList.remove("pisca"); void chip?.offsetWidth; chip?.classList.add("pisca");
+  }
   else if (t.dataset.rm) remover(t.dataset.rm);
   else if (t.id === "limpar") {               // limpa na hora, mas dá para desfazer pelo aviso
     st.selDesfazer = [...st.sel]; st.sel = []; atualizarSidebar(); sincronizarUrl();

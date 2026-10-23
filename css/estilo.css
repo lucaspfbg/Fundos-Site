@@ -93,6 +93,11 @@ input[type=checkbox] { width: auto; accent-color: var(--azul); }
 button.add { text-align: left; background: var(--zebra); border: 1px solid transparent; border-radius: var(--r-sm); padding: 6px 9px; cursor: pointer; font-size: var(--fs-sm); }
 button.add:hover { border-color: var(--azul); }
 button.add small { display: block; color: var(--sub); font-size: var(--fs-xs); }
+/* busca: fundo que já está nos selecionados; o chip dele na lista de baixo ganha a mesma cor */
+button.add.ja, .chip.ja { background: color-mix(in srgb, var(--pos) 14%, var(--card)); border-color: color-mix(in srgb, var(--pos) 60%, transparent); }
+button.add.ja { font-weight: 600; }
+.chip.pisca { animation: pisca-chip .9s var(--ease-out); }
+@keyframes pisca-chip { 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pos) 55%, transparent); } }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 260px; overflow-y: auto; }
 .chip { display: inline-flex; align-items: center; gap: 2px; background: var(--zebra); border: 1px solid var(--borda); border-radius: var(--r-pill);
   padding: 2px 2px 2px 10px; font-size: var(--fs-xs); max-width: 100%; }
@@ -1172,6 +1177,11 @@ details.sem-dados > summary { font-weight: 600; }
 .env-dest { margin: 2px 0 8px; }
 .env-op:empty { display: none; }
 .env-op { margin: 0 0 6px; }
+/* painel do fundo: período das métricas (botões quando a análise calculou mais de um) */
+.pf-per { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.pf-per-rot { font-size: var(--fs-xs); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--sub); }
+.pf-per-tag { padding: 4px 12px; border-radius: var(--r-pill); background: var(--azul); color: #fff; font-weight: 700; font-size: var(--fs-sm); }
+.pf-per button:disabled { opacity: .45; cursor: not-allowed; }
 .menu-fixo span { max-width: 5em; overflow: hidden; white-space: nowrap; transition: max-width .2s var(--ease-out), opacity .2s; }
 /* no voo entre o topo e o canto é um círculo, sem o rótulo; o JS move e escala com transform a cada quadro */
 .menu-fixo.voando { gap: 0; padding: 0 12px; transform-origin: 0 0; transition: padding .2s var(--ease-out), gap .2s var(--ease-out); }
