@@ -3964,14 +3964,14 @@ function renderXPGeral() {
   </div></section>
   <div class="xp-cards">
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
-    ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: [...FAIXAS_PRAZO.map(([r]) => r), "Prazo especial"] })}
     ${cartaoBarras("Patrimônio líquido", faixaPL, n, { ordem: ["até R$ 50 mi", "R$ 50–200 mi", "R$ 200–500 mi", "R$ 500 mi–1 bi", "R$ 1–5 bi", "acima de R$ 5 bi", "Sem PL"] })}
     ${cartaoBarras("Aplicação mínima inicial", minimo, n, { ordem: [...FAIXAS_MINIMO.map(([r]) => r), "Sem informação"] })}
     ${cartaoBarras("Movimentação mínima", movMin, n, { ordem: [...FAIXAS_MINIMO.map(([r]) => r), "Sem informação"], nota: "Valor mínimo das aplicações seguintes (depois da inicial)." })}
+    ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: [...FAIXAS_PRAZO.map(([r]) => r), "Prazo especial"] })}
+    ${trib.size > 1 || !trib.has("sem informação") ? cartaoBarras("Tributação", new Map([...trib].map(([k, v]) => [k === "sem informação" ? "Sem informação" : tribNome(k), v])), n) : ""}
     ${cartaoBarras("ROA", roa, n, { ordem: ORDEM_ROA, colunas: 3, classe: "xp-largo" })}
     ${cartaoBarras("Taxa de administração", adm, n, { ordem: ["até 0,5%", "0,5% a 1%", "1% a 2%", "acima de 2%", "Sem informação"] })}
     ${volCli.size > 1 || !volCli.has("Sem clientes") ? cartaoBarras("Volume dos clientes por fundo", volCli, n, { ordem: ["Sem clientes", "até R$ 100 mil", "R$ 100 mil–1 mi", "R$ 1–5 mi", "R$ 5–20 mi", "acima de R$ 20 mi"] }) : ""}
-    ${trib.size > 1 || !trib.has("sem informação") ? cartaoBarras("Tributação", new Map([...trib].map(([k, v]) => [k === "sem informação" ? "Sem informação" : tribNome(k), v])), n) : ""}
   </div>
   ${quadroClassificacoes([["Classificação XP", classif], ["Categoria XP", categoria.size > 1 || !categoria.has("Sem categoria") ? categoria : null],
     ["Classe CVM", cvm], ["Gestora", gestora.size > 1 || !gestora.has("Sem gestora") ? gestora : null]], n)}
