@@ -788,7 +788,9 @@ async function calcular() {
     await new Promise((r) => setTimeout(r, 30));
     mostrarPagina(st.pagina === "xp" ? "xp" : "analise");          // na página dos Fundos XP, os resultados aparecem lá
     renderResultado();
-    $("#progTxt").textContent = `pronto em ${br((performance.now() - t0) / 1000, 1)} s`;
+    const nCalc = Object.values(res.periodos).reduce((s, p) => s + p.linhas.length, 0);
+    $("#progTxt").textContent = nCalc ? `pronto em ${br((performance.now() - t0) / 1000, 1)} s` : "Nenhum fundo com cotas no período escolhido.";
+    $("#progTxt").classList.toggle("neg", !nCalc);
     fecharCarga();
     atualizarEspaco();
     const recValor = D.recusadasPorValor ? [...D.recusadasPorValor()] : [];
@@ -1382,8 +1384,15 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   $("#barraPer").innerHTML = pers.map((p) => `<button data-per="${p}" aria-pressed="${p === st.perAtivo}">${rotPer(p)}</button>`).join("");
   desenharTravar();
   const dados = res.periodos[st.perAtivo];
-  $("#semDados").innerHTML = dados.semDados.length
-    ? `<details><summary>${dados.semDados.length} fundo${pl(dados.semDados.length)} sem dados neste período · ver quais</summary>${dados.semDados.map((c) => esc(st.porCnpj.get(c)?.NOME || c)).join("; ")}</details>` : "";
+  const nomeSem = (c) => esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c));
+  $("#semDados").innerHTML = !dados.linhas.length && dados.semDados.length         // nenhum fundo calculado: aviso em destaque, não só a linha discreta
+    ? `<div class="aviso-calc" role="alert"><b>Nenhum fundo pôde ser calculado no período "${esc(rotPer(st.perAtivo))}".</b>
+        ${dados.semDados.length === 1 ? `<span>${nomeSem(dados.semDados[0])}</span> não tem` : `Os ${dados.semDados.length} fundos selecionados não têm`} cotas na CVM neste período.
+        <p class="nota">Fundos que só aparecem na lista da XP, ou que pararam de enviar cotas à CVM (como alguns FIDCs), ficam de fora.
+        Escolha outro período (por exemplo, "Desde o início") ou outros fundos e clique em Calcular.</p>
+        ${dados.semDados.length > 1 ? `<details><summary>Ver quais</summary>${dados.semDados.map(nomeSem).join("; ")}</details>` : ""}</div>`
+    : dados.semDados.length
+    ? `<details><summary>${dados.semDados.length} fundo${pl(dados.semDados.length)} sem dados neste período · ver quais</summary>${dados.semDados.map(nomeSem).join("; ")}</details>` : "";
   $("#vazio").hidden = true;
   $("#limparTela").disabled = !st.res;          // o cálculo guarda o resultado depois da última atualização da lateral
   renderJM();
@@ -1507,7 +1516,7 @@ function renderCorrelacao() {
 // ---------- janela móvel
 function renderJM() {
   const jm = st.res?.jm;
-  $("#secJM").hidden = !st.res;
+  $("#secJM").hidden = !jm;                          // sem janela móvel neste cálculo: esconde (não deixa a do cálculo anterior na tela)
   if (!jm) return;
   const cores = coresFundos();
   const n = jm.porFundo.reduce((s, x) => s + x.linhas.length, 0);

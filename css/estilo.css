@@ -1082,3 +1082,11 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
 /* seções fora da tela não são desenhadas até chegar perto (páginas longas com muitos fundos ficam mais leves) */
 .cartao[data-sec] { content-visibility: auto; contain-intrinsic-size: auto 640px; }
 .cartao[data-sec]:has(.combo-lista:not([hidden])) { content-visibility: visible; }   /* lista aberta: o cartão não corta o que passa da borda */
+
+/* nenhum fundo calculado no período: aviso em destaque no lugar dos resultados */
+.aviso-calc { margin: 0 0 16px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--ouro) 60%, var(--borda)); border-left: 4px solid var(--ouro);
+  border-radius: var(--r-md); background: color-mix(in srgb, var(--ouro) 10%, var(--card)); font-size: var(--fs-md); line-height: 1.5; }
+.aviso-calc > b { display: block; margin-bottom: 2px; font-size: var(--fs-lg); }
+.aviso-calc .nota { margin: 6px 0 0; }
+.aviso-calc details { margin-top: 6px; font-size: var(--fs-sm); }
+.aviso-calc summary { cursor: pointer; color: var(--link); font-weight: 600; }
