@@ -912,7 +912,7 @@ button.fav:hover { color: var(--ouro); }
 #dlgPergunta { max-width: min(560px, 94vw); }
 #pergTexto { overflow-wrap: anywhere; }
 
-#rkDestaque { min-width: 200px; }
+#rkDestaque { width: auto; flex: 1 1 220px; min-width: 180px; max-width: 340px; }     /* divide a linha com os botões (a barra fica baixa) */
 .rk-dest-aviso { border-left: 3px solid var(--ouro); padding: 4px 10px; background: color-mix(in srgb, var(--ouro) 10%, var(--card)); border-radius: 0 8px 8px 0; color: var(--txt); }
 .rk-dest-aviso[hidden] { display: none; }
 
@@ -1070,7 +1070,6 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
 .cart-rm:hover { color: var(--neg); border-color: var(--neg); }
 .sv .ico, .mini-btn .ico { width: 13px; height: 13px; }
 .sv .ico { margin-right: 4px; vertical-align: -2px; }
-.cab { position: relative; }
 .cab > .btn-min { order: 9; margin-left: auto; }          /* o "−" fica sempre no canto direito do título */
 .sec[aria-pressed=true] { background: color-mix(in srgb, var(--azul) 12%, var(--card)); border-color: var(--azul); }
 .sec[aria-pressed]::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--borda-forte); flex: none; }
@@ -1115,3 +1114,15 @@ details.sem-dados > summary { font-weight: 600; }
 .xp-barra { padding: 4px 6px; transition: background-color .12s; }
 .xp-barra[aria-pressed=true] .xb-rot::before { content: "✓ "; color: var(--ouro-txt); font-weight: 800; }   /* marcado: não depende só da cor */
 .xp-filtros { border-color: var(--ouro); box-shadow: var(--sh-2); }
+
+/* barra de filtros da XP: sempre presente e com altura fixa (marcar um filtro não desloca a página) */
+#xpGeral { container: xpg / inline-size; }
+.xp-filtros { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px 14px; height: 58px; }
+.xp-filtros .xf-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container xpg (max-width: 760px) {                  /* estreito: descrição numa linha, número e botões na de baixo (altura fixa) */
+  .xp-filtros { grid-template-columns: minmax(0, 1fr) auto auto; height: 92px; }
+  .xp-filtros .xf-lista { grid-column: 1 / -1; -webkit-line-clamp: 1; }
+}
+.xp-filtros.vazia { position: static; border-style: dashed; border-color: var(--borda-forte); box-shadow: none; background: var(--zebra); }
+.xp-filtros .xf-lista { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }   /* muitos filtros: até 2 linhas (o resto no title) */
+.xp-filtros.vazia > button { grid-column: -2 / -1; }          /* o botão fica no mesmo lugar do "Calcular" com filtro */

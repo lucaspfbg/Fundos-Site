@@ -3991,10 +3991,14 @@ function fundosFiltradosXP() {
   return r ? [...r] : null;
 }
 function barraFiltrosXP() {
-  const lista = fundosFiltradosXP(); if (!lista) return `<div class="xp-filtros" hidden></div>`;
+  const lista = fundosFiltradosXP();
+  // sem filtro, a barra continua no lugar (mesma altura): marcar o primeiro filtro não empurra a página nem os botões
+  if (!lista) return `<div class="xp-filtros vazia" role="region" aria-label="Filtros escolhidos"><span class="xf-lista nota">Nenhum filtro marcado. Clique nas barras abaixo para escolher os fundos.</span>
+    <button type="button" class="prim" disabled>${ico("calc")}Calcular fundos filtrados</button></div>`;
   const desc = [...st.xpFiltros].filter(([, r]) => r.size).map(([t, r]) => `<b>${esc(t.replace(/ \(.*\)$/, ""))}:</b> ${esc(descFiltro(t, r))}`).join(" · ");
   const { ok } = calculaveisXP(lista);
-  return `<div class="xp-filtros" role="region" aria-label="Filtros escolhidos"><span class="xf-lista">${desc}</span>
+  const descTxt = [...st.xpFiltros].filter(([, r]) => r.size).map(([t, r]) => `${t.replace(/ \(.*\)$/, "")}: ${descFiltro(t, r)}`).join(" · ");
+  return `<div class="xp-filtros" role="region" aria-label="Filtros escolhidos"><span class="xf-lista" title="${esc(descTxt)}">${desc}</span>
     <span class="xf-n">${br(lista.length, 0)} fundo${pl(lista.length)}${ok.length !== lista.length ? ` <small class="nota">(${br(ok.length, 0)} com cotas para calcular)</small>` : ""}</span>
     <button type="button" class="sec" id="xpFiltroLimpar">Limpar filtros</button>
     <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>${ico("calc")}Calcular ${br(ok.length, 0)} fundo${pl(ok.length)}</button></div>`;
