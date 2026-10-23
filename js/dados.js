@@ -20,9 +20,15 @@ export async function definirGuardar(v) {
 }
 export async function limparCache() {
   try { for (const k of await caches.keys()) if (k.startsWith("fundos-")) await caches.delete(k); } catch { /* ok */ }
-  gravarLS(IDX_CACHE, {});
+  idxMem = {}; gravarLS(IDX_CACHE, idxMem);
 }
-export function espacoUsado() { return Object.values(lerLS(IDX_CACHE, {})).reduce((s, [t]) => s + t, 0); }
+export function espacoUsado() { return Object.values(indice()).reduce((s, [t]) => s + t, 0); }
+
+// índice do cache em memória: lido uma vez e gravado no localStorage no máximo uma vez por segundo (e ao sair da página)
+let idxMem = null, tGravar = 0;
+const indice = () => (idxMem ||= lerLS(IDX_CACHE, {}));
+const gravarIndice = () => { clearTimeout(tGravar); tGravar = setTimeout(() => gravarLS(IDX_CACHE, idxMem), 1000); };
+addEventListener("pagehide", () => { if (idxMem) gravarLS(IDX_CACHE, idxMem); });
 
 // ---------------------------------------------------------------------------- download com cache
 async function baixar(caminho) {
@@ -50,9 +56,9 @@ async function baixar(caminho) {
   }
   return buf;
 }
-function tocar(url) { const idx = lerLS(IDX_CACHE, {}); if (idx[url]) { idx[url][1] = Date.now(); gravarLS(IDX_CACHE, idx); } }
+function tocar(url) { const idx = indice(); if (idx[url]) { idx[url][1] = Date.now(); gravarIndice(); } }
 async function registrar(url, tam) {
-  const idx = lerLS(IDX_CACHE, {});
+  const idx = indice();
   idx[url] = [tam, Date.now()];
   let total = Object.values(idx).reduce((s, [t]) => s + t, 0);
   if (total > LIMITE_CACHE) {                       // apaga os usados há mais tempo
@@ -62,7 +68,7 @@ async function registrar(url, tam) {
       await cache.delete(u); total -= idx[u][0]; delete idx[u];
     }
   }
-  gravarLS(IDX_CACHE, idx);
+  gravarIndice();
 }
 
 const lerParquet = async (buf) =>
@@ -78,7 +84,7 @@ export async function iniciar(base) {
   VERSAO = meta.gerado_em;
   if (lerLS("fundos.versao", null) !== VERSAO) {    // saiu atualização: apaga a versão anterior guardada
     try { for (const k of await caches.keys()) if (k.startsWith("fundos-") && k !== "fundos-" + VERSAO) await caches.delete(k); } catch { /* ok */ }
-    gravarLS(IDX_CACHE, {});
+    idxMem = {}; gravarLS(IDX_CACHE, idxMem);
     gravarLS("fundos.versao", VERSAO);
   }
   return meta;

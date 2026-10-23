@@ -1,5 +1,7 @@
 // Análise de Fundos — página principal (etapas 2 e 3)
-import Chart from "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/+esm";
+// Chart.js chega em paralelo: a página abre sem esperar por ele; quem desenha gráfico espera chartPronto
+let Chart = null;
+const chartPronto = import("https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/+esm").then((m) => (Chart = m.default));
 import * as D from "./dados.js";
 import { COLUNAS, PERIODOS, calcularFundo, prepararFundo, serieAcumulada, fmtData, diaDe, diaYMD, partes, lowerBound, upperBound, somarMeses } from "./calculos.js";
 import { INDICES, corIndice, nomeIndice, serieIndice, retornoVol, nivelEm, diasUteis } from "./indices.js";
@@ -21,8 +23,12 @@ const nf = (c) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: c, max
 const NF = [0, 1, 2, 4, 6].reduce((o, c) => ((o[c] = nf(c)), o), {});
 const br = (v, c = 2) => (v == null || Number.isNaN(v) ? "" : (NF[c] ||= nf(c)).format(v));     // cria o formato que faltar (qualquer nº de casas)
 const brPct = (v, c = 2) => (typeof v !== "number" || Number.isNaN(v) ? "" : br(v * 100, c) + "%");
-const cnpjFmt = (c) => (c || "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+const cnpjFmt = (c) => (c || "").replace(/^([0-9A-Z]{2})([0-9A-Z]{3})([0-9A-Z]{3})([0-9A-Z]{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+const normCnpj = (c) => String(c).toUpperCase().replace(/[^0-9A-Z]/g, "").padStart(14, "0");     // aceita o CNPJ alfanumérico (2026+)
+const rotPer = (p) => (p === "Vida Toda" ? "Desde o início" : p.replace(" Meses", " meses"));     // rótulo do período na tela (a chave interna continua "12 Meses")
+const ico = (n) => `<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;      // ícones do <svg> no topo do index.html
 const curto = (s, n = 45) => (s.length <= n ? s : s.slice(0, n - 1) + "…");
+const barraPct = (el, pct) => { el.style.transform = `translateX(${Math.min(100, Math.max(0, pct)) - 100}%)`; };   // barra de progresso: anda com transform
 const VERDE = "#0c8a4e", VERMELHO = "#d0262c", OURO = "#c9a23a", ANIL = "#2b2c78";
 const PALETA = ["#2E91E5", "#E15F99", "#1CA71C", "#FB0D0D", "#DA16FF", "#B68100", "#750D86", "#EB663B", "#511CFB",
   "#00A08B", "#FB00D1", "#FC0080", "#B2828D", "#6C7C32", "#778AAE", "#862A16", "#A777F1", "#620042", "#1616A7",
@@ -77,7 +83,7 @@ async function iniciar() {
     iniciarEquipe();
     mostrarPagina(new URLSearchParams(location.search).get("pagina") || pref("pagina", "analise"), { rolar: false });
   } catch (e) {
-    $("#status").textContent = "erro ao carregar";
+    $("#status").textContent = "Não foi possível carregar a base. Recarregue a página.";
     log("ERRO: " + e.message);
     console.error(e);
   }
@@ -146,10 +152,10 @@ function atualizarSidebar() {
   // selecionados
   $("#nSel").textContent = st.sel.length;
   $("#selecionados").innerHTML = st.sel.map((c) => `<span class="chip" title="${esc(st.porCnpj.get(c)?.NOME)}">
-      ${esc(curto(st.porCnpj.get(c)?.NOME || c, 34))}<button data-rm="${c}" type="button" aria-label="Remover ${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}">×</button></span>`).join("")
+      <span>${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}</span><button data-rm="${c}" type="button" aria-label="Remover ${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}">×</button></span>`).join("")
     || `<p class="nota">Nenhum fundo selecionado.</p>`;
   $("#limpar").hidden = !st.sel.length;
-  // lista dos selecionados minimizada por padrão: o título mostra a quantidade e o botão abre/fecha
+  // lista dos selecionados: o título mostra a quantidade e o botão abre/fecha
   const xpi = $("#xpSelInfo"); if (xpi) xpi.textContent = st.sel.length ? `${st.sel.length} fundo(s) selecionado(s)` : "";
   $("#selMostrar").hidden = !st.sel.length;
   $("#selecionados").hidden = !st.sel.length || !st.selAberta;
@@ -172,7 +178,7 @@ function perguntar(titulo, texto, botoes) {
   $("#pergTit").textContent = titulo; $("#pergTexto").innerHTML = texto;
   $("#pergBotoes").innerHTML = botoes.map((b, i) => `<button type="button" class="${b.classe || "sec"}" data-i="${i}">${esc(b.rot)}</button>`).join("");
   d.showModal();
-  $("#pergBotoes button:last-child").focus();
+  $(botoes.some((b) => b.classe === "perigo") ? "#pergBotoes button:first-child" : "#pergBotoes button:last-child").focus();   // apagar: o foco fica em Cancelar
   return new Promise((ok) => {
     const fim = (v) => { d.close(); d.onclick = null; d.oncancel = null; ok(v); };
     d.onclick = (e) => { const b = e.target.closest("#pergBotoes button"); if (b) fim(botoes[Number(b.dataset.i)].v); else if (e.target === d) fim(null); };
@@ -430,6 +436,8 @@ function abrirColar(base = null, aoConfirmar = null) {
 function lerCnpjs(txt) {
   const out = [];
   for (const m of txt.matchAll(/\d[\d.\/\-]{6,20}\d/g)) { const d = m[0].replace(/\D/g, ""); if (d.length >= 8 && d.length <= 14) out.push(d.padStart(14, "0")); }
+  for (const m of txt.toUpperCase().matchAll(/\b[0-9A-Z]{2}\.?[0-9A-Z]{3}\.?[0-9A-Z]{3}\/?[0-9A-Z]{4}-?\d{2}\b/g))      // alfanumérico: só com alguma letra
+    if (/[A-Z]/.test(m[0])) out.push(normCnpj(m[0]));
   return [...new Set(out)];
 }
 function buscarColagem() {
@@ -449,7 +457,7 @@ function renderColagem() {
     : `<p class="nota" style="padding:10px">Nenhum fundo para importar.</p>`;
   $("#colAcrescentar").disabled = $("#colSubstituir").disabled = !col.lista.length;
   const doRk = !!col.aoConfirmar;
-  $("#colAcrescentar").textContent = `＋ Acrescentar ${doRk ? "ao ranking" : "aos selecionados"} (${col.lista.length})`;
+  $("#colAcrescentar").innerHTML = `${ico("mais")}Adicionar ${doRk ? "ao ranking" : "aos selecionados"} (${col.lista.length})`;
   $("#colSubstituir").textContent = `${doRk ? "Substituir os fundos do ranking" : "Substituir a seleção"} (${col.lista.length})`;
 }
 
@@ -483,14 +491,14 @@ function renderGrupos() {
     (!nomes.length ? `<p class="nota">${$("#grSoFav").checked ? "Nenhum grupo favorito. Clique na estrela ☆ ao lado de um grupo." : "Nenhum grupo salvo ainda. Selecione fundos e salve acima."}</p>` :
     `<table class="tb gr-tab"><thead><tr><th class="t">Grupo</th><th class="t">Onde está</th><th>Fundos</th><th>Atualizado em</th><th class="t">Carregar</th><th class="t"><span class="sr-only">Ações</span></th></tr></thead><tbody>${nomes.map((n) => {
       const x = g[n], aberto = renderGrupos.aberto === n, k = esc(n);
-      const acoes = x._origem === "local" ? (logado ? `<button class="sec mini-btn" data-gr-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">☁ Enviar para a conta</button> ` : "") +
-          `<button class="cart-rm" data-gr-del="${k}" type="button" title="Excluir grupo" aria-label="Excluir o grupo ${esc(x._nome)}">🗑</button>`
-        : x._origem === "meu" ? `<button class="sec mini-btn" data-gr-comp="${k}" type="button" title="${x._comp ? "Deixar só para você" : "Compartilhar com a equipe"}">${x._comp ? "🔒 Deixar só meu" : "👥 Compartilhar"}</button>
-          <button class="cart-rm" data-gr-del="${k}" type="button" title="Excluir da sua conta" aria-label="Excluir o grupo ${esc(x._nome)}">🗑</button>`
+      const acoes = x._origem === "local" ? (logado ? `<button class="sec mini-btn" data-gr-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">${ico("nuvem")}Enviar para a conta</button> ` : "") +
+          `<button class="cart-rm" data-gr-del="${k}" type="button" title="Excluir grupo" aria-label="Excluir o grupo ${esc(x._nome)}">${ico("lixo")}</button>`
+        : x._origem === "meu" ? `<button class="sec mini-btn" data-gr-comp="${k}" type="button" title="${x._comp ? "Deixar só para você" : "Compartilhar com a equipe"}">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>
+          <button class="cart-rm" data-gr-del="${k}" type="button" title="Excluir da sua conta" aria-label="Excluir o grupo ${esc(x._nome)}">${ico("lixo")}</button>`
         : `<button class="sec mini-btn" data-gr-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`;
       return `<tr class="sv-linha-${x._origem}"><td class="t">${botaoFav("grupo", x)}<button class="link gr-ver" data-gr="${k}" title="Ver os fundos">${aberto ? "▾" : "▸"} <b>${esc(x._nome)}</b></button></td><td class="t">${seloOrigem(x)}</td><td>${x.cnpjs.length}</td>
         <td>${x.atualizado ? new Date(x.atualizado).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</td>
-        <td class="t gr-acoes"><button class="sec mini-btn" data-gr-add="${k}" type="button" title="Junta estes fundos aos já selecionados">＋ Acrescentar</button>
+        <td class="t gr-acoes"><button class="sec mini-btn" data-gr-add="${k}" type="button" title="Junta estes fundos aos já selecionados">${ico("mais")}Adicionar</button>
           <button class="prim mini-btn" data-gr-sub="${k}" type="button" title="Tira os selecionados e coloca só os do grupo">Substituir</button></td>
         <td class="t gr-acoes">${acoes}</td></tr>` +
         (aberto ? `<tr class="gr-det"><td colspan="6"><div class="chips">${x.cnpjs.map((c) => `<span class="chip" title="${cnpjFmt(c)}">${esc(curto(st.porCnpj.get(c)?.NOME || cnpjFmt(c) + " (fora da base)", 40))}</span>`).join("")}</div></td></tr>` : "");
@@ -535,7 +543,7 @@ function exportarGrupos() {
 }
 async function importarGrupos(arquivo) {
   let dados;
-  try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler este arquivo de grupos.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar grupos.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
   const novos = dados?.grupos || {}, g = lerGrupos();
   const validos = Object.entries(novos).filter(([n, x]) => n && Array.isArray(x?.cnpjs));
   const repetidos = validos.filter(([n]) => g[n]).map(([n]) => n);
@@ -546,7 +554,7 @@ async function importarGrupos(arquivo) {
     if (r == null) return; sobrescrever = r;
   }
   let n = 0;
-  for (const [nome, x] of validos) if (!g[nome] || sobrescrever) { g[nome] = { cnpjs: x.cnpjs.map((c) => String(c).replace(/\D/g, "").padStart(14, "0")), atualizado: x.atualizado || new Date().toISOString() }; n++; }
+  for (const [nome, x] of validos) if (!g[nome] || sobrescrever) { g[nome] = { cnpjs: x.cnpjs.map(normCnpj), atualizado: x.atualizado || new Date().toISOString() }; n++; }
   gravarGrupos(g); renderGrupos();
   avisoSel(`<span class="ok">${n} grupo(s) importado(s).</span>`);
 }
@@ -570,7 +578,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "dlgTirarVis") { const vis = new Set(dlg.visiveis || []); dlg.sel = dlg.sel.filter((c) => !vis.has(c)); renderSeletor(); renderSelDialogo(); return; }
   const xt = t.closest?.("[data-xp-todos]");
   if (xt) { dlg.xpTodos = xt.dataset.xpTodos === "1"; renderSeletor(); return; }
-  if (t.id === "dlgLimparSel") { if (dlg.sel.length && !(await perguntar("Limpar a seleção?", `Tirar os ${dlg.sel.length} fundos marcados?`, [{ rot: "Cancelar", v: false }, { rot: "Limpar", v: true, classe: "prim" }]))) return;
+  if (t.id === "dlgLimparSel") { if (dlg.sel.length && !(await perguntar("Limpar a seleção?", `Tirar os ${dlg.sel.length} fundos marcados?`, [{ rot: "Cancelar", v: false }, { rot: "Limpar", v: true, classe: "perigo" }]))) return;
     dlg.sel = []; renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgLimparFiltros") { dlg.f = {}; dlg.limite = LIMITE_LISTA; fecharPopLista(); $("#dlgBusca").value = ""; $("#dlgSoSel").checked = false; delete st.ord.sel; renderSeletor(); return; }
   if (t.id === "dlgAplicar") {
@@ -607,7 +615,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.grDel) {
     const n = t.dataset.grDel, g = lerGrupos(), x = g[n]; if (!x) return;
     if (!(await perguntar("Excluir o grupo?", `Excluir o grupo <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? Os fundos selecionados agora não mudam.`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "prim" }]))) return;
+      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return renderGrupos(); }
     delete g[n]; gravarGrupos(g); return renderGrupos();
   }
@@ -658,7 +666,7 @@ document.addEventListener("change", (e) => {
 });
 
 
-st.selAberta = false;
+st.selAberta = true;                                                        // lista dos selecionados aberta: é o que vai ser calculado
 document.addEventListener("click", (e) => { if (e.target.id === "selMostrar") { st.selAberta = !st.selAberta; atualizarSidebar(); } });
 
 // aviso longo (ex.: lista de fundos fora do cálculo): mostra até 2 linhas e um botão para ver o resto
@@ -723,16 +731,17 @@ function situacaoParado(f, cad, fimComum) {
 const marcaParado = (l) => (l && l._parado ? `<span class="parado" title="${esc(l._parado.txt)}">⊘</span>` : "");
 
 async function calcular() {
+  await chartPronto;
   const barra = $("#progresso");
   barra.hidden = false;
   const t0 = performance.now();
   const sel = [...st.sel];
   try {
-    barra.firstElementChild.style.width = "5%";
+    barraPct(barra.firstElementChild, 5);
     $("#progTxt").textContent = "baixando cotas…";
     abrirCarga(sel);
     const fundos = await carregarFundosCancelavel(sel, (feitos, total, ev) => {
-      barra.firstElementChild.style.width = `${5 + 75 * feitos / total}%`;
+      barraPct(barra.firstElementChild, 5 + 75 * feitos / total);
       $("#progTxt").textContent = `baixando cotas · ${feitos}/${total} fundo(s)`;
       atualizarCarga(feitos, total, ev);
     });
@@ -773,7 +782,7 @@ async function calcular() {
       calcularJM();
     }
     sincronizarUrl();
-    barra.firstElementChild.style.width = "100%";
+    barraPct(barra.firstElementChild, 100);
     faseCarga("montando tabelas e gráficos…", 96);
     await new Promise((r) => setTimeout(r, 30));
     mostrarPagina(st.pagina === "xp" ? "xp" : "analise");          // na página dos Fundos XP, os resultados aparecem lá
@@ -785,7 +794,7 @@ async function calcular() {
     if (recValor.length) avisoSel(`<span class="neg">${recValor.length} cota(s) da XP ignorada(s) por valor muito diferente da última cota da CVM: ` +
       `${recValor.slice(0, 3).map(([c]) => esc(curto(st.porCnpj.get(c)?.NOME || cnpjFmt(c), 40))).join("; ")}${recValor.length > 3 ? "…" : ""}. O cálculo usou a cota da CVM.</span>`);
   } catch (e) {
-    $("#progTxt").textContent = e.message === INTERROMPIDO ? "carregamento interrompido" : "erro: " + e.message;
+    $("#progTxt").textContent = e.message === INTERROMPIDO ? "Carregamento interrompido." : `Não foi possível calcular (${e.message}). Confira a conexão e clique em Calcular de novo.`;
     if (e.message === INTERROMPIDO) barra.hidden = true;
     fecharCarga(e.message);
     if (e.message !== INTERROMPIDO) console.error(e);
@@ -984,9 +993,11 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       colunas = colunas.filter((_, k) => manter[k]);
     }
     if (tabColunas.get(ordenavel).length > 5)
-      ferr = `<div class="tab-ferr"><button type="button" class="sec mini-btn cols-btn${nOc ? " ativo" : ""}" data-ctab="${esc(ordenavel)}" aria-haspopup="dialog">☰ Colunas${nOc ? ` · ${nOc} oculta(s)` : ""}</button></div>`;
+      ferr = `<div class="tab-ferr"><button type="button" class="sec mini-btn cols-btn${nOc ? " ativo" : ""}" data-ctab="${esc(ordenavel)}" aria-haspopup="dialog">${ico("colunas")}Colunas${nOc ? ` · ${nOc} oculta(s)` : ""}</button></div>`;
   }
   const esq = larguras.map((_, j) => larguras.slice(0, j).reduce((s, x) => s + x, 0));
+  // coluna de números (algum valor numérico, sem pedir centro): à direita, casas decimais alinhadas
+  const numCol = colunas.map((c) => !aEsquerda(c) && !c.centro && linhas.some((l) => !l._cab && typeof (c.valor ? c.valor(l) : l[c.chave]) === "number"));
   const fx = (j, extra = "") => (j < fixas ? ` class="fx${extra}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px"` : extra ? ` class="${extra.trim()}"` : "");
   const o = ordenavel ? st.ord[ordenavel] : null;
   let h = `<div class="tb-wrap" style="max-height:${altura}px"><table class="tb${centralizar ? " tb-centro" : ""}"><thead>`;
@@ -1000,9 +1011,9 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     h += `</tr><tr class="h2">`;
   } else h += "<tr>";
   colunas.forEach((c, j) => {
-    if (!ordenavel || c.ord === false || c.nomeOculto) { h += `<th${fx(j, aEsquerda(c) ? " t" : "")}${c.nomeOculto || c.dica ? ` title="${esc(c.nomeOculto || c.dica)}"` : ""}>${c.nomeOculto ? `<span class="sr-only">${esc(c.nomeOculto)}</span>` : `<span class="th-txt${c.linhas ? " th-fixo" : ""}">${tituloHTML(c)}</span>`}</th>`; return; }
+    if (!ordenavel || c.ord === false || c.nomeOculto) { h += `<th${fx(j, aEsquerda(c) ? " t" : numCol[j] ? " n" : "")}${c.nomeOculto || c.dica ? ` title="${esc(c.nomeOculto || c.dica)}"` : ""}>${c.nomeOculto ? `<span class="sr-only">${esc(c.nomeOculto)}</span>` : `<span class="th-txt${c.linhas ? " th-fixo" : ""}">${tituloHTML(c)}</span>`}</th>`; return; }
     const at = o && o.col === c.chave, texto = (c.tipo === "txt" && !c.valor) || c.crescente;   // texto e prazos: 1º clique do menor para o maior
-    h += `<th${fx(j, aEsquerda(c) ? " t" : "")}${at ? ` aria-sort="${o.dir > 0 ? "ascending" : "descending"}"` : ""}><button class="ord" data-ord="${esc(ordenavel)}" data-col="${esc(c.chave)}"
+    h += `<th${fx(j, aEsquerda(c) ? " t" : numCol[j] ? " n" : "")}${at ? ` aria-sort="${o.dir > 0 ? "ascending" : "descending"}"` : ""}><button class="ord" data-ord="${esc(ordenavel)}" data-col="${esc(c.chave)}"
       data-txt="${texto ? 1 : 0}" title="${c.dica ? esc(c.dica) + " · clique para ordenar" : "Ordenar"}"><span class="th-txt${c.linhas ? " th-fixo" : ""}">${tituloHTML(c)}${at ? (o.dir > 0 ? " ▲" : " ▼") : ""}</span></button></th>`;
   });
   // filtros: linha de filtros nas tabelas com muitos fundos (ou com filtro ativo); as linhas filtradas somem
@@ -1035,9 +1046,10 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       const v = c.valor ? c.valor(l) : l[c.chave];
       if (separadores.has(i)) { h += c.chave === "Fundo" ? `<td class="t">${esc(v)}</td>` : "<td></td>"; return; }
       let txt = c.html ? c.html(v, l) : esc((FMT[c.tipo] || FMT.txt)(v));
+      if (txt === "" && FMT[c.tipo] && c.tipo !== "txt") txt = `<span class="sem-valor" title="Sem valor">–</span>`;
       if (j === 0 && l._g) txt = `<span class="guia" data-guia="${esc(l._g)}" title="Recolher este grupo"></span>` + txt;
       const estilo = c.cor ? corSinal(v) : "";
-      const alinh = aEsquerda(c) ? " t" : "";
+      const alinh = aEsquerda(c) ? " t" : numCol[j] ? " n" : "";
       if (j < fixas) h += `<td class="fx${aEsquerda(c) ? " t" : ""}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px;${estilo}" title="${esc(c.titulo ? c.titulo(l) : typeof v === "number" ? "" : v)}">${txt}</td>`;
       else {                                   // texto longo (ex.: "Índice de Preços ao Consumidor Amplo"): largura máxima e "…", texto inteiro ao passar o mouse
         const longo = c.tipo === "txt" && typeof v === "string" && v.length > 30;
@@ -1167,8 +1179,7 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
 // ============================== gráficos ==============================
 let _corTexto = null;                      // lida uma vez (ler o estilo a cada gráfico força o navegador a recalcular a página)
 const corTexto = () => (_corTexto ||= getComputedStyle(document.body).getPropertyValue("--txt").trim() || "#333");
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { _corTexto = null; });
-const escuro = () => matchMedia("(prefers-color-scheme: dark)").matches;
+const escuro = () => document.documentElement.dataset.theme === "dark";      // definido no <head> (escolha guardada ou o do sistema)
 const linhaRef = { id: "linhaRef", afterDraw(ch, _a, o) {
   const ctx = ch.ctx, { left, right, top, bottom } = ch.chartArea;
   ctx.save(); ctx.strokeStyle = escuro() ? OURO : ANIL; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5;
@@ -1247,6 +1258,7 @@ function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax
     ant.update("none");
     return;
   }
+  if (!Chart) return;                                     // ainda carregando (as ações que desenham esperam chartPronto)
   st.graficos[id] = new Chart($("#" + id), {
     type: "line", data: { datasets },
     options: {
@@ -1309,6 +1321,7 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
     ant.update("none");
     return;
   }
+  if (!Chart) return;                                     // ainda carregando (as ações que desenham esperam chartPronto)
   st.graficos[id] = new Chart($("#" + id), {
     type: "scatter",
     data: { datasets },
@@ -1360,16 +1373,16 @@ function relativa(serie, bench, modo) {
 const coresFundos = () => { const c = {}; (st.res?.sel || st.sel).forEach((x, i) => (c[x] = PALETA[i % PALETA.length])); return c; };
 
 // Redesenho completo (novo cálculo, troca de período ou destaque). As outras ações redesenham só a parte afetada.
-function renderResultado() {
+function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só o destaque mudou e a carteira não está na tela
   const res = st.res;
   aplicarMinimizados();
   if (!res) return;
   const pers = Object.keys(res.periodos);
-  $("#barraPer").innerHTML = pers.map((p) => `<button data-per="${p}" aria-pressed="${p === st.perAtivo}">${p}</button>`).join("");
+  $("#barraPer").innerHTML = pers.map((p) => `<button data-per="${p}" aria-pressed="${p === st.perAtivo}">${rotPer(p)}</button>`).join("");
   desenharTravar();
   const dados = res.periodos[st.perAtivo];
   $("#semDados").innerHTML = dados.semDados.length
-    ? `<details><summary>⏳ ${dados.semDados.length} fundo(s) sem dados neste período · ver quais</summary>${dados.semDados.map((c) => esc(st.porCnpj.get(c)?.NOME || c)).join("; ")}</details>` : "";
+    ? `<details><summary>${dados.semDados.length} fundo(s) sem dados neste período · ver quais</summary>${dados.semDados.map((c) => esc(st.porCnpj.get(c)?.NOME || c)).join("; ")}</details>` : "";
   $("#vazio").hidden = true;
   $("#limparTela").disabled = !st.res;          // o cálculo guarda o resultado depois da última atualização da lateral
   renderJM();
@@ -1384,13 +1397,13 @@ function renderResultado() {
   st.zoom[st.perAtivo] = z;
   configurarSlider(dIni, dFim, z);
   renderAcum(); renderDd(); renderRisco(); renderCorrelacao();
-  renderCarteira();
+  if (semCarteira) st.cartSuja = true; else { st.cartSuja = false; renderCarteira(); }
   avisoDesatualizado();
   if (st.pagina === "xp") renderROA();
 }
 function renderMetricas() {
   const c = st.ctx; if (!c) return;
-  $("#tituloMet").textContent = `Métricas · ${st.perAtivo}`;
+  $("#tituloMet").textContent = `Métricas · ${rotPer(st.perAtivo)}`;
   $("#agrupar").value = st.agrupar;
   $("#tabMetricas").innerHTML = tabelaMetricas(c.dados);
 }
@@ -1600,18 +1613,18 @@ function atualizarCarga(feitos, total, ev) {
   }
   let baix = 0, sem = 0;
   for (const e of carga.itens.values()) { if (e.classList.contains("baix")) baix++; else if (e.classList.contains("sem")) sem++; }
-  $("#cargaBarra").style.width = `${total ? 4 + 86 * feitos / total : 4}%`;
+  barraPct($("#cargaBarra"), total ? 4 + 86 * feitos / total : 4);
   $("#cargaResumo").innerHTML = `<b>${feitos}</b> de <b>${total}</b> carregados` + (baix ? ` · <span class="baix">${baix} baixando</span>` : "") +
     (total - feitos - baix > 0 ? ` · ${total - feitos - baix} na fila` : "") + (sem ? ` · <span class="sem">${sem} sem cotas</span>` : "");
 }
-function faseCarga(txt, pct) { $("#cargaFase").textContent = txt; if (pct != null) $("#cargaBarra").style.width = pct + "%"; }
+function faseCarga(txt, pct) { $("#cargaFase").textContent = txt; if (pct != null) barraPct($("#cargaBarra"), pct); }
 function fecharCarga(erro) {
   clearTimeout(carga.timer);
   const p = $("#painelCarga");
   if (erro === INTERROMPIDO) { p.hidden = true; return; }                       // interrompido pela pessoa: não é erro
   if (erro) {
     p.hidden = false; p.classList.add("erro");
-    faseCarga("erro: " + erro);
+    faseCarga(`Não foi possível carregar (${erro}). Confira a conexão e tente de novo.`);
     if (!$("#cargaFechar")) $(".pc-cab", p).insertAdjacentHTML("beforeend", `<button id="cargaFechar" class="sec mini-btn" type="button">Fechar</button>`);
     return;
   }
@@ -1637,6 +1650,7 @@ function corPar(v) {
   return [v >= 0 ? `rgba(31,90,166,${a})` : `rgba(208,38,44,${a})`, Math.abs(v) > 0.55 ? "#ffffff" : corTexto()];
 }
 // itens: [{ nome, cor, bench, c, cnpj }]; m: Float64Array n×n; chave: "corr" (seção de cima) ou "cart" (carteira)
+const obsMatriz = {};
 function renderMatrizCorr(contId, chave, itens, m) {
   const cont = $("#" + contId), n = itens.length;
   const btn = $(`[data-corr-tudo="${chave}"]`);
@@ -1654,13 +1668,14 @@ function renderMatrizCorr(contId, chave, itens, m) {
   // fundo destacado: já abre rolado até ele
   const alvo = marc.indexOf(true);
   if (alvo >= 0) { vp.scrollTop = Math.max(0, (alvo - 4) * MX.lin); vp.scrollLeft = Math.max(0, (alvo - 3) * MX.col); }
+  const fundo = getComputedStyle(cont).getPropertyValue("--card").trim() || "#fff";     // lido uma vez (a troca de tema redesenha tudo)
   const desenhar = () => {
     const W = vp.clientWidth, Hh = vp.clientHeight, dpr = devicePixelRatio || 1;
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(Hh * dpr)) {
       cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr); cv.style.width = W + "px"; cv.style.height = Hh + "px";
     }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const fundo = getComputedStyle(cont).getPropertyValue("--card").trim() || "#fff", txt = corTexto();
+    const txt = corTexto();
     const sx = vp.scrollLeft, sy = vp.scrollTop, areaH = Hh - MX.pe;
     g.fillStyle = fundo; g.fillRect(0, 0, W, Hh);
     const i0 = Math.floor(sy / MX.lin), i1 = Math.min(n - 1, Math.floor((sy + areaH) / MX.lin));
@@ -1710,7 +1725,8 @@ function renderMatrizCorr(contId, chave, itens, m) {
   };
   let pedido = 0;
   vp.addEventListener("scroll", () => { if (!pedido) pedido = requestAnimationFrame(() => { pedido = 0; desenhar(); }); }, { passive: true });
-  new ResizeObserver(() => desenhar()).observe(vp);
+  (obsMatriz[contId] ||= new ResizeObserver(() => obsMatriz[contId].desenhar?.())).disconnect();      // um observador por matriz, reaproveitado
+  obsMatriz[contId].desenhar = desenhar; obsMatriz[contId].observe(vp);
   desenhar();
   const tip = $("#corrTip");
   cv.onmousemove = (e) => {
@@ -1912,7 +1928,7 @@ function renderCarteira() {
       const ok = serieItem(it);
       return `<tr${ok ? "" : ' class="indisp"'}><td class="t"><span class="sw${it.tipo === "i" ? " losango" : ""}" style="background:${corItem(it)}"></span>` +
         (it.tipo === "f" && ok ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(it.v)}">${esc(nomeItem(it))}</span>` : esc(nomeItem(it))) +
-        (ok ? "" : ` <small>· ainda não baixado: clique em 🧮 Calcular carteira</small>`) + `</td>
+        (ok ? "" : ` <small>· ainda não baixado: clique em Calcular carteira</small>`) + `</td>
         ${st.rk?.lista.length ? `<td class="t cart-rk">${it.tipo === "f" ? rankingsDoFundo(it.v) : ""}</td>` : ""}
         <td><input class="cart-peso" data-i="${i}" type="number" min="0" step="1" value="${it.peso}" aria-label="Peso de ${esc(nomeItem(it))}"></td>
         <td><button class="cart-rm" data-i="${i}" type="button" title="Tirar da carteira" aria-label="Tirar ${esc(nomeItem(it))} da carteira">×</button></td></tr>`; }).join("")}</tbody></table></div>`;
@@ -1939,8 +1955,8 @@ function calcularCarteira() {
   $("#cartGraf").hidden = true; st.cartRes = null;
   semZoom("gCartEvol", "gCartDD", "gCartRR", "gCartJM");          // pesos, datas ou rebalanceamento mudaram: gráficos voltam ao inteiro
   const faltam = c.itens.filter((it) => it.tipo === "f" && !serieItem(it)).length;
-  $("#cartCalcular").textContent = faltam ? `🧮 Calcular carteira (baixar ${faltam} fundo${faltam > 1 ? "s" : ""})` : "🧮 Calcular carteira";
-  if (!validos.length) { res.innerHTML = c.itens.length ? `<p class="nota">${faltam ? "Clique em 🧮 Calcular carteira para baixar as cotas dos fundos." : "Dê peso maior que zero a pelo menos um ativo."}</p>` : ""; return; }
+  $("#cartCalcular").innerHTML = ico("calc") + (faltam ? `Calcular carteira (baixar ${faltam} fundo${faltam > 1 ? "s" : ""})` : "Calcular carteira");
+  if (!validos.length) { res.innerHTML = c.itens.length ? `<p class="nota">${faltam ? "Clique em Calcular carteira para baixar as cotas dos fundos." : "Dê peso maior que zero a pelo menos um ativo."}</p>` : ""; return; }
   const soma = validos.reduce((a, it) => a + Number(it.peso), 0), pesos = validos.map((it) => Number(it.peso) / soma);
   const ini = diaDe(new Date(c.ini)), fim = diaDe(new Date(c.fim));
   const ativos = validos.map((it) => ({ s: serieItem(it), nome: nomeItem(it) }));
@@ -2027,9 +2043,10 @@ function renderCartMetricas() {
   const linhas = [linhaDe(`Carteira${R.rebal ? ` (rebalanceamento ${REBAL[R.rebal]})` : ""}`, pseudoFundo(R.sim.dias, R.sim.valor), { _cart: true })];
   if (R.simBH) linhas.push(linhaDe("Mesma carteira sem rebalancear", pseudoFundo(R.simBH.dias, R.simBH.valor), { _cart: true }));
   R.validos.forEach((it, k) => {
-    const chave = `${it.tipo}${it.v}|${R.d0}|${R.dN}|${peso}|${R.cores[k]}`;
+    const fc = it.tipo === "f" ? fundoCart(it.v) : null;      // nº de cotas e "Var. ponderada" na chave: cotas novas ou a opção ligada recalculam
+    const chave = `${it.tipo}${it.v}|${R.d0}|${R.dN}|${peso}|${R.cores[k]}|${fc?.d.length ?? ""}|${st.pesoPeriodo ? 1 : 0}`;
     if (!cacheAtivo.has(chave)) {
-      const f = it.tipo === "f" ? fundoCart(it.v) : pseudoFundo(R.sim.dias, R.sim.porAtivo[k]);
+      const f = fc || (it.tipo === "f" ? null : pseudoFundo(R.sim.dias, R.sim.porAtivo[k]));
       cacheAtivo.set(chave, linhaDe(R.nomes[k], f, { _c: it.tipo === "f" ? it.v : null, _cor: R.cores[k], _idx: it.tipo === "i" }));
     }
     linhas.push(cacheAtivo.get(chave));
@@ -2228,6 +2245,7 @@ document.addEventListener("click", (e) => {
 
 // ---------- "Calcular carteira": baixa as cotas dos fundos que ainda não foram carregados e recalcula
 async function calcularCarteiraBotao() {
+  await chartPronto;
   const faltam = [...new Set(st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v) && st.porCnpj.has(it.v)).map((it) => it.v))];
   if (faltam.length) {
     abrirCarga(faltam); $("#cargaTit").textContent = `Carteira: carregando ${faltam.length} fundo(s)`;
@@ -2256,7 +2274,7 @@ document.addEventListener("click", (e) => {
     salvarCart(); renderCarteira();
     const tirados = atuais.filter((c) => !quer.has(c)).length;
     $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo(s) adicionado(s)${tirados ? `, ${tirados} retirado(s)` : ""}.</span>` +
-      (novos.length && !vazia ? " Os novos entraram com peso 0: defina os pesos ou use “Pesos iguais”. Clique em 🧮 Calcular carteira para baixar as cotas que faltarem." : novos.length ? " Clique em 🧮 Calcular carteira para baixar as cotas que faltarem." : "");
+      (novos.length && !vazia ? " Os novos entraram com peso 0: defina os pesos ou use “Pesos iguais”. Clique em Calcular carteira para baixar as cotas que faltarem." : novos.length ? " Clique em Calcular carteira para baixar as cotas que faltarem." : "");
   }, "Fundos da carteira");
 });
 // ============================== relatórios: PDF, PNG e Excel ==============================
@@ -2315,7 +2333,7 @@ const rel = { sel: new Set(pref("relSel", ["fundos", "met", "acum", "risco"])), 
 
 function abrirRelatorio() {
   const grupos = [...new Set(SECOES_REL.map((s) => s.g))];
-  const titulo = { Fundos: "Análise dos fundos · " + esc(st.perAtivo || ""), Carteira: "Montagem de carteira", Rankings: "Rankings", Dados: "Dados usados nos cálculos · só no Excel" };
+  const titulo = { Fundos: "Análise dos fundos · " + esc(rotPer(st.perAtivo || "")), Carteira: "Carteira", Rankings: "Rankings", Dados: "Dados usados nos cálculos · só no Excel" };
   $("#relSecoes").innerHTML = grupos.map((g) => `<div class="rel-grupo${g === "Dados" ? " rel-dados" : ""}"><div class="rel-g-cab"><b>${titulo[g]}</b>
       <span><button class="link" type="button" data-rel-g="${g}" data-marca="1">marcar tudo</button> · <button class="link" type="button" data-rel-g="${g}" data-marca="0">desmarcar</button></span></div>` +
     (g === "Dados" ? `<span class="nota">Uma linha por fundo (ou ativo) e por dia, "um embaixo do outro": bom para tabela dinâmica e filtros.</span>` : "") +
@@ -2347,8 +2365,8 @@ function desenharFormatoRel() {
   const brutos = escolhidas.filter((s) => s.bruto);
   $("#relEstim").textContent = brutos.length ? `Dados usados nos cálculos: cerca de ${br(contarLinhasBrutas(brutos.map((s) => s.k)), 0)} linhas.` : "";
   const rotulo = `${({ pdf: "PDF", png: "PNG", xlsx: "Excel" })[rel.fmt]} (${escolhidas.length} parte${escolhidas.length === 1 ? "" : "s"})`;
-  $("#relBaixar").textContent = st.xp ? `⬇ Baixar material aberto, sem dados da XP: ${rotulo}` : `⬇ Baixar ${rotulo}`;
-  $("#relBaixarInterno").textContent = `⬇ Baixar material completo: ${rotulo}`;
+  $("#relBaixar").innerHTML = ico("baixar") + esc(st.xp ? `Baixar material aberto, sem dados da XP: ${rotulo}` : `Baixar ${rotulo}`);
+  $("#relBaixarInterno").innerHTML = ico("baixar") + esc(`Baixar material completo: ${rotulo}`);
   $("#relBaixar").disabled = $("#relBaixarInterno").disabled = !escolhidas.length;
 }
 
@@ -2583,24 +2601,24 @@ function blocosRel(k) {
       if (R.eBH) lin.push(["Mesma carteira sem rebalancear", 1, R.eBH.total, R.eBH.anual, R.eBH.vol, R.eBH.sharpe, R.eBH.mdd, null]);
       B.push({ tipo: "tabela", nome: "Carteira - ativos", colunas: [{ nome: "Ativo", tipo: "txt" }, { nome: "Peso", tipo: "pct" }, { nome: "Retorno", tipo: "pct" }, { nome: "Ao ano", tipo: "pct" },
         { nome: "Volatilidade", tipo: "pct" }, { nome: "Sharpe", tipo: "num2" }, { nome: "Máx. queda", tipo: "pct" }, { nome: "Contribuição", tipo: "pct" }], linhas: lin });
-      return { titulo: "Montagem de carteira · resumo", blocos: B };
+      return { titulo: "Carteira · resumo", blocos: B };
     }
     case "cartMet": B.push({ tipo: "tabela", ...anexarXPRel(tabelaMetricasRel("Carteira - métricas", R.metricas.linhas.map((l) => ({ ...l, Fundo: String(st.xp ? l.Fundo : l._nomeCVM || l.Fundo) })), R.metricas.colunas), (k) => R.metricas.linhas[k]._c || null) });
-      return { titulo: "Montagem de carteira · métricas", blocos: B };
+      return { titulo: "Carteira · métricas", blocos: B };
     case "cartAcum": img("gCartEvol", "Carteira - rentabilidade"); B.push({ tipo: "tabela", ...tabelaFinal("gCartEvol", "Carteira - rentab. final") }, { tipo: "tabela", ...tabelaDoGrafico("gCartEvol", "Carteira - rentab. diária") });
-      return { titulo: `Montagem de carteira · rentabilidade acumulada${st.cartUI.rel.on ? ` · relativa a ${st.cartUI.rel.alvo}` : ""}`, blocos: B };
+      return { titulo: `Carteira · rentabilidade acumulada${st.cartUI.rel.on ? ` · relativa a ${st.cartUI.rel.alvo}` : ""}`, blocos: B };
     case "cartDd": img("gCartDD", "Carteira - drawdown"); B.push({ tipo: "tabela", ...tabelaFinal("gCartDD", "Carteira - drawdown final", minimoSerie) }, { tipo: "tabela", ...tabelaDoGrafico("gCartDD", "Carteira - drawdown diário") });
-      return { titulo: "Montagem de carteira · drawdown", blocos: B };
+      return { titulo: "Carteira · drawdown", blocos: B };
     case "cartRisco": img("gCartRR", "Carteira - risco x retorno");
       B.push({ tipo: "tabela", nome: "Carteira - risco x retorno", colunas: [{ nome: "Ativo", tipo: "txt" }, { nome: "Retorno a.a.", tipo: "pct" }, { nome: "Volatilidade a.a.", tipo: "pct" }, { nome: "Sharpe", tipo: "num2" }],
         linhas: st.cartUI.pts.map((p) => [p.nome, p.anual, p.vol, p.sharpe]) });
-      return { titulo: "Montagem de carteira · risco × retorno", blocos: B };
+      return { titulo: "Carteira · risco × retorno", blocos: B };
     case "cartCorr": B.push({ tipo: "img", titulo: "Carteira - correlação", ...imagemMatriz(R.corr.itens, R.corr.m) }, { tipo: "tabela", ...tabelaMatriz("Carteira - correlação", R.corr.itens, R.corr.m) });
-      return { titulo: "Montagem de carteira · correlação", blocos: B };
+      return { titulo: "Carteira · correlação", blocos: B };
     case "cartJm": { const jm = R.jm; img("gCartJM", "Carteira - janela móvel");
       B.push({ tipo: "tabela", ...tabelaResumoJM("Carteira - janela móvel", jm.lista.map((x) => ({ nome: x.nome, cnpj: x.c ? cnpjFmt(x.c) : "", resumo: x.resumo })), jm.nomeB) },
         { tipo: "tabela", ...tabelaDoGrafico("gCartJM", "Carteira - janela gráfico", "pct", "Data de aplicação") });
-      return { titulo: `Montagem de carteira · janela móvel · ${jm.p.meses} meses · benchmark ${jm.nomeB || "nenhum"}`, blocos: B }; }
+      return { titulo: `Carteira · janela móvel · ${jm.p.meses} meses · benchmark ${jm.nomeB || "nenhum"}`, blocos: B }; }
   }
   return null;
 }
@@ -2814,12 +2832,15 @@ async function csvDeTabela(b) {
 // ---------- gerar e baixar
 // material aberto: o relatório é montado com os dados da XP desligados (nenhuma coluna, nome ou link da XP entra no arquivo)
 async function baixarRelatorio(interno = false) {
-  const xp = st.xp, outro = $(interno ? "#relBaixar" : "#relBaixarInterno");
-  if (!interno) st.xp = null;
+  const xp = st.xp, rk = st.rk, outro = $(interno ? "#relBaixar" : "#relBaixarInterno");
+  if (!interno) {
+    st.xp = null;
+    if (rk?.lista.some((x) => x._xp)) { const lista = rk.lista.filter((x) => !x._xp); st.rk = lista.length ? { ...rk, lista, ativo: 0 } : null; }   // o ranking da XP também é confidencial
+  }
   outro.disabled = true;
   try { await baixarRelatorioBase(interno ? "#relBaixarInterno" : "#relBaixar"); }
   finally {
-    st.xp = xp; outro.disabled = false;
+    st.xp = xp; st.rk = rk; outro.disabled = false;
     if (!interno && xp) { if (st.ctx) renderMetricas(); if (st.rk?.lista.length) renderRkTabela(); }   // a tela volta com as colunas da XP
   }
 }
@@ -3090,8 +3111,8 @@ function sincronizarUrl() {
 function lerUrl() {
   const p = new URLSearchParams(location.search);
   const fundos = p.get("fundos");
-  if (fundos) adicionar(fundos.split(",").map((c) => c.replace(/\D/g, "").padStart(14, "0")));
-  else { const salvos = pref("sel", []); if (Array.isArray(salvos) && salvos.length) adicionar(salvos.filter((c) => /^\d{14}$/.test(c))); }
+  if (fundos) adicionar(fundos.split(",").map(normCnpj));
+  else { const salvos = pref("sel", []); if (Array.isArray(salvos) && salvos.length) adicionar(salvos.filter((c) => /^[0-9A-Z]{14}$/.test(c))); }
   const per = (p.get("per") || "").split(",").filter((x) => PERIODOS.includes(x));
   if (per.length) st.periodos = new Set(per);
   if (p.get("mes")) $("#refMes").value = p.get("mes");
@@ -3109,7 +3130,7 @@ const PAGINAS = ["analise", "rankings", "xp", "carteira"];
 const TITULOS = {
   analise: ["Análise de fundos", "Métricas, gráficos, correlação e janela móvel dos fundos selecionados"],
   rankings: ["Rankings", "Pontuação dos fundos por métricas, janela móvel e correlação de cada ranking"],
-  carteira: ["Montagem de carteira", "Pesos, rebalanceamento, desempenho e contribuição de cada ativo"],
+  carteira: ["Carteira", "Pesos, rebalanceamento, desempenho e contribuição de cada ativo"],
   xp: ["Fundos XP", "Visão geral dos fundos da XP, cálculo de todos de uma vez e análise do ROA"],
 };
 function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
@@ -3119,6 +3140,7 @@ function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
   if (pg === "xp" && nucleo.parentElement.id !== "xpSlot") $("#xpSlot").append(nucleo);
   else if (pg === "analise" && nucleo.parentElement.id !== "pgAnalise") $("#pgAnalise").append(nucleo);
   st.pagina = pg; salvar("pagina", pg);
+  if (pg === "carteira" && st.cartSuja) { st.cartSuja = false; renderCarteira(); }     // destaque mudou enquanto a carteira estava escondida
   const [tit, sub] = TITULOS[pg];
   $("#tituloPagina").textContent = tit; $("#subtituloPagina").textContent = sub; document.title = `${tit} · Análise de Fundos`;
   for (const el of $$(".pagina")) el.hidden = el.dataset.pagina !== pg;
@@ -3225,9 +3247,9 @@ function desenharEquipe() {
   const on = !!st.equipe;
   $("#equipeEntrar").hidden = on; $("#equipeLogado").hidden = !on;
   if (on) {
-    $("#equipeNome").textContent = `👤 ${st.equipe.nome}`;
+    $("#equipeNome").textContent = st.equipe.nome;
     $("#equipeInfo").innerHTML = st.xp ? esc(`${st.xp.size} fundos XP` + (st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas)` : ""))
-      : st.equipeFalha ? `<span class="neg" title="${esc(st.equipeFalha)}">⚠ dados da XP não carregaram</span> · <button type="button" class="link" id="equipeTentar">tentar agora</button>`
+      : st.equipeFalha ? `<span class="neg" title="${esc(st.equipeFalha)}">Dados da XP não carregados.</span> <button type="button" class="link" id="equipeTentar">Tentar de novo</button>`
       : `<span class="nota">carregando dados da XP…</span>`;
   }
   $("#dlgFiltrosXP").hidden = !st.xp;
@@ -3260,15 +3282,17 @@ async function carregarDadosEquipe(tentativa = 0) {
   }
   st.xpOfertas = r.linhas;
   carregarNuvem();                                                    // grupos e rankings salvos na conta (em paralelo)
-  if (!r.colunas.includes("ID") || (r.versao && r.versao < VERSAO_MIN_EQUIPE))
-    setTimeout(() => avisoSel(`<span class="neg">O Apps Script da equipe está numa versão antiga (${esc(r.versao || "anterior a " + VERSAO_MIN_EQUIPE)}).
-      Para o Link Hub e as correções mais recentes, publique a versão nova: Implantar → Gerenciar implantações → lápis → Nova versão.</span>`), 50);
+  if (!r.colunas.includes("ID") || (r.versao && r.versao < VERSAO_MIN_EQUIPE)) {         // instrução técnica só no console; o analista vê um aviso curto
+    console.warn(`Apps Script da equipe na versão ${r.versao || "anterior a " + VERSAO_MIN_EQUIPE}: publique a nova (Implantar → Gerenciar implantações → lápis → Nova versão).`);
+    setTimeout(() => avisoSel(`<span class="neg">Os dados da equipe estão numa versão antiga. Avise o administrador da planilha.</span>`), 50);
+  }
   incluirFundosSoXP();
   desenharEquipe(); aplicarDadosEquipe();
 }
 async function sairEquipe(silencioso = false) {
   const token = lerSessaoEquipe();
   gravarSessaoEquipe(null); removerFundosSoXP(); st.equipe = null; st.xp = null; st.xpCols = []; st.nuvem = null; atualizarListasSalvos();
+  if (st.rk?.lista.some((x) => x._xp)) { st.rk.lista = st.rk.lista.filter((x) => !x._xp); st.rk.ativo = 0; if (!st.rk.lista.length) st.rk = null; renderRankings(); }
   desenharEquipe(); aplicarDadosEquipe();
   if (token && !silencioso) apiEquipe("sair", { token });
 }
@@ -3499,7 +3523,7 @@ async function baixarPlanilhaXP() {
     a.href = URL.createObjectURL(new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
     a.download = `fundos_xp_${new Date().toISOString().slice(0, 10)}.xlsx`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   } catch (e) { avisoSel(`<span class="neg">Não foi possível gerar a planilha: ${esc(e.message || e)}</span>`); }
-  finally { b.disabled = false; b.textContent = "⬇ Planilha XP"; }
+  finally { b.disabled = false; b.textContent = "Planilha XP"; }
 }
 document.addEventListener("click", (e) => { if (e.target.id === "equipeBaixar") baixarPlanilhaXP(); });
 document.addEventListener("change", (e) => { if (e.target.id === "grossUp") { st.grossUp = e.target.checked; redesenharMantendo($("#tabMetricas"), renderMetricas); } });
@@ -3543,7 +3567,7 @@ const prazoCurto = (t) => { const m = String(t ?? "").match(/D\s*\+\s*(\d+)/i); 
 function renderEnviar() {
   const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v)), rk = env.origem === "rk", xp = !!st.xp;
   const novos = [...env.marcados].filter((c) => !naCart.has(c)).length;
-  $("#envInfo").innerHTML = `Marque os fundos ${esc(env.titulo)} que vão para a montagem de carteira (rentabilidade e volatilidade ${esc(env.periodo)}). ` +
+  $("#envInfo").innerHTML = `Marque os fundos ${esc(env.titulo)} que vão para a carteira (rentabilidade e volatilidade ${esc(env.periodo)}). ` +
     (st.cart.itens.length ? "A carteira já tem ativos: os novos entram com peso 0 (defina os pesos depois ou use “Pesos iguais”)." : "A carteira está vazia: os fundos enviados entram com pesos iguais.");
   // colunas pequenas com largura fixa; o nome ocupa o que sobrar (a tabela nunca passa da largura da janela)
   // [chave, largura, título curto, título completo (ao passar o mouse)]
@@ -3585,7 +3609,7 @@ function enviarParaCarteira() {
   renderCarteira();
   $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo(s) enviado(s) ${esc(env.titulo)}.</span>` + (vazia ? " Pesos iguais aplicados." : " Entraram com peso 0: defina os pesos ou use “Pesos iguais”.");
   if ($("#envIr").checked) mostrarPagina("carteira");
-  else avisoSel(`<span class="ok">${novos.length} fundo(s) enviado(s) à montagem de carteira.</span> <button class="link" type="button" data-ir-carteira>Abrir a montagem de carteira</button>`);
+  else avisoSel(`<span class="ok">${novos.length} fundo(s) enviado(s) para a carteira.</span> <button class="link" type="button" data-ir-carteira>Abrir a carteira</button>`);
 }
 document.addEventListener("click", (e) => {
   const t = e.target;
@@ -3949,7 +3973,7 @@ function barraFiltrosXP() {
   return `<div class="xp-filtros" role="region" aria-label="Filtros escolhidos"><span class="xf-lista">${desc}</span>
     <span class="xf-n">${br(lista.length, 0)} fundo(s)${ok.length !== lista.length ? ` <small class="nota">(${br(ok.length, 0)} com cotas para calcular)</small>` : ""}</span>
     <button type="button" class="sec" id="xpFiltroLimpar">Limpar filtros</button>
-    <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>🧮 Calcular ${br(ok.length, 0)} fundo(s)</button></div>`;
+    <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>${ico("calc")}Calcular ${br(ok.length, 0)} fundo(s)</button></div>`;
 }
 const atualizarXPSelInfo = () => { const el = $("#xpSelInfo"); if (el) el.textContent = st.sel.length ? `${st.sel.length} fundo(s) selecionado(s)` : ""; };
 // fundos da XP que dá para calcular: estão na base da CVM e têm cota nos últimos 30 dias
@@ -3986,6 +4010,7 @@ async function selecionarECalcular(lista, rotulo) {
 const NOME_RK_XP = "⚡ Seleção Fundos XP";
 const rankingXP = () => st.rk?.lista.find((x) => x._xp) || null;
 async function calcularRankingXP(cnpjs, modelo) {
+  await chartPronto;
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo(s)`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
@@ -4226,14 +4251,14 @@ async function apagarDaNuvem(id) {
 function atualizarListasSalvos() {
   if ($("#dlgGrupos").open) renderGrupos();
   if ($("#dlgCarteiras")?.open) renderCarteirasSalvas();
-  if ($("#dlgRank").open && !rkEd.aberto) renderRkLista();
+  if (!$("#dlgRank").hidden && !rkEd.aberto) renderRkLista();
   resumoLateralRk();
 }
 // selo "onde está": só neste computador · na sua conta (compartilhado ou só você) · de um colega
 function seloOrigem(x) {
-  if (x._origem === "meu") return `<span class="sv sv-meu" title="Guardado na sua conta: aparece em qualquer computador em que você entrar">☁ Na sua conta · ${x._comp ? "👥 compartilhado" : "🔒 só você"}</span>`;
-  if (x._origem === "equipe") return `<span class="sv sv-eq" title="Salvo e compartilhado por ${esc(x._autor)}">👥 ${esc(x._autor)}</span>`;
-  return `<span class="sv sv-local" title="Guardado só neste navegador, neste computador: some se o navegador apagar os dados">💻 Só neste computador</span>`;
+  if (x._origem === "meu") return `<span class="sv sv-meu" title="Guardado na sua conta: aparece em qualquer computador em que você entrar">${ico("nuvem")}Na sua conta · ${x._comp ? "compartilhado" : "só você"}</span>`;
+  if (x._origem === "equipe") return `<span class="sv sv-eq" title="Salvo e compartilhado por ${esc(x._autor)}">${ico("pessoas")}${esc(x._autor)}</span>`;
+  return `<span class="sv sv-local" title="Guardado só neste navegador, neste computador: some se o navegador apagar os dados">${ico("pc")}Só neste navegador</span>`;
 }
 
 // ============================== favoritos (grupos, rankings e carteiras) ==============================
@@ -4293,10 +4318,10 @@ function renderCarteirasSalvas() {
     (!nomes.length ? `<p class="nota">${$("#ctSoFav").checked ? "Nenhuma carteira favorita. Clique na estrela ☆ ao lado de uma carteira." : "Nenhuma carteira salva ainda. Monte uma carteira e salve acima."}</p>` :
     `<table class="tb gr-tab"><thead><tr><th class="t">Carteira</th><th class="t">Onde está</th><th>Ativos</th><th>Atualizada em</th><th class="t">Carregar</th><th class="t"><span class="sr-only">Ações</span></th></tr></thead><tbody>${nomes.map((n) => {
       const x = g[n], k = esc(n), itens = x.cart?.itens || [], aberto = renderCarteirasSalvas.aberto === n;
-      const acoes = x._origem === "local" ? (logado ? `<button class="sec mini-btn" data-ct-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador">☁ Enviar para a conta</button> ` : "") +
-          `<button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir carteira" aria-label="Excluir a carteira ${esc(x._nome)}">🗑</button>`
-        : x._origem === "meu" ? `<button class="sec mini-btn" data-ct-comp="${k}" type="button">${x._comp ? "🔒 Deixar só meu" : "👥 Compartilhar"}</button>
-          <button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir da sua conta" aria-label="Excluir a carteira ${esc(x._nome)}">🗑</button>`
+      const acoes = x._origem === "local" ? (logado ? `<button class="sec mini-btn" data-ct-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador">${ico("nuvem")}Enviar para a conta</button> ` : "") +
+          `<button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir carteira" aria-label="Excluir a carteira ${esc(x._nome)}">${ico("lixo")}</button>`
+        : x._origem === "meu" ? `<button class="sec mini-btn" data-ct-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>
+          <button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir da sua conta" aria-label="Excluir a carteira ${esc(x._nome)}">${ico("lixo")}</button>`
         : `<button class="sec mini-btn" data-ct-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`;
       return `<tr class="sv-linha-${x._origem}"><td class="t">${botaoFav("carteira", x)}<button class="link gr-ver" data-ct-ver="${k}" title="Ver os ativos e pesos">${aberto ? "▾" : "▸"} <b>${esc(x._nome)}</b></button></td>
         <td class="t">${seloOrigem(x)}</td><td>${itens.length}</td><td>${x.atualizado ? new Date(x.atualizado).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</td>
@@ -4330,7 +4355,7 @@ async function carregarCarteiraSalva(n) {
   salvarCart(); $("#dlgCarteiras").close(); mostrarPagina("carteira"); renderCarteira();
   const faltam = st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v)).length;
   $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(x._nome)}" carregada${x._origem === "equipe" ? ` (de ${esc(x._autor)})` : ""}.</span>` +
-    (faltam ? ` Clique em 🧮 Calcular carteira para baixar as cotas de ${faltam} fundo(s).` : "");
+    (faltam ? ` Clique em Calcular carteira para baixar as cotas de ${faltam} fundo(s).` : "");
 }
 document.addEventListener("click", async (e) => {
   const t = e.target;
@@ -4343,7 +4368,7 @@ document.addEventListener("click", async (e) => {
   if (ds.ctDel) {
     const x = g[ds.ctDel]; if (!x) return;
     if (!(await perguntar("Excluir a carteira?", `Excluir a carteira <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? A carteira montada agora não muda.`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "prim" }]))) return;
+      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) $("#cartAviso").innerHTML = `<span class="neg">${esc(r.erro)}</span>`; return renderCarteirasSalvas(); }
     const loc = lerCarteirasLocais(); delete loc[ds.ctDel]; salvar("carteirasSalvas", loc); return renderCarteirasSalvas();
   }
@@ -4521,7 +4546,7 @@ document.addEventListener("change", (e) => {
 function popCols() {
   let p = $("#popCols"); if (p) return p;
   document.body.insertAdjacentHTML("beforeend", `<div id="popCols" class="pop-filtro pop-cols" role="dialog" aria-label="Colunas da tabela" hidden>
-    <b>Colunas mostradas</b><div id="pcLista" class="pc-lista"></div>
+    <b>Colunas mostradas</b><div id="pcLista" class="pop-lista"></div>
     <div class="pf-bts"><button type="button" class="sec mini-btn" id="pcTodas">Mostrar todas</button><button type="button" class="prim mini-btn" id="pcFechar">Fechar</button></div></div>`);
   return $("#popCols");
 }
@@ -4607,21 +4632,27 @@ function resumoLateralRk() {
   const n = Object.keys(lerRankings()).length, m = [...rkSel].filter((x) => lerRankings()[x]).length;
   $("#rkResumoLat").textContent = n ? `${n} ranking(s) salvo(s) · ${m} marcado(s) para calcular` : "Nenhum ranking montado ainda.";
 }
-function abrirRank() { rkEd.aberto = false; renderRkLista(); mostrarTelaRk("lista"); $("#dlgRank").showModal(); }
+// montar rankings: painel dentro da página Rankings (antes era uma janela por cima)
+function abrirRank() {
+  rkEd.aberto = false; renderRkLista(); mostrarTelaRk("lista");
+  $("#dlgRank").hidden = false; $("#rkVazio").hidden = true;
+  $("#dlgRank").scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+function fecharRank() { $("#dlgRank").hidden = true; renderRankings(); }
 function renderRkLista() {
   const g = lerRankings(), ordem = { local: 0, meu: 1, equipe: 2 }, logado = !!st.nuvem;
   const fav = (n) => ehFav("ranking", g[n]);
   const nomes = Object.keys(g).filter((n) => !st.soFav?.rk || fav(n))
     .sort((a, b) => fav(b) - fav(a) || ordem[g[a]._origem] - ordem[g[b]._origem] || (g[a]._autor || "").localeCompare(g[b]._autor || "", "pt-BR") || a.localeCompare(b, "pt-BR"));
   if (st.nuvem || !st.equipe) for (const n of [...rkSel]) if (!g[n]) rkSel.delete(n);    // sem apagar marcações enquanto a conta ainda carrega
-  $("#rkLista").innerHTML = `<p class="nota"><label class="tog"><input id="rkSoFav" type="checkbox"${st.soFav?.rk ? " checked" : ""}> Só favoritos ★</label></p>` + (logado ? "" : `<p class="nota">Entre na área da equipe para salvar rankings na sua conta (aparecem em qualquer computador) e ver os dos colegas.</p>`) + (!nomes.length ? `<p class="nota">Nenhum ranking ainda. Clique em "＋ Novo ranking", dê um nome, escolha o tipo de cálculo e os fundos.</p>` :
+  $("#rkLista").innerHTML = `<p class="nota"><label class="tog"><input id="rkSoFav" type="checkbox"${st.soFav?.rk ? " checked" : ""}> Só favoritos ★</label></p>` + (logado ? "" : `<p class="nota">Entre na área da equipe para salvar rankings na sua conta (aparecem em qualquer computador) e ver os dos colegas.</p>`) + (!nomes.length ? `<p class="nota">Nenhum ranking ainda. Clique em "Novo ranking", dê um nome, escolha o tipo de cálculo e os fundos.</p>` :
     `<table class="tb gr-tab"><thead><tr><th><span class="sr-only">Calcular</span></th><th class="t">Ranking</th><th class="t">Onde está</th><th class="t">Tipo de cálculo</th><th>Fundos</th><th>Atualizado em</th><th><span class="sr-only">Ações</span></th></tr></thead><tbody>${nomes.map((n) => {
       const x = g[n], M = modeloDe(x.modelo) || {}, k = esc(n);
       const acoes = x._origem === "equipe" ? `<button class="sec mini-btn" data-rk-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`
         : `<button class="sec mini-btn" data-rk-ed="${k}" type="button">Editar</button>` +
-          (x._origem === "local" && logado ? ` <button class="sec mini-btn" data-rk-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">☁ Enviar para a conta</button>` : "") +
-          (x._origem === "meu" ? ` <button class="sec mini-btn" data-rk-comp="${k}" type="button">${x._comp ? "🔒 Deixar só meu" : "👥 Compartilhar"}</button>` : "") +
-          ` <button class="cart-rm" data-rk-del="${k}" type="button" title="Excluir ranking" aria-label="Excluir o ranking ${esc(x._nome)}">🗑</button>`;
+          (x._origem === "local" && logado ? ` <button class="sec mini-btn" data-rk-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">${ico("nuvem")}Enviar para a conta</button>` : "") +
+          (x._origem === "meu" ? ` <button class="sec mini-btn" data-rk-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>` : "") +
+          ` <button class="cart-rm" data-rk-del="${k}" type="button" title="Excluir ranking" aria-label="Excluir o ranking ${esc(x._nome)}">${ico("lixo")}</button>`;
       return `<tr class="linha-f${rkSel.has(n) ? " marcado" : ""}" data-rk="${esc(n)}" title="Clique para marcar ou desmarcar"><td><label class="tog"><input type="checkbox" data-rk-sel="${esc(n)}" aria-label="Calcular o ranking ${esc(n)}" ${rkSel.has(n) ? "checked" : ""}></label></td>
         <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b></td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(M.nome || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
 </small></td>
@@ -4629,7 +4660,7 @@ function renderRkLista() {
         <td class="gr-acoes">${acoes}</td></tr>`; }).join("")}</tbody></table>`);
   const m = [...rkSel].length;
   $("#rkCalcular").disabled = !m;
-  $("#rkCalcular").textContent = `🏆 Calcular ${m || ""} ranking${m === 1 ? "" : "s"}`.replace("  ", " ");
+  $("#rkCalcular").innerHTML = ico("trofeu") + `Calcular ${m || ""} ranking${m === 1 ? "" : "s"}`.replace("  ", " ");
   const fundos = new Set([...rkSel].flatMap((n) => g[n]?.cnpjs || []));
   $("#rkResumo").textContent = m ? `${m} ranking(s) marcado(s) · ${fundos.size} fundo(s) diferentes para carregar` : "Marque pelo menos um ranking.";
   salvarRkSel(); resumoLateralRk();
@@ -4652,7 +4683,7 @@ function renderEditorRk() {
   const M = modeloDe(rkEd.modelo), fmtP = (k) => `${metricaRank(k)?.nome || k} ${Math.abs(M.pesos[k])}%${M.pesos[k] < 0 ? " (menor é melhor)" : ""}`;
   $("#rkModeloInfo").innerHTML = `<b>${esc(M.nome)}</b>: métricas dos últimos ${esc(M.periodo.toLowerCase())}; janela móvel de ${M.jmMeses} meses contra o ${esc(nomeIndice(M.bench))}, ` +
     `aplicações dos últimos ${JM_ANOS} anos. Pesos: ${Object.keys(M.pesos).map(fmtP).join(" · ")}.`;
-  $("#rkEdSel").textContent = `＋ Selecionados da barra lateral (${st.sel.length})`; $("#rkEdSel").disabled = !st.sel.length;
+  $("#rkEdSel").innerHTML = `${ico("mais")}Fundos selecionados na lateral (${st.sel.length})`; $("#rkEdSel").disabled = !st.sel.length;
   const lista = ordenarFundos(rkEd.cnpjs.map((c) => st.porCnpj.get(c)).filter(Boolean), "rkEd");
   const fora = rkEd.cnpjs.filter((c) => !st.porCnpj.has(c));
   const parados = lista.filter((f) => situacaoCadastro(f));
@@ -4669,7 +4700,7 @@ function renderEditorRk() {
 async function juntarNoEditor(cnpjs, substituir) {
   if (substituir === undefined && rkEd.cnpjs.length) {
     substituir = await perguntar("Juntar ou substituir?", `O ranking já tem ${rkEd.cnpjs.length} fundo(s). Os ${cnpjs.length} novos entram junto ou no lugar deles?`,
-      [{ rot: "Cancelar", v: null }, { rot: "＋ Juntar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]);
+      [{ rot: "Cancelar", v: null }, { rot: "Adicionar aos atuais", v: false }, { rot: "Substituir", v: true, classe: "prim" }]);
     if (substituir == null) return;
   }
   rkEd.cnpjs = substituir ? [...new Set(cnpjs)] : [...new Set([...rkEd.cnpjs, ...cnpjs])];
@@ -4741,10 +4772,11 @@ function montarRanking(nome, def, fundos) {
     apel: apelidos(atual.ordem.map((x) => x.id)), foraDaBase: def.cnpjs.filter((c) => !st.porCnpj.has(c)) };
 }
 async function calcularRankings() {
+  await chartPronto;
   const todos = lerRankings(), nomes = [...rkSel].filter((n) => todos[n]).sort((a, b) => a.localeCompare(b, "pt-BR"));
   if (!nomes.length) return;
   const cnpjs = [...new Set(nomes.flatMap((n) => todos[n].cnpjs))].filter((c) => st.porCnpj.has(c));
-  $("#dlgRank").close();
+  $("#dlgRank").hidden = true;
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo(s)`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
@@ -4771,7 +4803,7 @@ const usaIbov = (R) => R.M.bench === "IBOV";
 const classeMedalha = (pos) => (pos <= 3 ? `rk-m${pos}` : "");
 const fundosVisiveis = (R) => (st.rkTodos ? R.ordem : R.ordem.slice(0, TOP_RANK));     // o botão "ranking completo" vale para tudo
 function renderRankings() {
-  $("#rkVazio").hidden = !!st.rk?.lista.length;
+  $("#rkVazio").hidden = !!st.rk?.lista.length || !$("#dlgRank").hidden;     // com o painel de montar aberto, o aviso de vazio sai
   if (!st.rk?.lista.length) { $("#secRank").hidden = true; return; }
   $("#secRank").hidden = false;
   if (st.rk.ativo >= st.rk.lista.length) st.rk.ativo = 0;
@@ -4953,6 +4985,7 @@ function renderRkPesos() {
 function graficoPesosRk(M) {
   const G = gruposPesosRk(M);
   st.graficos.gRkPesos?.destroy();
+  if (!Chart) return;
   st.graficos.gRkPesos = new Chart($("#gRkPesos"), {
     type: "doughnut",
     data: { labels: G.map((x) => x.g), datasets: [{ data: G.map((x) => x.total * 100), backgroundColor: G.map((x) => CORES_GRUPO[x.g]), borderColor: escuro() ? "#151b41" : "#fff", borderWidth: 2 }] },
@@ -5065,7 +5098,7 @@ function renderModelos() {
         <td class="gr-acoes"><button class="sec mini-btn" data-rkm-ed="${id}" type="button">Editar</button>
           <button class="sec mini-btn" data-rkm-dup="${id}" type="button">Duplicar</button>
           ${editado ? `<button class="sec mini-btn" data-rkm-orig="${id}" type="button" title="Desfaz as edições deste tipo padrão">Voltar ao original</button>` : ""}
-          ${padrao ? "" : `<button class="cart-rm" data-rkm-del="${id}" type="button" title="Excluir tipo de cálculo">🗑</button>`}</td></tr>`; }).join("")}</tbody></table></div>`;
+          ${padrao ? "" : `<button class="cart-rm" data-rkm-del="${id}" type="button" title="Excluir tipo de cálculo">${ico("lixo")}</button>`}</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 function abrirEditorModelo(id = null, duplicar = false) {
   const M = id ? modeloDe(id) : null;
@@ -5101,7 +5134,7 @@ function somaModelo() {
 }
 async function salvarModelo() {
   const nome = $("#rkmNome").value.trim(), { ok, n } = somaModelo();
-  const aviso = (t) => perguntar("Não deu para salvar", t, [{ rot: "OK", v: 1, classe: "prim" }]);
+  const aviso = (t) => perguntar("Não foi possível salvar o tipo de cálculo", t, [{ rot: "OK", v: 1, classe: "prim" }]);
   if (!nome) { $("#rkmNome").focus(); return; }
   if (!n) return aviso("Ligue pelo menos uma métrica.");
   if (!(somaModelo().total > 0)) return aviso("Coloque peso maior que zero em pelo menos uma métrica.");
@@ -5133,7 +5166,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.rkmDel) {
     const id = t.dataset.rkmDel, usos = usosModelo()[id] || [];
     if (usos.length) return perguntar("Tipo em uso", `Este tipo é usado nos rankings <b>${usos.map(esc).join(", ")}</b>. Troque o tipo de cálculo deles antes de excluir.`, [{ rot: "OK", v: 1, classe: "prim" }]);
-    if (!(await perguntar("Excluir o tipo de cálculo?", `Excluir <b>${esc(modeloDe(id).nome)}</b>?`, [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "prim" }]))) return;
+    if (!(await perguntar("Excluir o tipo de cálculo?", `Excluir <b>${esc(modeloDe(id).nome)}</b>?`, [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
     const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2); return renderModelos();
   }
 });
@@ -5160,7 +5193,7 @@ function exportarRankings() {
   a.download = `rankings_de_fundos_${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 async function importarRankings(arquivo) {
-  let dados; try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler este arquivo.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  let dados; try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar rankings.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
   // tipos de cálculo do arquivo: entram com o mesmo id; se já existir um diferente com esse id, entram com id novo
   const salvos = modelosSalvos(), troca = {};
   for (const [id, M] of Object.entries(dados?.modelos || {})) {
@@ -5175,20 +5208,21 @@ async function importarRankings(arquivo) {
   let sob = true;
   if (rep.length) { const r = await perguntar("Rankings com o mesmo nome", `Já existem: <b>${rep.map(esc).join(", ")}</b>.`,
     [{ rot: "Cancelar", v: null }, { rot: "Manter os meus", v: false }, { rot: "Substituir pelos do arquivo", v: true, classe: "prim" }]); if (r == null) return; sob = r; }
-  for (const [n, x] of novos) if (!g[n] || sob) g[n] = { modelo: x.modelo, comparar: x.comparar || "1m", cnpjs: x.cnpjs.map((c) => String(c).replace(/\D/g, "").padStart(14, "0")), atualizado: x.atualizado || new Date().toISOString() };
+  for (const [n, x] of novos) if (!g[n] || sob) g[n] = { modelo: x.modelo, comparar: x.comparar || "1m", cnpjs: x.cnpjs.map(normCnpj), atualizado: x.atualizado || new Date().toISOString() };
   gravarRankings(g); renderRkLista();
 }
 
 // ---------- eventos
 document.addEventListener("click", async (e) => {
   const t = e.target;
-  if (t.id === "abrirRank") return abrirRank();
+  if (t.id === "abrirRank" || t.closest?.("[data-abrir-rank]")) return abrirRank();
+  if (t.id === "rkPainelFechar") return fecharRank();
   if (t.id === "rkNovo") return abrirEditorRk();
   if (t.dataset?.rkEd) return abrirEditorRk(t.dataset.rkEd);
   if (t.dataset?.rkDel) {
     const n = t.dataset.rkDel, g = lerRankings(), x = g[n]; if (!x) return;
     if (!(await perguntar("Excluir o ranking?", `Excluir o ranking <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "prim" }]))) return;
+      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) { avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return; } rkSel.delete(n); return renderRkLista(); }
     delete g[n]; gravarRankings(g); rkSel.delete(n); return renderRkLista();
   }
@@ -5323,8 +5357,9 @@ function aplicarMinimizados() {
 function desenharTravar() {
   $(".barra").classList.toggle("solta", st.travar);
   const b = $("#btnTravar");
-  b.textContent = st.travar ? "Acompanhar rolagem" : "Travar no topo";
-  b.title = st.travar ? "A barra fica só no topo da página. Clique para ela acompanhar a rolagem." : "A barra acompanha a rolagem. Clique para deixá-la só no topo.";
+  b.textContent = "Barra fixa";                                    // interruptor: ligado = a barra acompanha a rolagem
+  b.setAttribute("aria-pressed", String(!st.travar));
+  b.title = st.travar ? "Desligada: a barra fica só no topo da página. Clique para ela acompanhar a rolagem." : "Ligada: a barra acompanha a rolagem. Clique para deixá-la só no topo.";
 }
 
 // ---------- minigráfico ao passar o mouse sobre um fundo: cota dos últimos 12 meses (dados já carregados)
@@ -5443,17 +5478,43 @@ document.addEventListener("input", (e) => {
     clearTimeout(tDest);
     tDest = setTimeout(() => {
       st.destaque = t.value; for (const id of ["destaque", "rkDestaque"]) if ($("#" + id) !== t) $("#" + id).value = t.value;
-      if (st.res) renderResultado(); if (st.rk) { renderRankings(); avisoDestaqueRk(); }
+      if (st.res) renderResultado({ semCarteira: st.pagina !== "carteira" }); if (st.rk) { renderRankings(); avisoDestaqueRk(); }
     }, 200);
   }
   else if (t.id === "zIni" || t.id === "zFim") aoMoverSlider(e);
 });
 addEventListener("scroll", () => { $("#btnTopo").hidden = scrollY < 400; }, { passive: true });
 $("#guardar").checked = (() => { try { return JSON.parse(localStorage.getItem("fundos.guardar") ?? "true"); } catch { return true; } })();
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {      // troca de tema: recria os gráficos com as cores novas
+function trocouTema() {                                                  // recria os gráficos com as cores novas (análise, carteira e rankings)
+  _corTexto = null;
   Object.values(st.graficos).forEach((g) => g?.destroy()); st.graficos = {};
   desenharChipsIndices(); renderResultado();
+  if (!st.res) renderCarteira();                                        // sem análise calculada, a carteira não passa pelo renderResultado
+  if (st.rk?.lista.length) renderRankings();
+}
+function definirTema(t) {
+  document.documentElement.dataset.theme = t;
+  $("#btnTema").setAttribute("aria-label", t === "dark" ? "Usar o tema claro" : "Usar o tema escuro");
+  $("#btnTema").title = $("#btnTema").getAttribute("aria-label");
+  trocouTema();
+}
+$("#btnTema").addEventListener("click", () => { const t = escuro() ? "light" : "dark"; salvar("tema", t); definirTema(t); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => { if (!pref("tema", null)) definirTema(e.matches ? "dark" : "light"); });
+$("#btnTema").setAttribute("aria-label", escuro() ? "Usar o tema claro" : "Usar o tema escuro"); $("#btnTema").title = $("#btnTema").getAttribute("aria-label");
+$("#btnConfig").addEventListener("click", () => $("#dlgConfig").showModal());
+
+// celular: a lateral vira gaveta; fecha ao calcular, ao trocar de aba, no véu ou com Esc
+function gaveta(abrir) {
+  $("#app").classList.toggle("gaveta-aberta", abrir); $("#veu").hidden = !abrir;
+  $("#btnMenu").setAttribute("aria-expanded", String(abrir));
+  if (abrir) $("#lateral [role=tab][aria-selected=true]")?.focus(); else if ($("#lateral").contains(document.activeElement)) $("#btnMenu").focus();
+}
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.closest?.("#btnMenu, [data-abrir-gaveta]")) gaveta(!$("#app").classList.contains("gaveta-aberta"));
+  else if (t.id === "veu" || t.closest?.("#calcular, .lat-topo [role=tab]")) { if ($("#app").classList.contains("gaveta-aberta")) gaveta(false); }
 });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#app").classList.contains("gaveta-aberta")) gaveta(false); });
 
 aplicarMinimizados();
 desenharTravar();
@@ -5498,7 +5559,7 @@ document.addEventListener("click", (e) => {
   const bm = t.closest?.("#dlgTabela [data-fmulti]");
   if (bm) { const k = bm.dataset.fmulti, longa = (dlg.opcoes[k] || []).length > 10;
     abrirPopLista(bm, `<b>${esc(colsFundo().find((c) => c.k === k)?.nome || "")}</b>${longa ? `<input type="search" id="dlgPopBusca" placeholder="procurar…" aria-label="Procurar opção" autocomplete="off">` : ""}
-      <div class="pc-lista" id="dlgPopLista">${listaMulti(k)}</div>
+      <div class="pop-lista" id="dlgPopLista">${listaMulti(k)}</div>
       <div class="pf-bts"><button type="button" class="sec mini-btn" id="dlgPopTodas">Todas</button><button type="button" class="prim mini-btn" id="dlgPopFechar">Fechar</button></div>`, k); return; }
   const bd = t.closest?.("#dlgTabela [data-fdata]");
   if (bd) { const k = bd.dataset.fdata, v = dlg.f[k] || {};

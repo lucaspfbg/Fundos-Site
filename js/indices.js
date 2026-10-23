@@ -15,7 +15,7 @@ export const INDICES = {
   SP500BRL: { nome: "S&P 500 (R$)", tipo: "preco", cor: ["#1596d3", "#4fd1ff"] },
 };
 export const ORDEM_INDICES = Object.keys(INDICES);
-const escuro = () => matchMedia("(prefers-color-scheme: dark)").matches;
+const escuro = () => document.documentElement.dataset.theme === "dark";     // tema da página (botão do topo ou o do sistema)
 export const corIndice = (k) => (INDICES[k]?.cor[escuro() ? 1 : 0]) || "#888";
 export const nomeIndice = (k) => INDICES[k]?.nome || k;
 export const chaveIndice = (nome) => ORDEM_INDICES.find((k) => INDICES[k].nome === nome) || null;

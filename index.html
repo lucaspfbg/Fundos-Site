@@ -2,62 +2,98 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2b2c78" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0c1030" media="(prefers-color-scheme: dark)">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2b2c78">
 <title>Análise de Fundos</title>
+<script>
+  // tema antes de desenhar (sem piscar): escolha guardada ou o do sistema
+  (() => { let t = null; try { t = JSON.parse(localStorage.getItem("fundos.tema")); } catch {}
+    document.documentElement.dataset.theme = t === "dark" || t === "light" ? t : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://huggingface.co" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/estilo.css">
+<link rel="modulepreload" href="js/dados.js">
+<link rel="modulepreload" href="js/calculos.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/hyparquet@1.31.2/+esm" crossorigin>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/hyparquet-compressors@1.1.2/+esm" crossorigin>
 </head>
 <body>
+<!-- ícones (traço no estilo Lucide): <svg class="ico"><use href="#i-nome"/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-grafico" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+  <symbol id="i-trofeu" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+  <symbol id="i-banco" viewBox="0 0 24 24"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M12 2 20 7H4z"/></symbol>
+  <symbol id="i-pizza" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+  <symbol id="i-lista" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+  <symbol id="i-colar" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
+  <symbol id="i-estrela" viewBox="0 0 24 24"><path d="M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26z"/></symbol>
+  <symbol id="i-config" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-cadeado" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-subir" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-lua" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-atualizar" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-cima" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></symbol>
+  <symbol id="i-nuvem" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+  <symbol id="i-pessoas" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
+  <symbol id="i-colunas" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></symbol>
+</svg>
 <a class="pular" href="#principal">Pular para o conteúdo</a>
 <div id="app" class="carregando">
   <div class="corpo">
     <!-- ======================= barra lateral ======================= -->
-    <aside class="lateral">
+    <aside class="lateral" id="lateral">
       <div class="lat-topo">
         <div class="marca"><span class="marca-nome">Análise de Fundos</span><span class="marca-sub">Dados públicos da CVM</span></div>
         <nav class="abas" role="tablist" aria-label="Ferramentas" aria-orientation="vertical">
-          <button id="abaAnalise" role="tab" type="button" data-aba="analise" aria-controls="pgAnalise" aria-selected="true">📊 Análise de fundos</button>
-          <button id="abaRankings" role="tab" type="button" data-aba="rankings" aria-controls="pgRankings" aria-selected="false" tabindex="-1">🏆 Rankings</button>
-          <button id="abaXP" role="tab" type="button" data-aba="xp" aria-controls="pgXP" aria-selected="false" tabindex="-1" hidden>🏦 Fundos XP</button>
-          <button id="abaCarteira" role="tab" type="button" data-aba="carteira" aria-controls="pgCarteira" aria-selected="false" tabindex="-1">🧮 Montagem de carteira</button>
+          <button id="abaAnalise" role="tab" type="button" data-aba="analise" aria-controls="pgAnalise" aria-selected="true"><svg class="ico" aria-hidden="true"><use href="#i-grafico"/></svg>Análise de fundos</button>
+          <button id="abaRankings" role="tab" type="button" data-aba="rankings" aria-controls="pgRankings" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Rankings</button>
+          <button id="abaXP" role="tab" type="button" data-aba="xp" aria-controls="pgXP" aria-selected="false" tabindex="-1" hidden><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Fundos XP</button>
+          <button id="abaCarteira" role="tab" type="button" data-aba="carteira" aria-controls="pgCarteira" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-pizza"/></svg>Carteira</button>
         </nav>
       </div>
       <div class="lat-meio">
       <section class="bloco" data-pg="analise xp">
-        <h2 class="h-lat">Adicionar fundos</h2>
-        <input id="busca" type="search" placeholder="Nome, gestor ou CNPJ (mín. 3 letras)…" aria-label="Buscar fundo por nome, gestor ou CNPJ" autocomplete="off" spellcheck="false">
+        <h2 class="h-lat"><span class="passo" aria-hidden="true">1</span>Fundos</h2>
+        <input id="busca" type="search" placeholder="Nome, gestor ou CNPJ" aria-label="Buscar fundo por nome, gestor ou CNPJ (mínimo de 3 letras)" autocomplete="off" spellcheck="false">
         <div id="resBusca" class="resbusca"></div>
         <div class="botoes-add">
-          <button id="abrirSeletor" class="sec" type="button" title="Tabela com todos os fundos: filtre, ordene e clique nas linhas para escolher">☰ Lista de fundos…</button>
-          <button id="abrirColar" class="sec" type="button" title="Cole uma lista de CNPJs para importar">📋 Colar CNPJs…</button>
-          <button id="abrirGrupos" class="sec" type="button" title="Carregar ou salvar grupos de fundos">★ Grupos…</button>
+          <button id="abrirSeletor" class="sec" type="button" title="Tabela com todos os fundos: filtre, ordene e clique nas linhas para escolher"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Escolher na lista…</button>
+          <button id="abrirColar" class="sec" type="button" title="Cole uma lista de CNPJs"><svg class="ico" aria-hidden="true"><use href="#i-colar"/></svg>Colar CNPJs…</button>
+          <button id="abrirGrupos" class="sec" type="button" title="Carregar ou salvar grupos de fundos"><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Grupos…</button>
         </div>
-      </section>
-
-      <section class="bloco" data-pg="analise xp">
-        <h2 class="h-lat"><span>Selecionados (<span id="nSel">0</span>)</span><span class="sel-acoes">
-          <button id="selMostrar" class="link" type="button" aria-expanded="false" aria-controls="selecionados" hidden>Mostrar</button>
-          <button id="limpar" class="link" hidden>limpar</button></span></h2>
+        <div class="sel-cab"><b>Selecionados (<span id="nSel">0</span>)</b><span class="sel-acoes">
+          <button id="selMostrar" class="link" type="button" aria-expanded="true" aria-controls="selecionados" hidden>Ocultar</button>
+          <button id="limpar" class="link" type="button" hidden>Limpar</button></span></div>
         <div id="avisoSel" class="nota"></div>
         <div id="selecionados" class="chips" hidden></div>
       </section>
 
       <section class="bloco" data-pg="rankings">
         <h2 class="h-lat">Rankings</h2>
-        <button id="abrirRank" class="sec botao-largo" type="button" title="Montar, escolher e calcular rankings de fundos">🏆 Rankings…</button>
+        <button id="abrirRank" class="sec botao-largo" type="button" title="Montar, escolher e calcular rankings de fundos"><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button>
         <p id="rkResumoLat" class="nota"></p>
       </section>
 
       <section class="bloco" data-pg="analise xp">
-        <h2 class="h-lat">Períodos</h2>
+        <h2 class="h-lat"><span class="passo" aria-hidden="true">2</span>Período</h2>
         <div id="periodos" class="pilulas">
-          <button data-p="Mês">Mês</button><button data-p="Ano">Ano</button><button data-p="3 Meses">3 Meses</button>
-          <button data-p="12 Meses">12 Meses</button><button data-p="24 Meses">24 Meses</button><button data-p="36 Meses">36 Meses</button>
-          <button data-p="Vida Toda">Vida Toda</button><button data-p="Personalizado">Personalizado</button>
+          <button data-p="Mês">Mês</button><button data-p="Ano">Ano</button><button data-p="3 Meses">3 meses</button>
+          <button data-p="12 Meses">12 meses</button><button data-p="24 Meses">24 meses</button><button data-p="36 Meses">36 meses</button>
+          <button data-p="Vida Toda">Desde o início</button><button data-p="Personalizado">Personalizado</button>
         </div>
         <label id="campoMes" class="campo" hidden>Mês de referência <input id="refMes" type="month"></label>
         <label id="campoAno" class="campo" hidden>Ano de referência <input id="refAno" type="number" min="2005" max="2100" step="1"></label>
@@ -68,38 +104,26 @@
       </section>
 
       <section class="bloco" data-pg="analise xp">
-        <h2 class="h-lat">Índices de comparação</h2>
+        <h2 class="h-lat"><span class="passo" aria-hidden="true">3</span>Comparar com</h2>
         <div id="idxChips" class="pilulas"></div>
-      </section>
-
-      <section class="bloco">
-        <h2 class="h-lat">Opções</h2>
-        <label class="campo">Peso total da carteira (%) <input id="peso" type="number" value="100" min="0" step="1"></label>
-        <label class="tog" title="Var. Diária Ponderada: o peso de cada dia é a posição da data no período inteiro analisado. Fundos que começaram no meio do período (ou pararam antes) somam menos peso. Em Vida Toda não muda nada."><input id="pesoPeriodo" type="checkbox"> Var. ponderada pela posição no período</label>
-        <p id="pesoPeriodoAviso" class="nota" hidden>Clique em Calcular (e recalcule rankings e carteira) para aplicar.</p>
-        <label class="tog"><input id="guardar" type="checkbox" checked> Guardar dados neste computador</label>
-        <p class="nota">Deixa as próximas consultas mais rápidas.<span id="espaco" hidden></span></p>
-        <div class="backup">
-          <button id="bkSalvar" class="sec" type="button" title="Grupos, rankings, tipos de cálculo, carteira e preferências num arquivo">⬇ Salvar backup</button>
-          <label class="sec botao-arquivo" title="Restaura um backup salvo antes (substitui as configurações deste navegador)">⬆ Restaurar<input id="bkRestaurar" type="file" accept=".json,application/json" hidden></label>
-        </div>
-        <p class="nota">Para levar tudo para outro computador, navegador ou endereço do site.</p>
       </section>
 
       <div id="log" class="nota"></div>
       </div>
       <div class="lat-pe" data-pg="analise xp">
-        <button id="calcular" class="prim" disabled>Calcular</button>
+        <button id="calcular" class="prim" type="button" disabled>Calcular</button>
         <div id="progresso" class="progresso" hidden><div></div></div>
         <div id="progTxt" class="nota"></div>
-        <div id="avisoMudou" class="aviso" hidden>Você mudou a seleção — clique em Calcular para atualizar.</div>
-              <button id="limparTela" class="sec mini-btn" type="button" title="Tira os resultados da tela e volta ao início (a seleção de fundos continua)" disabled>Limpar tela</button>
+        <div id="avisoMudou" class="aviso" hidden>A seleção mudou. Clique em Calcular para atualizar.</div>
+        <button id="limparTela" class="sec mini-btn" type="button" title="Tira os resultados da tela e volta ao início (a seleção de fundos continua)" disabled>Limpar resultados</button>
       </div>
     </aside>
+    <div class="veu" id="veu" hidden></div>
 
     <!-- ======================= resultado ======================= -->
     <div class="coluna">
     <header class="topo">
+      <button id="btnMenu" class="tema-btn menu-btn" type="button" aria-controls="lateral" aria-expanded="false" aria-label="Abrir fundos, períodos e abas"><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></button>
       <div class="topo-tit">
         <span class="topo-sup">Análise de Fundos · CVM</span>
         <h1 id="tituloPagina">Análise de fundos</h1>
@@ -107,13 +131,17 @@
       </div>
     <div class="topo-dir">
       <div id="equipeBox" class="equipe-box" hidden>
-        <button id="equipeEntrar" class="equipe-btn" type="button" title="Entrar com o e-mail da equipe para ver as informações confidenciais">🔒 Área da equipe</button>
+        <button id="equipeEntrar" class="equipe-btn" type="button" title="Entrar com o e-mail da equipe para ver as informações confidenciais"><svg class="ico" aria-hidden="true"><use href="#i-cadeado"/></svg>Área da equipe</button>
         <span id="equipeLogado" class="equipe-logado" hidden><span id="equipeNome"></span><small id="equipeInfo"></small>
-          <button id="equipeBaixar" class="link-claro" type="button" title="Baixar os dados da XP em Excel">⬇ Planilha XP</button>
+          <button id="equipeBaixar" class="link-claro" type="button" title="Baixar os dados da XP em Excel">Planilha XP</button>
           <button id="equipeSair" class="link-claro" type="button">Sair</button></span>
       </div>
       <button id="abrirFontes" class="link-claro" type="button">Fontes e metodologia</button>
       <div id="status" class="hora" aria-live="polite">carregando…</div>
+      <div class="topo-botoes">
+        <button id="btnConfig" class="tema-btn" type="button" aria-label="Configurações" title="Configurações"><svg class="ico" aria-hidden="true"><use href="#i-config"/></svg></button>
+        <button id="btnTema" class="tema-btn" type="button" aria-label="Trocar o tema"><svg class="ico lua" aria-hidden="true"><use href="#i-lua"/></svg><svg class="ico sol" aria-hidden="true"><use href="#i-sol"/></svg></button>
+      </div>
     </div>
     </header>
     <main class="principal" id="principal" tabindex="-1">
@@ -128,13 +156,14 @@
         </div>
         <input id="destaque" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nos gráficos e tabelas" autocomplete="off" spellcheck="false">
         <button id="btnTravar" class="sec mini-btn" type="button"></button>
-        <button id="btnEnviarCart" class="sec mini-btn" type="button" title="Escolher fundos desta análise e mandar para a montagem de carteira">🧮 Enviar à montagem de carteira</button>
-        <button id="btnRel" class="prim mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel">⬇ Baixar relatório</button>
+        <button id="btnEnviarCart" class="sec mini-btn" type="button" title="Escolher fundos desta análise e mandar para a carteira"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para a carteira…</button>
+        <button id="btnRel" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
       </div>
 
       <div id="semDados"></div>
       <div id="vazio" class="vazio">
-        <p>Escolha os fundos e os períodos ao lado e clique em <b>Calcular</b>.</p>
+        <p>Escolha os fundos e o período e clique em <b>Calcular</b>.</p>
+        <button class="prim vazio-acao" type="button" data-abrir-gaveta><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg>Escolher fundos</button>
       </div>
 
       <div id="resultado" hidden>
@@ -202,14 +231,13 @@
       <section id="secJM" class="cartao" data-sec="jm" hidden>
         <div class="cab"><h2>Janela móvel</h2>
           <button class="btn-min" type="button" data-min="jm" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
-        <p class="nota">Simula aplicações de prazo fixo começando em cada dia: quanto o fundo rendeu ao ano ficando o prazo inteiro investido,
-          comparado ao benchmark no mesmo prazo. Ajuste abaixo e clique em Atualizar (não precisa baixar nada de novo).</p>
+        <p class="nota">Retorno anualizado de aplicações de N meses iniciadas em cada dia, comparado à referência. Ajuste e clique em Atualizar.</p>
         <div class="jm-ctl opcoes">
           <label>Benchmark (índice ou fundo) <div id="cbJmBench" class="combo"></div></label>
           <label>Duração (meses) <input id="jmMeses" type="number" min="1" max="240" step="1" value="12"></label>
           <label>Primeira aplicação a partir de <input id="jmIni" type="date"></label>
           <label>Fim da análise <input id="jmFim" type="date"></label>
-          <button id="jmAtualizar" class="prim" type="button">↻ Atualizar</button>
+          <button id="jmAtualizar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-atualizar"/></svg>Atualizar</button>
         </div>
         <div id="jmInfo" class="jm-info"></div>
         <div id="jmCorpo">
@@ -219,7 +247,7 @@
           </div>
           <h3 class="sub">Resumo das janelas</h3>
           <div id="tabJM"></div>
-          <p><button id="jmBaixar" class="sec" type="button">⬇ Baixar lista completa (CSV, abre no Excel)</button></p>
+          <p><button id="jmBaixar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar lista completa (CSV, abre no Excel)</button></p>
         </div>
       </section>
 
@@ -229,17 +257,17 @@
       <div id="pgXP" class="pagina" role="tabpanel" aria-labelledby="abaXP" data-pagina="xp" hidden>
         <section id="secXPGeral" class="cartao">
           <div class="cab"><h2>Visão geral dos fundos da XP</h2></div>
-          <p class="nota">Dados da planilha da XP (confidencial). Clique nas barras para filtrar — dá para marcar várias: no mesmo quadro elas se somam, entre quadros valem juntas. Depois confirme em <b>Calcular</b>.</p>
+          <p class="nota">Dados da planilha da XP (confidencial). Clique nas barras para filtrar. No mesmo quadro, os filtros se somam; entre quadros, todos precisam valer. Depois clique em <b>Calcular</b>.</p>
           <div id="xpGeral"></div>
         </section>
         <section class="cartao xp-calc">
           <div class="cab"><h2>Calcular</h2></div>
           <p class="nota">Escolha os fundos como na Análise de fundos, ou calcule todos os fundos da XP de uma vez. Os resultados aparecem abaixo e também na página Análise de fundos.</p>
           <div class="xp-acoes">
-            <button class="sec" type="button" data-acao-sel="abrirSeletor">☰ Lista de fundos…</button>
-            <button class="sec" type="button" data-acao-sel="abrirColar">📋 Colar CNPJs…</button>
-            <button class="sec" type="button" data-acao-sel="abrirGrupos">★ Grupos…</button>
-            <button id="xpCalcTodos" class="prim" type="button">🧮 Calcular todos os fundos da XP</button>
+            <button class="sec" type="button" data-acao-sel="abrirSeletor"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Escolher na lista…</button>
+            <button class="sec" type="button" data-acao-sel="abrirColar"><svg class="ico" aria-hidden="true"><use href="#i-colar"/></svg>Colar CNPJs…</button>
+            <button class="sec" type="button" data-acao-sel="abrirGrupos"><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Grupos…</button>
+            <button id="xpCalcTodos" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-calc"/></svg>Calcular todos os fundos da XP</button>
             <span id="xpSelInfo" class="nota"></span>
           </div>
         </section>
@@ -263,15 +291,77 @@
       </div>
 
       <div id="pgRankings" class="pagina" role="tabpanel" aria-labelledby="abaRankings" data-pagina="rankings" hidden>
-        <div id="rkVazio" class="vazio"><p>Monte os rankings e clique em calcular em <b>🏆 Rankings…</b>, na barra ao lado.</p></div>
+        <section id="dlgRank" class="cartao rk-painel" aria-labelledby="rkTit" hidden>
+        <div class="cab"><h2 id="rkTit">Montar rankings</h2><button id="rkPainelFechar" class="sec mini-btn" type="button">Fechar</button></div>
+        <div id="rkListaBox">
+          <p class="nota">Cada ranking é uma lista de fundos com um tipo de cálculo (os pesos das métricas). Marque os que quer calcular e clique em Calcular rankings.
+            Os rankings ficam guardados neste navegador.</p>
+          <div class="cart-acoes"><button id="rkNovo" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-mais"/></svg>Novo ranking</button>
+            <button id="rkTipos" class="sec" type="button" title="Criar ou editar os tipos de cálculo: métricas, pesos, período e janela móvel"><svg class="ico" aria-hidden="true"><use href="#i-config"/></svg>Tipos de cálculo…</button>
+            <button id="rkExportar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Exportar rankings</button>
+            <label class="sec botao-arquivo"><svg class="ico" aria-hidden="true"><use href="#i-subir"/></svg>Importar arquivo<input id="rkImportar" type="file" accept=".json,application/json" hidden></label>
+            <span class="nota"><button id="rkMarcarTodos" class="link" type="button">Marcar todos</button> · <button id="rkDesmarcar" class="link" type="button">Desmarcar</button></span></div>
+          <div class="opcoes rk-comp"><label>Comparar posições com <select class="rk-comp-sel" aria-label="Data de comparação das posições"></select></label>
+            <button class="sec mini-btn rk-comp-padrao" type="button" title="Guarda esta escolha como padrão neste navegador"><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Tornar padrão</button>
+            <span class="nota rk-comp-info"></span></div>
+          <div id="rkLista"></div>
+          <div class="dlg-pe"><span class="nota" id="rkResumo"></span>
+            <div class="botoes"><button id="rkCalcular" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Calcular rankings</button></div></div>
+        </div>
+        <div id="rkModelosBox" hidden>
+          <p class="nota">O tipo de cálculo define o período das métricas, a janela móvel e quais métricas entram, com que peso e em que grupo.
+            Os quatro tipos padrão podem ser editados (e voltar ao original); você também pode criar tipos novos. Ficam guardados neste navegador e vão junto ao exportar os rankings.</p>
+          <div class="cart-acoes"><button id="rkModVoltar" class="sec" type="button">← Voltar aos rankings</button>
+            <button id="rkModNovo" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-mais"/></svg>Novo tipo de cálculo</button></div>
+          <div id="rkModLista"></div>
+        </div>
+        <div id="rkModEd" hidden>
+          <div class="gr-salvar opcoes rkm-topo">
+            <label><span>Nome do tipo de cálculo</span><input id="rkmNome" type="text" maxlength="40" placeholder="Ex.: Multimercado agressivo"></label>
+            <label><span>Período das métricas (meses)</span><span class="rkm-meses"><input id="rkmPeriodo" type="number" min="1" max="360" step="1" list="rkmPeriodoSug" inputmode="numeric"
+              aria-describedby="rkmPeriodoEq"><small id="rkmPeriodoEq" class="nota"></small></span>
+              <datalist id="rkmPeriodoSug"><option value="3"><option value="6"><option value="12"><option value="18"><option value="24"><option value="36"><option value="48"><option value="60"></datalist></label>
+            <label><span>Janela móvel (meses)</span><input id="rkmJm" type="number" min="1" max="120" step="1"></label>
+            <label><span>Benchmark da janela móvel</span><select id="rkmBench"></select></label>
+          </div>
+          <label class="tog rkm-prop-op"><input id="rkmJmProp" type="checkbox"> <span><b>Ajustar a consistência pelo número de janelas</b><br>
+            <small class="nota">Fundos mais novos, com menos janelas, ganham menos pontos nas métricas de consistência da janela móvel.
+            Pontos = peso × consistência × (janelas do fundo ÷ janelas do fundo com mais janelas); ex.: 30 de 100 janelas com 100% = 0,3 do peso.</small></span></label>
+          <div id="rkmSoma" class="rkm-soma"></div>
+          <div id="rkmMetricas" class="dlg-tab"></div>
+          <div class="dlg-pe"><span class="nota">Ligue as métricas que entram, escolha o grupo, o peso e se é melhor ter valor maior ou menor. Os pesos precisam somar 100.</span>
+            <div class="botoes"><button id="rkmCancelar" class="sec" type="button">Cancelar</button><button id="rkmSalvar" class="prim" type="button">Salvar tipo de cálculo</button></div></div>
+        </div>
+        <div id="rkEditor" hidden>
+          <div class="gr-salvar opcoes">
+            <label><span>Nome do ranking</span><input id="rkNome" type="text" maxlength="60" placeholder="Ex.: Crédito High Grade"></label>
+            <label><span>Tipo de cálculo (pesos)</span><select id="rkModelo"></select></label>
+          </div>
+          <p id="rkModeloInfo" class="nota"></p>
+          <div class="botoes-add">
+            <button id="rkEdLista" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Escolher na lista…</button>
+            <button id="rkEdColar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-colar"/></svg>Colar CNPJs…</button>
+            <select id="rkEdGrupo" aria-label="Carregar de um grupo"></select>
+            <button id="rkEdSel" class="sec" type="button" title="Junta os fundos que estão em &quot;Selecionados&quot; na barra lateral (a análise principal)"><svg class="ico" aria-hidden="true"><use href="#i-mais"/></svg>Fundos selecionados na lateral</button>
+            <button id="rkEdLimpar" class="sec" type="button">Limpar</button>
+          </div>
+          <p id="rkEdInfo" class="nota"></p>
+          <div id="rkEdFundos" class="dlg-tab"></div>
+          <div class="dlg-pe"><span></span><div class="botoes"><button id="rkEdCancelar" class="sec" type="button">Cancelar</button>
+            <label id="rkEdCompBox" class="tog" hidden title="Os colegas logados também veem este ranking (só você altera ou apaga)"><input id="rkEdComp" type="checkbox" checked> Compartilhar com a equipe</label>
+            <button id="rkEdSalvar" class="prim" type="button">Salvar ranking</button></div></div>
+        </div>
+      </section>
+        <div id="rkVazio" class="vazio"><p>Nenhum ranking calculado ainda.</p>
+          <button class="prim" type="button" data-abrir-rank><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button></div>
       <section id="secRank" class="cartao" data-sec="rank" hidden>
         <div class="cab rk-fixa"><h2>Rankings</h2>
           <div class="opcoes"><span id="rkPills" class="pilulas mini"></span></div>
           <div class="opcoes"><label class="ordem">Comparar com <select class="rk-comp-sel" aria-label="Data de comparação das posições"></select></label></div>
           <input id="rkDestaque" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nas tabelas e gráficos do ranking" autocomplete="off" spellcheck="false">
           <button class="rk-alterna sec mini-btn" type="button" title="Vale para todas as tabelas e gráficos dos rankings"></button>
-          <button id="btnEnviarCartRk" class="sec mini-btn" type="button" title="Escolher fundos deste ranking e mandar para a montagem de carteira">🧮 Enviar à carteira</button>
-          <button id="btnRelRk" class="prim mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel">⬇ Baixar relatório</button>
+          <button id="btnEnviarCartRk" class="sec mini-btn" type="button" title="Escolher fundos deste ranking e mandar para a carteira"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para a carteira…</button>
+          <button id="btnRelRk" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
           <button class="btn-min" type="button" data-min="rank" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
         <p id="rkInfo" class="nota"></p>
         <div id="rkTabela"></div>
@@ -295,8 +385,8 @@
 
       <div id="pgCarteira" class="pagina" role="tabpanel" aria-labelledby="abaCarteira" data-pagina="carteira" hidden>
       <section id="secCart" class="cartao" data-sec="cart" hidden>
-        <div class="cab"><h2>Montagem de carteira</h2>
-          <button id="btnRelCart" class="prim mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel">⬇ Baixar relatório</button>
+        <div class="cab"><h2>Carteira</h2>
+          <button id="btnRelCart" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
           <button class="btn-min" type="button" data-min="cart" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
         <p class="nota">Dê um peso a cada fundo (ou índice) e veja o desempenho da carteira, com rebalanceamento e a contribuição de cada ativo.
           Pode adicionar qualquer fundo da base: os que ainda não foram baixados são buscados ao clicar em <b>Calcular carteira</b>. A carteira fica guardada neste navegador.</p>
@@ -311,9 +401,9 @@
           <label>Valor inicial (R$) <input id="cartValor" type="number" min="0" step="1000"></label>
         </div>
         <div class="cart-acoes">
-          <button id="cartCalcular" class="prim" type="button" title="Busca as cotas dos fundos que faltam e calcula a carteira">🧮 Calcular carteira</button>
-          <button id="cartLista" class="sec" type="button" title="Escolher os fundos da carteira pela lista completa, com filtros">☰ Lista de fundos…</button>
-          <button id="cartSalvas" class="sec" type="button" title="Salvar esta carteira com um nome ou carregar uma salva">★ Carteiras salvas…</button>
+          <button id="cartCalcular" class="prim" type="button" title="Busca as cotas dos fundos que faltam e calcula a carteira"><svg class="ico" aria-hidden="true"><use href="#i-calc"/></svg>Calcular carteira</button>
+          <button id="cartLista" class="sec" type="button" title="Escolher os fundos da carteira pela lista completa, com filtros"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Escolher na lista…</button>
+          <button id="cartSalvas" class="sec" type="button" title="Salvar esta carteira com um nome ou carregar uma salva"><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Carteiras salvas…</button>
           <button id="cartIguais" class="sec" type="button">Pesos iguais</button>
           <button id="cartNormalizar" class="sec" type="button">Ajustar para somar 100%</button>
           <button id="cartTodos" class="sec" type="button">Adicionar todos os fundos calculados</button>
@@ -367,7 +457,7 @@
             <label>Duração (meses) <input id="cartJmMeses" type="number" min="1" max="240" step="1" value="12"></label>
             <label>Primeira aplicação a partir de <input id="cartJmIni" type="date"></label>
             <label>Fim da análise <input id="cartJmFim" type="date"></label>
-            <button id="cartJmAtualizar" class="prim" type="button">↻ Atualizar</button>
+            <button id="cartJmAtualizar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-atualizar"/></svg>Atualizar</button>
           </div>
           <div id="cartJmInfo" class="jm-info"></div>
           <div id="cartJmCorpo">
@@ -376,7 +466,7 @@
               <div id="legCartJM" class="leg"></div>
             </div>
             <div id="tabCartJM"></div>
-            <p><button id="cartJmBaixar" class="sec" type="button">⬇ Baixar lista completa (CSV, abre no Excel)</button></p>
+            <p><button id="cartJmBaixar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar lista completa (CSV, abre no Excel)</button></p>
           </div>
         </div>
       </section>
@@ -410,12 +500,12 @@
     </div>
     <div id="dlgSel" class="dlg-tab baixa"></div>
   </div>
-  <div class="dlg-pe"><span class="nota">Clique em qualquer lugar da linha para selecionar ou tirar. As mudanças valem ao clicar em Aplicar.</span>
+  <div class="dlg-pe"><span class="nota">Clique na linha para selecionar ou remover. Confirme em Aplicar seleção.</span>
     <div class="botoes"><button id="dlgCancelar" class="sec" type="button">Cancelar</button><button id="dlgAplicar" class="prim" type="button">Aplicar seleção</button></div></div>
 </dialog>
 
 <dialog id="dlgColar" class="dlg-medio" aria-labelledby="colTit">
-  <div class="dlg-cab"><h2 id="colTit">Importar CNPJs</h2></div>
+  <div class="dlg-cab"><h2 id="colTit">Colar CNPJs</h2></div>
   <div id="colPasso1">
     <p class="nota">Cole os CNPJs (um por linha, ou separados por vírgula, ponto e vírgula ou espaço). Pode ser com ou sem pontuação.</p>
     <textarea id="colTexto" rows="8" aria-label="Lista de CNPJs para importar" spellcheck="false" placeholder="11.111.111/0001-01&#10;22222222000102…"></textarea>
@@ -429,7 +519,7 @@
       <div id="colRes" class="resbusca"></div></div>
     <div class="dlg-pe"><button id="colVoltar" class="sec" type="button">← Colar outra lista</button>
       <div class="botoes"><button class="sec" type="button" data-fechar-dlg>Cancelar</button>
-        <button id="colAcrescentar" class="sec" type="button">＋ Acrescentar aos selecionados</button>
+        <button id="colAcrescentar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar aos selecionados</button>
         <button id="colSubstituir" class="prim" type="button">Substituir a seleção</button></div></div>
   </div>
 </dialog>
@@ -460,8 +550,8 @@
   <p class="nota"><label class="tog"><input id="grSoFav" type="checkbox"> Só favoritos ★</label></p>
   <div id="grLista"></div>
   <div class="dlg-pe"><span class="nota">Com login, os grupos ficam na sua conta (em qualquer computador) e podem ser compartilhados. Sem login, ficam só neste navegador; Exportar e Importar levam a outro computador.</span>
-    <div class="botoes"><button id="grExportar" class="sec" type="button">⬇ Exportar grupos</button>
-      <label class="sec botao-arquivo">⬆ Importar arquivo<input id="grImportar" type="file" accept=".json,application/json" hidden></label></div></div>
+    <div class="botoes"><button id="grExportar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Exportar grupos</button>
+      <label class="sec botao-arquivo"><svg class="ico" aria-hidden="true"><use href="#i-subir"/></svg>Importar arquivo<input id="grImportar" type="file" accept=".json,application/json" hidden></label></div></div>
 </dialog>
 
 <dialog id="dlgRel" class="dlg-medio" aria-labelledby="relTit">
@@ -470,7 +560,7 @@
     <div>
       <h3 class="sub">O que incluir</h3>
       <div id="relSecoes"></div>
-      <p><button id="relTudo" class="link" type="button">marcar tudo</button> · <button id="relNada" class="link" type="button">desmarcar tudo</button></p>
+      <p><button id="relTudo" class="link" type="button">Marcar tudo</button> · <button id="relNada" class="link" type="button">Desmarcar tudo</button></p>
     </div>
     <div class="rel-dir">
       <h3 class="sub">Formato</h3>
@@ -487,17 +577,17 @@
         se forem grandes demais para o Excel, eles vêm em CSV num .zip junto com o Excel.
         <label class="tog"><input id="relXlsImg" type="checkbox" checked> Incluir as imagens dos gráficos (aba "Gráficos")</label></div>
       <p id="relEstim" class="nota"></p>
-      <button id="relBaixar" class="prim" type="button">⬇ Baixar</button>
+      <button id="relBaixar" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar</button>
       <details id="relInterno" class="rel-interno" hidden>
-        <summary>🔒 Material interno (com dados da XP)</summary>
+        <summary><svg class="ico" aria-hidden="true"><use href="#i-cadeado"/></svg>Material interno (com dados da XP)</summary>
         <p class="rel-conf">Este material inclui os dados confidenciais da XP (classificação, captação, prazos, taxas, ROA, risco e link do Hub).
           <b class="rel-alerta">Não compartilhe fora da equipe.</b></p>
-        <button id="relBaixarInterno" class="prim" type="button">⬇ Baixar material completo</button>
+        <button id="relBaixarInterno" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar material completo</button>
       </details>
       <p id="relProg" class="nota" aria-live="polite"></p>
     </div>
     <details id="relDestBox" class="rel-dest" open>
-      <summary>★ Destacar fundos no relatório (<span id="relDestN">0</span> escolhido<span>s</span>)</summary>
+      <summary><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Destacar fundos no relatório (<span id="relDestN">0</span> escolhido<span>s</span>)</summary>
       <p class="nota">Clique nas linhas para destacar (pode escolher vários). Os destacados saem realçados nos gráficos e nas tabelas, como no site.
         Sem nenhum escolhido, o relatório sai sem destaque.</p>
       <div class="rel-dest-ctl">
@@ -511,73 +601,11 @@
   </div>
 </dialog>
 
-<dialog id="dlgRank" class="dlg-medio" aria-labelledby="rkTit">
-  <div class="dlg-cab"><h2 id="rkTit">Rankings</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
-  <div id="rkListaBox">
-    <p class="nota">Cada ranking é uma lista de fundos com um tipo de cálculo (os pesos das métricas). Marque os que quer calcular e clique em Calcular.
-      Os rankings ficam guardados neste navegador.</p>
-    <div class="cart-acoes"><button id="rkNovo" class="prim" type="button">＋ Novo ranking</button>
-      <button id="rkTipos" class="sec" type="button" title="Criar ou editar os tipos de cálculo: métricas, pesos, período e janela móvel">⚙ Tipos de cálculo…</button>
-      <button id="rkExportar" class="sec" type="button">⬇ Exportar rankings</button>
-      <label class="sec botao-arquivo">⬆ Importar arquivo<input id="rkImportar" type="file" accept=".json,application/json" hidden></label>
-      <span class="nota"><button id="rkMarcarTodos" class="link" type="button">marcar todos</button> · <button id="rkDesmarcar" class="link" type="button">desmarcar</button></span></div>
-    <div class="opcoes rk-comp"><label>Comparar posições com <select class="rk-comp-sel" aria-label="Data de comparação das posições"></select></label>
-      <button class="sec mini-btn rk-comp-padrao" type="button" title="Guarda esta escolha como padrão neste navegador">★ Tornar padrão</button>
-      <span class="nota rk-comp-info"></span></div>
-    <div id="rkLista"></div>
-    <div class="dlg-pe"><span class="nota" id="rkResumo"></span>
-      <div class="botoes"><button id="rkCalcular" class="prim" type="button">🏆 Calcular rankings</button></div></div>
-  </div>
-  <div id="rkModelosBox" hidden>
-    <p class="nota">O tipo de cálculo define o período das métricas, a janela móvel e quais métricas entram, com que peso e em que grupo.
-      Os quatro tipos padrão podem ser editados (e voltar ao original); você também pode criar tipos novos. Ficam guardados neste navegador e vão junto ao exportar os rankings.</p>
-    <div class="cart-acoes"><button id="rkModVoltar" class="sec" type="button">← Voltar aos rankings</button>
-      <button id="rkModNovo" class="prim" type="button">＋ Novo tipo de cálculo</button></div>
-    <div id="rkModLista"></div>
-  </div>
-  <div id="rkModEd" hidden>
-    <div class="gr-salvar opcoes rkm-topo">
-      <label><span>Nome do tipo de cálculo</span><input id="rkmNome" type="text" maxlength="40" placeholder="Ex.: Multimercado agressivo"></label>
-      <label><span>Período das métricas (meses)</span><span class="rkm-meses"><input id="rkmPeriodo" type="number" min="1" max="360" step="1" list="rkmPeriodoSug" inputmode="numeric"
-        aria-describedby="rkmPeriodoEq"><small id="rkmPeriodoEq" class="nota"></small></span>
-        <datalist id="rkmPeriodoSug"><option value="3"><option value="6"><option value="12"><option value="18"><option value="24"><option value="36"><option value="48"><option value="60"></datalist></label>
-      <label><span>Janela móvel (meses)</span><input id="rkmJm" type="number" min="1" max="120" step="1"></label>
-      <label><span>Benchmark da janela móvel</span><select id="rkmBench"></select></label>
-    </div>
-    <label class="tog rkm-prop-op"><input id="rkmJmProp" type="checkbox"> <span><b>Ponderar a consistência da janela móvel pela quantidade de janelas</b> — nas métricas
-      "Rentabilidade positiva" e "acima do benchmark" na janela móvel: pontos = peso × consistência × (janelas do fundo ÷ janelas do fundo com mais janelas).
-      Um fundo mais novo, com menos janelas, ganha menos pontos (ex.: 30 janelas de 100 com 100% de consistência = 0,3 do peso).</span></label>
-    <div id="rkmSoma" class="rkm-soma"></div>
-    <div id="rkmMetricas" class="dlg-tab"></div>
-    <div class="dlg-pe"><span class="nota">Ligue as métricas que entram, escolha o grupo, o peso e se é melhor ter valor maior ou menor. Os pesos precisam somar 100.</span>
-      <div class="botoes"><button id="rkmCancelar" class="sec" type="button">Cancelar</button><button id="rkmSalvar" class="prim" type="button">Salvar tipo de cálculo</button></div></div>
-  </div>
-  <div id="rkEditor" hidden>
-    <div class="gr-salvar opcoes">
-      <label><span>Nome do ranking</span><input id="rkNome" type="text" maxlength="60" placeholder="Ex.: Crédito High Grade"></label>
-      <label><span>Tipo de cálculo (pesos)</span><select id="rkModelo"></select></label>
-    </div>
-    <p id="rkModeloInfo" class="nota"></p>
-    <div class="botoes-add">
-      <button id="rkEdLista" class="sec" type="button">☰ Escolher na lista…</button>
-      <button id="rkEdColar" class="sec" type="button">📋 Colar CNPJs…</button>
-      <select id="rkEdGrupo" aria-label="Carregar de um grupo"></select>
-      <button id="rkEdSel" class="sec" type="button" title="Junta os fundos que estão em &quot;Selecionados&quot; na barra lateral (a análise principal)">＋ Selecionados da barra lateral</button>
-      <button id="rkEdLimpar" class="sec" type="button">Limpar</button>
-    </div>
-    <p id="rkEdInfo" class="nota"></p>
-    <div id="rkEdFundos" class="dlg-tab"></div>
-    <div class="dlg-pe"><span></span><div class="botoes"><button id="rkEdCancelar" class="sec" type="button">Cancelar</button>
-      <label id="rkEdCompBox" class="tog" hidden title="Os colegas logados também veem este ranking (só você altera ou apaga)"><input id="rkEdComp" type="checkbox" checked> Compartilhar com a equipe</label>
-      <button id="rkEdSalvar" class="prim" type="button">Salvar ranking</button></div></div>
-  </div>
-</dialog>
-
 <dialog id="dlgLogin" class="dlg-pergunta" aria-labelledby="loginTit">
   <h3 id="loginTit">Área da equipe</h3>
   <div id="loginPasso1">
     <p>Digite o seu e-mail da equipe. Se ele estiver autorizado, você recebe um código de 6 números.</p>
-    <label class="campo">E-mail <input id="loginEmail" type="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="nome@empresa.com.br…"></label>
+    <label class="campo">E-mail <input id="loginEmail" type="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder="nome@empresa.com.br"></label>
     <div class="botoes"><button class="sec" type="button" data-fechar-dlg>Cancelar</button><button id="loginEnviar" class="prim" type="button">Enviar código</button></div>
   </div>
   <div id="loginPasso2" hidden>
@@ -597,16 +625,40 @@
 </dialog>
 
 <dialog id="dlgEnviar" class="dlg-medio" aria-labelledby="envTit">
-  <div class="dlg-cab"><h2 id="envTit">Enviar à montagem de carteira</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
+  <div class="dlg-cab"><h2 id="envTit">Enviar para a carteira</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
   <p id="envInfo" class="nota"></p>
-  <p class="nota"><button id="envTodos" class="link" type="button">marcar todos</button> · <button id="envNenhum" class="link" type="button">desmarcar</button></p>
+  <p class="nota"><button id="envTodos" class="link" type="button">Marcar todos</button> · <button id="envNenhum" class="link" type="button">Desmarcar</button></p>
   <div id="envLista" class="dlg-tab"></div>
-  <div class="dlg-pe"><label class="tog"><input id="envIr" type="checkbox" checked> Abrir a montagem de carteira depois de enviar</label>
+  <div class="dlg-pe"><label class="tog"><input id="envIr" type="checkbox" checked> Abrir a carteira depois de enviar</label>
     <div class="botoes"><button class="sec" type="button" data-fechar-dlg>Cancelar</button><button id="envOk" class="prim" type="button">Enviar</button></div></div>
 </dialog>
 
 <dialog id="dlgPergunta" class="dlg-pergunta" aria-labelledby="pergTit">
   <h3 id="pergTit"></h3><p id="pergTexto"></p><div id="pergBotoes" class="botoes"></div>
+</dialog>
+
+<dialog id="dlgConfig" class="dlg-config" aria-labelledby="cfgTit">
+  <div class="dlg-cab"><h2 id="cfgTit">Configurações</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
+  <section class="cfg-grupo">
+    <h3>Cálculo</h3>
+    <label class="campo">Peso total da carteira (%) <input id="peso" type="number" value="100" min="0" step="1"></label>
+    <label class="tog"><input id="pesoPeriodo" type="checkbox"> <span>Ponderar cada dia pela posição no período</span></label>
+    <p class="nota">Fundos que não cobrem o período inteiro pesam menos. Não altera "Desde o início".</p>
+    <p id="pesoPeriodoAviso" class="aviso" hidden>Clique em Calcular (e recalcule rankings e carteira) para aplicar.</p>
+  </section>
+  <section class="cfg-grupo">
+    <h3>Dados neste navegador</h3>
+    <label class="tog"><input id="guardar" type="checkbox" checked> <span>Guardar as cotas baixadas</span></label>
+    <p class="nota">Deixa as próximas consultas mais rápidas.<span id="espaco" hidden></span></p>
+  </section>
+  <section class="cfg-grupo">
+    <h3>Backup</h3>
+    <p class="nota">Grupos, rankings, tipos de cálculo, carteira e preferências num arquivo, para levar a outro computador ou navegador.</p>
+    <div class="backup">
+      <button id="bkSalvar" class="sec" type="button"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Salvar backup</button>
+      <label class="sec botao-arquivo" title="Substitui as configurações deste navegador"><svg class="ico" aria-hidden="true"><use href="#i-subir"/></svg>Restaurar<input id="bkRestaurar" type="file" accept=".json,application/json" hidden></label>
+    </div>
+  </section>
 </dialog>
 
 <dialog id="dlgFontes" class="dlg-texto" aria-labelledby="fontesTit">
@@ -647,7 +699,7 @@
 </div>
 <div id="mini" class="minigraf" role="tooltip" hidden></div>
 <div id="corrTip" class="minigraf corr-tip" role="tooltip" hidden></div>
-<button id="btnTopo" class="btn-topo" type="button" aria-label="Voltar ao topo" title="Voltar ao topo" hidden>↑</button>
+<button id="btnTopo" class="btn-topo" type="button" aria-label="Voltar ao topo" title="Voltar ao topo" hidden><svg class="ico" aria-hidden="true"><use href="#i-cima"/></svg></button>
 
 <script>
   // mostra erros de carregamento mesmo que o módulo não rode
