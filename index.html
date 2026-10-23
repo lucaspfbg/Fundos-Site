@@ -255,23 +255,21 @@
       </div>
 
       <div id="pgXP" class="pagina" role="tabpanel" aria-labelledby="abaXP" data-pagina="xp" hidden>
-        <section id="secXPGeral" class="cartao">
-          <div class="cab"><h2>Visão geral dos fundos da XP</h2></div>
-          <p class="nota">Dados da planilha da XP (confidencial). Clique nas barras para filtrar. No mesmo quadro, os filtros se somam; entre quadros, todos precisam valer. Depois clique em <b>Calcular</b>.</p>
+        <section id="secXPGeral" class="cartao" data-sec="xpgeral">
+          <div class="cab"><h2>Visão geral dos fundos da XP</h2>
+            <div class="xp-acoes">
+              <span id="xpSelInfo" class="nota"></span>
+              <button id="xpCalcTodos" class="sec" type="button" title="Calcula as métricas de todos os fundos da XP que têm cotas na CVM"><svg class="ico" aria-hidden="true"><use href="#i-calc"/></svg>Calcular todos</button>
+            </div>
+            <button class="btn-min" type="button" data-min="xpgeral" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
+          <ol class="xp-passos">
+            <li><b>Filtre</b> clicando nas barras (ou arraste para marcar várias).</li>
+            <li><b>Calcule</b> os fundos filtrados no botão que aparece no topo.</li>
+            <li><b>Compare</b> no gráfico de quadrantes e nas métricas, logo abaixo.</li>
+          </ol>
+          <p class="nota xp-regra">Dados da planilha da XP (confidencial). No mesmo quadro, os filtros se somam; entre quadros, todos precisam valer.</p>
           <div id="xpGeral"></div>
         </section>
-        <section class="cartao xp-calc">
-          <div class="cab"><h2>Calcular</h2></div>
-          <p class="nota">Escolha os fundos como na Análise de fundos, ou calcule todos os fundos da XP de uma vez. Os resultados aparecem abaixo e também na página Análise de fundos.</p>
-          <div class="xp-acoes">
-            <button class="sec" type="button" data-acao-sel="abrirSeletor"><svg class="ico" aria-hidden="true"><use href="#i-lista"/></svg>Escolher na lista…</button>
-            <button class="sec" type="button" data-acao-sel="abrirColar"><svg class="ico" aria-hidden="true"><use href="#i-colar"/></svg>Colar CNPJs…</button>
-            <button class="sec" type="button" data-acao-sel="abrirGrupos"><svg class="ico" aria-hidden="true"><use href="#i-estrela"/></svg>Grupos…</button>
-            <button id="xpCalcTodos" class="prim" type="button"><svg class="ico" aria-hidden="true"><use href="#i-calc"/></svg>Calcular todos os fundos da XP</button>
-            <span id="xpSelInfo" class="nota"></span>
-          </div>
-        </section>
-        <div id="xpSlot"></div>
         <section id="secROA" class="cartao" hidden>
           <div class="cab"><h2>Gráfico de quadrantes</h2></div>
           <div class="opcoes quad-ctrl">
@@ -279,7 +277,7 @@
             <label class="ordem">Eixo X <div id="cbROA" class="combo"></div></label>
             <label class="ordem">Tamanho <div id="cbTam" class="combo"></div></label>
             <label id="roaSoCliBox" class="tog" title="Mostra só os fundos que têm pelo menos 1 cliente"><input id="roaSoCli" type="checkbox"> Só fundos com clientes</label>
-            <button id="roaPadrao" class="sec mini-btn" type="button" title="Volta para Y = ROA, X = Sharpe, tamanho = volume dos clientes, sem filtro de clientes e sem zoom">↺ Padrão</button>
+            <button id="roaPadrao" class="sec mini-btn" type="button" title="Volta para Y = ROA, X = Sharpe, tamanho = volume dos clientes, sem filtro de clientes e sem zoom"><svg class="ico" aria-hidden="true"><use href="#i-atualizar"/></svg>Padrão</button>
           </div>
           <p id="roaNota" class="nota"></p>
           <div class="quad-grade">
@@ -288,6 +286,7 @@
           </div>
           <div id="roaLegBolhas" class="roa-leg-bolhas" hidden></div>
         </section>
+        <div id="xpSlot"></div>
       </div>
 
       <div id="pgRankings" class="pagina" role="tabpanel" aria-labelledby="abaRankings" data-pagina="rankings" hidden>

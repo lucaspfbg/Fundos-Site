@@ -1096,3 +1096,22 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
   font: 800 12px/1 var(--f-corpo); vertical-align: -3px; flex: none; }
 .aviso-calc > b .alerta { width: 20px; height: 20px; font-size: 13px; vertical-align: -3px; }
 details.sem-dados > summary { font-weight: 600; }
+
+/* ============ página Fundos XP: passos, ações e distribuições ============ */
+:root { --barra: #1f5aa6; --barra-trilho: color-mix(in srgb, #1f5aa6 12%, var(--card)); }
+:root[data-theme="dark"] { --barra: #5b8fd9; --barra-trilho: color-mix(in srgb, #5b8fd9 16%, var(--card)); }
+#secXPGeral .cab .xp-acoes { display: inline-flex; align-items: center; gap: 10px; }
+.xp-passos { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 6px; padding: 0; list-style: none; counter-reset: passo; font-size: var(--fs-base); color: var(--sub); }
+.xp-passos li { counter-increment: passo; display: flex; align-items: center; gap: 8px; }
+.xp-passos li::before { content: counter(passo); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; flex: none;
+  background: var(--anil); color: #fff; font-size: 11px; font-weight: 800; }
+:root[data-theme="dark"] .xp-passos li::before { background: var(--ouro); color: #141a3a; }
+.xp-passos b { color: var(--txt); }
+.xp-regra { margin: 0 0 12px; }
+.kpi .v { font-variant-numeric: normal; }                      /* números grandes: algarismos proporcionais (tabulares só em colunas) */
+.xp-kpis { grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); }
+.xb-trilho { height: 8px; border-radius: 4px; background: var(--barra-trilho); }
+.xb-trilho i { border-radius: 4px; background: var(--barra); }
+.xp-barra { padding: 4px 6px; transition: background-color .12s; }
+.xp-barra[aria-pressed=true] .xb-rot::before { content: "✓ "; color: var(--ouro-txt); font-weight: 800; }   /* marcado: não depende só da cor */
+.xp-filtros { border-color: var(--ouro); box-shadow: var(--sh-2); }

@@ -1187,6 +1187,7 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
 let _corTexto = null;                      // lida uma vez (ler o estilo a cada gráfico força o navegador a recalcular a página)
 const corTexto = () => (_corTexto ||= getComputedStyle(document.body).getPropertyValue("--txt").trim() || "#333");
 const escuro = () => document.documentElement.dataset.theme === "dark";      // definido no <head> (escolha guardada ou o do sistema)
+const corBolha = () => (escuro() ? "#6f9be0" : "#1f5aa6");                 // cor única das bolhas do gráfico de quadrantes
 const linhaRef = { id: "linhaRef", afterDraw(ch, _a, o) {
   const ctx = ch.ctx, { left, right, top, bottom } = ch.chartArea;
   ctx.save(); ctx.strokeStyle = escuro() ? OURO : ANIL; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5;
@@ -1205,7 +1206,7 @@ const quadrantes = {
   beforeDraw(ch, _a, o) {
     if (!o || o.x == null || o.y == null) return;
     const { left, right, top, bottom } = ch.chartArea, cx = Math.min(right, Math.max(left, ch.scales.x.getPixelForValue(o.x))), cy = Math.min(bottom, Math.max(top, ch.scales.y.getPixelForValue(o.y)));
-    const a = escuro() ? 0.2 : 0.11, cor = [`rgba(208,38,44,${a})`, `rgba(220,160,0,${a * 0.6})`, `rgba(8,140,80,${a})`], ctx = ch.ctx;
+    const a = escuro() ? 0.13 : 0.07, cor = [`rgba(208,38,44,${a})`, `rgba(220,160,0,${a * 0.6})`, `rgba(8,140,80,${a})`], ctx = ch.ctx;   // fundo discreto: os dados são o destaque
     ctx.save();
     for (const [, xAlto, yAlto] of QUADS) {
       const x0 = xAlto ? cx : left, x1 = xAlto ? right : cx, y0 = yAlto ? top : cy, y1 = yAlto ? cy : bottom;
@@ -1401,6 +1402,7 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   $("#vazio").hidden = true;
   $("#limparTela").disabled = !st.res;          // o cálculo guarda o resultado depois da última atualização da lateral
   renderJM();
+  $(".barra .slider").hidden = !dados.linhas.length;              // sem fundo calculado, o intervalo de datas do cálculo anterior não fica na tela
   if (!dados.linhas.length) { $("#resultado").hidden = true; st.ctx = null; renderCarteira(); return; }
   $("#resultado").hidden = false;
   const cores = coresFundos();
@@ -3901,7 +3903,7 @@ function renderXPGeral() {
   xpGrupos.clear(); xpConjuntos.clear();
   const cs = [...st.xp.keys()], n = cs.length, q = new Map(cs.map((c) => [c, camposXP(c)]));
   const add = (m, k, c) => { if (k == null) return; (m.get(k) || m.set(k, []).get(k)).push(c); };
-  const classif = new Map(), inv = new Map(), risco = new Map(), prazo = new Map(), pl = new Map(), minimo = new Map(), roa = new Map(), adm = new Map(), cvm = new Map();
+  const classif = new Map(), inv = new Map(), risco = new Map(), prazo = new Map(), faixaPL = new Map(), minimo = new Map(), roa = new Map(), adm = new Map(), cvm = new Map();
   const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map(), capt = new Map();
   const naBase = cs.filter((c) => st.porCnpj.has(c) && !st.porCnpj.get(c)._soXP);
   for (const c of cs) {
@@ -3911,7 +3913,7 @@ function renderXPGeral() {
     add(risco, x._riscoDesc ? String(x._riscoDesc) : "Sem risco", c);
     const pc = prazoDias(x["Cotização"]), pq = prazoDias(x["Liquidação"]);
     add(prazo, pc == null && pq == null ? "Prazo especial" : faixaDe((pc || 0) + (pq || 0), [["até D+1", 1.6], ["D+2 a D+5", 5.6], ["D+6 a D+30", 30.6], ["D+31 a D+90", 90.6], ["D+91 a D+180", 180.6], ["acima de D+180", Infinity]]), c);
-    add(pl, faixaDe(plXP(c), [["até R$ 50 mi", 50e6], ["R$ 50–200 mi", 200e6], ["R$ 200–500 mi", 500e6], ["R$ 500 mi–1 bi", 1e9], ["R$ 1–5 bi", 5e9], ["acima de R$ 5 bi", Infinity]]) || "Sem PL", c);
+    add(faixaPL, faixaDe(plXP(c), [["até R$ 50 mi", 50e6], ["R$ 50–200 mi", 200e6], ["R$ 200–500 mi", 500e6], ["R$ 500 mi–1 bi", 1e9], ["R$ 1–5 bi", 5e9], ["acima de R$ 5 bi", Infinity]]) || "Sem PL", c);
     add(minimo, faixaDe(x["Aplicação mín."], [["até R$ 100", 100], ["até R$ 1 mil", 1e3], ["até R$ 5 mil", 5e3], ["até R$ 10 mil", 1e4], ["até R$ 50 mil", 5e4], ["acima de R$ 50 mil", Infinity]]) || "Sem informação", c);
     add(roa, faixaROA(x.ROA), c);
     add(adm, x["Taxa adm."] == null ? "Sem informação" : faixaDe(x["Taxa adm."], [["até 0,5%", 0.5], ["0,5% a 1%", 1], ["1% a 2%", 2], ["acima de 2%", Infinity]]), c);
@@ -3954,7 +3956,7 @@ function renderXPGeral() {
   <div class="xp-cards">
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
     ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: ["até D+1", "D+2 a D+5", "D+6 a D+30", "D+31 a D+90", "D+91 a D+180", "acima de D+180", "Prazo especial"] })}
-    ${cartaoBarras("Patrimônio líquido", pl, n, { ordem: ["até R$ 50 mi", "R$ 50–200 mi", "R$ 200–500 mi", "R$ 500 mi–1 bi", "R$ 1–5 bi", "acima de R$ 5 bi", "Sem PL"] })}
+    ${cartaoBarras("Patrimônio líquido", faixaPL, n, { ordem: ["até R$ 50 mi", "R$ 50–200 mi", "R$ 200–500 mi", "R$ 500 mi–1 bi", "R$ 1–5 bi", "acima de R$ 5 bi", "Sem PL"] })}
     ${cartaoBarras("Aplicação mínima", minimo, n, { ordem: ["até R$ 100", "até R$ 1 mil", "até R$ 5 mil", "até R$ 10 mil", "até R$ 50 mil", "acima de R$ 50 mil", "Sem informação"] })}
     ${cartaoBarras("ROA", roa, n, { ordem: ORDEM_ROA, colunas: 3, classe: "xp-largo" })}
     ${cartaoBarras("Taxa de administração", adm, n, { ordem: ["até 0,5%", "0,5% a 1%", "1% a 2%", "acima de 2%", "Sem informação"] })}
@@ -4021,7 +4023,8 @@ async function selecionarECalcular(lista, rotulo) {
   const met = $("#xpOpMet").checked, rk = $("#xpOpRk").checked, modelo = $("#xpOpModelo").value;
   if (!met && !rk) return;
   st.rkXPMarcado = rk; if (rk) st.rkXPModelo = modelo;
-  if (met) { st.sel = []; adicionar(ok); atualizarSidebar(); atualizarXPSelInfo(); await calcular(); if (carga.interrompida) return; }
+  if (met) { st.sel = []; adicionar(ok); atualizarSidebar(); atualizarXPSelInfo(); await calcular(); if (carga.interrompida) return;
+    if (!$("#secROA").hidden) $("#secROA").scrollIntoView({ block: "start", behavior: rolagemSuave() }); }      // o resultado aparece logo abaixo da visão geral
   if (rk) {
     await calcularRankingXP(ok, modelo);
     if (st.ctx && st.roaEixo === "sharpe") st.roaEixo = "rkTotal";            // para já cruzar o ROA com a pontuação
@@ -4140,7 +4143,8 @@ function renderROA() {
     const y = EY.valor(l, q); if (y == null || !Number.isFinite(y) || (EY.log && y <= 0)) { semY++; continue; }
     const x = EX.valor(l, q); if (x == null || !Number.isFinite(x) || (EX.log && x <= 0)) { semX++; continue; }
     const marcado = algum && casa(st.destaque, l.Fundo, l.CNPJ);
-    pts.push({ _c: l._c, nome: q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : st.res.apelidos[l._c], cor: st.ctx.cores[l._c], x, y, tipo: "fundo",
+    // ênfase, não uma cor por fundo (dezenas de cores não se distinguem): todos na mesma cor, o destacado em dourado
+    pts.push({ _c: l._c, nome: q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : st.res.apelidos[l._c], cor: marcado ? OURO : corBolha(), alfa: marcado ? "" : "b3", x, y, tipo: "fundo",
       forte: marcado, apagado: algum && !marcado, t: ET ? ET.valor(l, q) : null, cli: q.Clientes, vol: q["Volume clientes"] });
   }
   // tabela à direita do gráfico (nome, eixo Y, eixo X e tamanho); o filtro dela vale também para os pontos do gráfico
@@ -4187,12 +4191,12 @@ function renderROA() {
     if (qq === 2) verde.push(n); if (qq === 0) vermelho.push(n);
   }
   const quad = pts.length >= 2 && medX != null && medY != null ? { x: medX, y: medY, melhorX: EX.melhor, melhorY: EY.melhor, rotulos: rot } : null;
-  $("#roaNota").innerHTML = esc(`${pts.length} fundo${pl(pts.length)} no gráfico${pts.length !== totalQ ? ` (filtro da tabela: ${pts.length} de ${totalQ})` : ""} · período ${st.perAtivo} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
+  $("#roaNota").innerHTML = esc(`${pts.length} fundo${pl(pts.length)} no gráfico${pts.length !== totalQ ? ` (filtro da tabela: ${pts.length} de ${totalQ})` : ""} · período ${rotPer(st.perAtivo)} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
     (quad ? ` · medianas: ${esc(EY.curto)} <b>${esc(EY.fmt(medY))}</b> · ${esc(EX.curto)} <b>${esc(EX.fmt(medX))}</b> —
       ${[1, 2, 3, 4].map((n) => `<span class="roa-q${verde.includes(n) ? " bom" : vermelho.includes(n) ? " ruim" : ""}">Q${n}: ${cont[n]}</span>`).join(" · ")}` : "") +
     esc((semCli ? ` · ${semCli} sem clientes (ocultos)` : "") + (semY ? ` · ${semY} sem ${EY.curto}` : "") + (semX ? ` · ${semX} sem ${EX.curto}` : "") +
       ([st.roaEixo, st.eixoY].includes("jm") && !st.res?.jm ? " · calcule a janela móvel na seção abaixo para ver a mediana" : "") + ". Arraste ou use a lupa para dar zoom.") +
-    (rankingXP() ? ` <span class="nota">🏆 ${esc(st.rkXPAviso || "")}</span>` : "");
+    (rankingXP() ? ` <span class="nota">${esc(st.rkXPAviso || "")}</span>` : "");
   // marcas dos eixos: percentuais com casas conforme o espaçamento (não repete rótulos com valores pequenos ou com zoom)
   const tick = (E) => (E.pct ? (v, i, ticks) => { const passo = ticks?.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) * 100 : 0.01;
     return brPct(v, Math.min(4, Math.max(E.zeroMin ? 2 : 1, Math.ceil(-Math.log10(passo || 0.01))))); } : E.fmt);
