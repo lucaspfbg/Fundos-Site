@@ -159,7 +159,7 @@
         </div>
         <input id="destaque" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nos gráficos e tabelas" autocomplete="off" spellcheck="false">
         <button id="btnTravar" class="sec mini-btn" type="button"></button>
-        <button id="btnEnviarCart" class="sec mini-btn" type="button" title="Escolher fundos desta análise e mandar para a carteira"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para a carteira…</button>
+        <button class="sec mini-btn" type="button" data-enviar="analise" title="Leva os fundos desta análise para um ranking ou para a carteira, sem buscar de novo"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para ranking ou carteira…</button>
         <button id="btnRel" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
       </div>
 
@@ -258,6 +258,7 @@
       </div>
 
       <div id="pgXP" class="pagina" role="tabpanel" aria-labelledby="abaXP" data-pagina="xp" hidden>
+        <div id="xpFiltrosBox" class="xp-filtros-box"></div>
         <section id="secXPGeral" class="cartao" data-sec="xpgeral">
           <div class="cab"><h2>Visão geral dos fundos da XP</h2>
             <div class="xp-acoes">
@@ -362,7 +363,7 @@
           <div class="opcoes"><label class="ordem">Comparar com <select class="rk-comp-sel" aria-label="Data de comparação das posições"></select></label></div>
           <input id="rkDestaque" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nas tabelas e gráficos do ranking" autocomplete="off" spellcheck="false">
           <button class="rk-alterna sec mini-btn" type="button" title="Vale para todas as tabelas e gráficos dos rankings"></button>
-          <button id="btnEnviarCartRk" class="sec mini-btn" type="button" title="Escolher fundos deste ranking e mandar para a carteira"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para a carteira…</button>
+          <button class="sec mini-btn" type="button" data-enviar="rk" title="Leva os fundos deste ranking para a análise ou para a carteira, sem buscar de novo"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para análise ou carteira…</button>
           <button id="btnRelRk" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
           <button class="btn-min" type="button" data-min="rank" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
         <p id="rkInfo" class="nota"></p>
@@ -386,9 +387,17 @@
       </div>
 
       <div id="pgCarteira" class="pagina" role="tabpanel" aria-labelledby="abaCarteira" data-pagina="carteira" hidden>
+      <div class="barra barra-cart">
+        <div id="cartPers" class="pilulas" role="group" aria-label="Período da carteira">
+          <button type="button" data-cm="12">12 meses</button><button type="button" data-cm="24">24 meses</button><button type="button" data-cm="36">36 meses</button>
+          <button type="button" data-cm="60">5 anos</button><button id="cartPeriodo" type="button" title="Usa as datas do período escolhido na análise">Período da análise</button></div>
+        <div class="cart-datas"><label>De <input id="cartIni" type="date"></label><label>Até <input id="cartFim" type="date"></label></div>
+        <input id="cartDestaque" class="barra-dest" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nos gráficos e tabelas da carteira" autocomplete="off" spellcheck="false">
+        <button class="sec mini-btn" type="button" data-enviar="cart" title="Leva os fundos desta carteira para a análise ou para um ranking, sem buscar de novo"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar para análise ou ranking…</button>
+        <button id="btnRelCart" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
+      </div>
       <section id="secCart" class="cartao" data-sec="cart" hidden>
         <div class="cab"><h2>Carteira</h2>
-          <button id="btnRelCart" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar relatório</button>
           <button class="btn-min" type="button" data-min="cart" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
         <p class="nota">Dê um peso a cada fundo (ou índice) e veja o desempenho da carteira, com rebalanceamento e a contribuição de cada ativo.
           Pode adicionar qualquer fundo da base: os que ainda não foram baixados são buscados ao clicar em <b>Calcular carteira</b>. A carteira fica guardada neste navegador.</p>
@@ -398,8 +407,6 @@
           <label>Rebalanceamento <select id="cartRebal">
             <option value="0">Nunca (comprar e manter)</option><option value="1">Mensal</option><option value="3">Trimestral</option>
             <option value="6">Semestral</option><option value="12">Anual</option></select></label>
-          <label>De <input id="cartIni" type="date"></label>
-          <label>Até <input id="cartFim" type="date"></label>
           <label>Valor inicial (R$) <input id="cartValor" type="number" min="0" step="1000"></label>
         </div>
         <div class="cart-acoes">
@@ -410,7 +417,7 @@
           <button id="cartNormalizar" class="sec" type="button">Ajustar para somar 100%</button>
           <button id="cartTodos" class="sec" type="button">Adicionar todos os fundos calculados</button>
           <button id="cartLimpar" class="sec" type="button">Limpar carteira</button>
-          <button id="cartPeriodo" class="sec" type="button" title="Usa as datas do período escolhido na barra do topo">Usar o período ativo</button>
+
           <p id="cartAviso" class="nota cart-aviso" aria-live="polite"></p>
         <span id="cartSoma" class="nota"></span>
         </div>
@@ -629,11 +636,13 @@
 </dialog>
 
 <dialog id="dlgEnviar" class="dlg-medio" aria-labelledby="envTit">
-  <div class="dlg-cab"><h2 id="envTit">Enviar para a carteira</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
+  <div class="dlg-cab"><h2 id="envTit">Enviar fundos para…</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
+  <div id="envDest" class="pilulas env-dest" role="group" aria-label="Para onde enviar"></div>
   <p id="envInfo" class="nota"></p>
+  <div id="envOpcoes" class="opcoes env-op"></div>
   <p class="nota"><button id="envTodos" class="link" type="button">Marcar todos</button> · <button id="envNenhum" class="link" type="button">Desmarcar</button></p>
   <div id="envLista" class="dlg-tab"></div>
-  <div class="dlg-pe"><label class="tog"><input id="envIr" type="checkbox" checked> Abrir a carteira depois de enviar</label>
+  <div class="dlg-pe"><label class="tog"><input id="envIr" type="checkbox" checked> <span id="envIrTxt">Abrir a página depois de enviar</span></label>
     <div class="botoes"><button class="sec" type="button" data-fechar-dlg>Cancelar</button><button id="envOk" class="prim" type="button">Enviar</button></div></div>
 </dialog>
 

@@ -419,38 +419,46 @@ function renderSelDialogo() {
   $("#dlgN").textContent = dlg.sel.length;
   $("#dlgAplicar").textContent = `Aplicar seleção (${dlg.sel.length} fundo${dlg.sel.length === 1 ? "" : "s"})`;
 }
-// lista de fundos: clicar e arrastar marca (ou desmarca) as linhas do intervalo, como numa planilha.
-// A 1ª linha decide: se estava desmarcada, o arrasto marca; se estava marcada, desmarca. Um clique sem arrastar continua no alternarDlg.
-const dlgArrasto = { ativo: false, moveu: false, recente: false };
-const intervaloArrasto = () => (dlgArrasto.ini <= dlgArrasto.fim ? [dlgArrasto.ini, dlgArrasto.fim] : [dlgArrasto.fim, dlgArrasto.ini]);
+// listas com marcação (janela da lista de fundos e janela de envio): clicar e arrastar marca (ou desmarca) as linhas do intervalo,
+// como numa planilha. A 1ª linha decide: se estava desmarcada, o arrasto marca; se estava marcada, desmarca. Um clique sem arrastar segue o clique normal.
+// Cada lista diz: as linhas (seletor), a caixa que rola, a chave da linha, o que já está marcado e o que fazer ao soltar.
+const LISTAS_ARRASTO = [
+  { linhas: "#dlgTabela tr.linha-f", caixa: "#dlgTabela", chave: (tr) => tr.dataset.c, marcados: () => new Set(dlg.sel), aplicar: (sel) => {
+    dlg.sel = [...dlg.sel.filter((c) => sel.has(c)), ...[...sel].filter((c) => !dlg.sel.includes(c))];      // mantém a ordem; os novos entram no fim
+    for (const el of $$("#dlgTabela tr.linha-f")) el.title = dlg.sel.includes(el.dataset.c) ? "Selecionado · clique para tirar" : "Clique para selecionar";
+    if ($("#dlgSoSel").checked) renderSeletor();
+    renderSelDialogo(); } },
+  { linhas: "#envLista tr[data-env]:not(.env-bloq)", caixa: "#envLista", chave: (tr) => tr.dataset.env, marcados: () => new Set(env.marcados),
+    aplicar: (sel) => { env.marcados = sel; renderEnviar(); } },
+];
+const arrasto = { lista: null, moveu: false, recente: false };
+const intervaloArrasto = () => (arrasto.ini <= arrasto.fim ? [arrasto.ini, arrasto.fim] : [arrasto.fim, arrasto.ini]);
 document.addEventListener("pointerdown", (e) => {
-  const tr = e.target.closest?.("#dlgTabela tr.linha-f");
+  const L = LISTAS_ARRASTO.find((x) => e.target.closest?.(x.linhas)), tr = L && e.target.closest(L.linhas);
   if (!tr || e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input, select, button, a, [data-pf]")) return;
   e.preventDefault();                                                    // não seleciona o texto das linhas
-  const linhas = [...tr.parentElement.querySelectorAll("tr.linha-f")], i = linhas.indexOf(tr);
-  Object.assign(dlgArrasto, { ativo: true, moveu: false, linhas, ini: i, fim: i, marcar: !dlg.sel.includes(tr.dataset.c), base: new Set(dlg.sel) });
+  const linhas = [...tr.parentElement.querySelectorAll(L.linhas)], i = linhas.indexOf(tr), base = L.marcados();
+  Object.assign(arrasto, { lista: L, moveu: false, linhas, ini: i, fim: i, marcar: !base.has(L.chave(tr)), base });
 });
 document.addEventListener("pointermove", (e) => {
-  if (!dlgArrasto.ativo) return;
-  const box = $("#dlgTabela"), r = box.getBoundingClientRect();         // perto da borda, a lista rola sozinha
+  const L = arrasto.lista; if (!L) return;
+  const box = $(L.caixa), r = box.getBoundingClientRect();              // perto da borda, a lista rola sozinha
   if (e.clientY > r.bottom - 28) box.scrollTop += 14; else if (e.clientY < r.top + 70) box.scrollTop -= 14;
-  const tr = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#dlgTabela tr.linha-f");
-  const i = tr ? dlgArrasto.linhas.indexOf(tr) : -1; if (i < 0 || i === dlgArrasto.fim) return;
-  dlgArrasto.fim = i; dlgArrasto.moveu = true;
+  const tr = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(L.linhas);
+  const i = tr ? arrasto.linhas.indexOf(tr) : -1; if (i < 0 || i === arrasto.fim) return;
+  arrasto.fim = i; arrasto.moveu = true;
   const [a, b] = intervaloArrasto();
-  dlgArrasto.linhas.forEach((el, k) => el.classList.toggle("marcado", k >= a && k <= b ? dlgArrasto.marcar : dlgArrasto.base.has(el.dataset.c)));
+  arrasto.linhas.forEach((el, k) => { const on = k >= a && k <= b ? arrasto.marcar : arrasto.base.has(L.chave(el));
+    el.classList.toggle("marcado", on); const cb = el.querySelector("input[type=checkbox]"); if (cb) cb.checked = on; });
 });
 document.addEventListener("pointerup", () => {
-  if (!dlgArrasto.ativo) return;
-  dlgArrasto.ativo = false;
-  if (!dlgArrasto.moveu) return;
-  const [a, b] = intervaloArrasto(), sel = new Set(dlgArrasto.base);
-  for (const el of dlgArrasto.linhas.slice(a, b + 1)) dlgArrasto.marcar ? sel.add(el.dataset.c) : sel.delete(el.dataset.c);
-  dlg.sel = [...dlg.sel.filter((c) => sel.has(c)), ...[...sel].filter((c) => !dlg.sel.includes(c))];      // mantém a ordem; os novos entram no fim
-  dlgArrasto.recente = true; setTimeout(() => { dlgArrasto.recente = false; }, 0);                        // o "click" que vem depois não desfaz
-  for (const el of dlgArrasto.linhas) el.title = dlg.sel.includes(el.dataset.c) ? "Selecionado · clique para tirar" : "Clique para selecionar";
-  if ($("#dlgSoSel").checked) renderSeletor();
-  renderSelDialogo();
+  const L = arrasto.lista; if (!L) return;
+  arrasto.lista = null;
+  if (!arrasto.moveu) return;
+  const [a, b] = intervaloArrasto(), sel = new Set(arrasto.base);
+  for (const el of arrasto.linhas.slice(a, b + 1)) arrasto.marcar ? sel.add(L.chave(el)) : sel.delete(L.chave(el));
+  arrasto.recente = true; setTimeout(() => { arrasto.recente = false; }, 0);                              // o "click" que vem depois não desfaz
+  L.aplicar(sel);
 });
 function alternarDlg(c) {
   dlg.sel = dlg.sel.includes(c) ? dlg.sel.filter((x) => x !== c) : [...dlg.sel, c];
@@ -606,7 +614,7 @@ document.addEventListener("click", async (e) => {
     if (fn) manterRolagem(bo, fn); return; }
   // janela da lista
   const lf = t.closest?.("#dlgTabela tr.linha-f");
-  if (lf && !t.closest("input, select, button") && !dlgArrasto.recente) return alternarDlg(lf.dataset.c);
+  if (lf && !t.closest("input, select, button") && !arrasto.recente) return alternarDlg(lf.dataset.c);
   if (t.dataset?.dlgrm) { dlg.sel = dlg.sel.filter((c) => c !== t.dataset.dlgrm); renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgMarcarVis") { dlg.sel = [...new Set([...dlg.sel, ...(dlg.visiveis || [])])]; renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgTirarVis") { const vis = new Set(dlg.visiveis || []); dlg.sel = dlg.sel.filter((c) => !vis.has(c)); renderSeletor(); renderSelDialogo(); return; }
@@ -1979,7 +1987,7 @@ function renderCarteira() {
   $("#secCart").hidden = false;
   const c = st.cart;
   if (!c.ini || !c.fim) usarPeriodoAtivo(false);
-  $("#cartRebal").value = String(c.rebal); $("#cartValor").value = c.valor; $("#cartIni").value = c.ini; $("#cartFim").value = c.fim;
+  $("#cartRebal").value = String(c.rebal); $("#cartValor").value = c.valor; $("#cartIni").value = c.ini; $("#cartFim").value = c.fim; marcarPeriodoCart();
   $("#cartJmMeses").value = st.cartUI.jmMeses;
   // janela móvel da carteira: datas próprias (padrão: 5 anos de aplicações até a última cota)
   if (!st.cartUI.jmFim) st.cartUI.jmFim = isoDe(fimBase());
@@ -2003,6 +2011,11 @@ function atualizarSoma() {
   const cem = Math.abs(s - 100) < 0.1;                  // tolerância para arredondamentos (ex.: 7 × 14,29 = 100,03)
   $("#cartSoma").innerHTML = st.cart.itens.length ? `Soma dos pesos: <b style="color:var(${cem ? "--pos" : "--neg"})">${br(s, cem ? 0 : 1)}%</b>` +
     (cem ? "" : " (o cálculo usa os pesos proporcionais, como se somassem 100%)") : "";
+}
+// pílulas de período da carteira: acesas quando as datas são exatamente os últimos N meses até a cota mais recente da base
+function marcarPeriodoCart() {
+  const c = st.cart, fim = fimBase();
+  for (const b of $$("#cartPers [data-cm]")) b.setAttribute("aria-pressed", String(c.fim === isoDe(fim) && c.ini === isoDe(somarMeses(fim, -Number(b.dataset.cm)))));
 }
 function usarPeriodoAtivo(recalcular = true) {
   const c = st.cart, ctx = st.ctx;
@@ -2270,7 +2283,7 @@ document.addEventListener("change", (e) => {
   const t = e.target, c = st.cart;
   if (t.id === "cartRebal") { c.rebal = Number(t.value); salvarCart(); calcularCarteira(); }
   else if (t.id === "cartValor") { c.valor = Math.max(0, Number(t.value) || 0); salvarCart(); calcularCarteira(); }
-  else if (t.id === "cartIni" || t.id === "cartFim") { c[t.id === "cartIni" ? "ini" : "fim"] = t.value; salvarCart(); if (c.ini && c.fim) calcularCarteira(); }
+  else if (t.id === "cartIni" || t.id === "cartFim") { c[t.id === "cartIni" ? "ini" : "fim"] = t.value; salvarCart(); marcarPeriodoCart(); if (c.ini && c.fim) calcularCarteira(); }
   else if (t.id === "cartRelOn") { st.cartUI.rel.on = t.checked; semZoom("gCartEvol"); renderCartAcum(); }
   else if (t.id === "cartJmMeses") st.cartUI.jmMeses = Math.max(1, Math.min(240, Number(t.value) || 12));
   else if (t.id === "cartJmIni" || t.id === "cartJmFim") st.cartUI[t.id === "cartJmIni" ? "jmIni" : "jmFim"] = t.value;
@@ -2292,6 +2305,7 @@ document.addEventListener("click", (e) => {
   }
   else if (t.id === "cartLimpar") { if (c.itens.length && !confirm("Tirar todos os ativos da carteira?")) return; c.itens = []; salvarCart(); renderCarteira(); }
   else if (t.id === "cartPeriodo") usarPeriodoAtivo(true);
+  else if (t.closest?.("#cartPers [data-cm]")) { const fim = fimBase(); c.fim = isoDe(fim); c.ini = isoDe(somarMeses(fim, -Number(t.closest("[data-cm]").dataset.cm))); salvarCart(); renderCarteira(); }
   else if (t.closest?.("#cartRelModo button")) { st.cartUI.rel.modo = t.closest("button").dataset.m; semZoom("gCartEvol"); renderCartAcum(); }
   else if (t.closest?.("#cartRiscoEixo button")) { st.cartUI.eixo = t.closest("button").dataset.e; delete st.ord.cartRisco; semZoom("gCartRR"); renderCartRisco(); }
   else if (t.id === "cartJmAtualizar") {
@@ -3609,31 +3623,57 @@ const colunaHub = () => ({ chave: "_hubId", nome: "Link Hub", tipo: "txt", ord: 
   html: (v, l) => (v ? `<a class="hub-link" href="${URL_HUB(v)}" target="_blank" rel="noopener noreferrer" title="Abrir no Hub XP (nova aba)" aria-label="Abrir ${esc(l.Fundo || "")} no Hub XP">↗ Hub</a>`
     : `<span class="nota" title="${l._naXP ? "Sem o ID da XP: o Apps Script precisa estar na versão " + VERSAO_MIN_EQUIPE + " ou mais nova" : "Fundo fora da XP"}">–</span>`) });
 
-// ---------- enviar fundos da análise ou de um ranking para a montagem de carteira
-const env = { origem: null, lista: [], marcados: new Set() };
-function abrirEnviar(origem) {
-  env.origem = origem; env.marcados = new Set();
+// ---------- enviar fundos de uma página para outra (análise, ranking ou carteira), sem buscar de novo
+// origem: "analise" (também na página XP, que mostra a mesma análise), "rk" (o ranking aberto) ou "cart"; o destino se escolhe no topo da janela
+const env = { origem: null, destino: null, lista: [], marcados: new Set(), juntar: false, modelo: null };
+const DESTINOS_ENV = { analise: "Para a análise", rk: "Para um ranking", cart: "Para a carteira" };
+const NOME_RK_ENV = "⚡ Fundos enviados";
+async function abrirEnviar(origem) {
+  env.origem = origem;
   if (origem === "rk") {
     const R = rkAtivo(); if (!R) return;
     env.titulo = `do ranking ${R.nome}`; env.periodo = `nas métricas do ranking, de ${R.M.periodo.toLowerCase()}`;
     env.lista = R.ordem.map((x) => ({ c: x.id, nome: x.l.cad.NOME, pos: x.pos, classif: x.l.cad.CLASSIFICACAO_CVM, rentAA: x.l.r["% Anualizado"], vol: x.l.r.Volatilidade,
       rk: { total: x.total, perf: x.grupos.Performance, cons: x.grupos["Consistência"], risco: x.grupos.Risco } }));
+  } else if (origem === "cart") {
+    const R = st.cartRes, cad = (c) => st.porCnpj.get(c) || {};
+    env.titulo = "da carteira"; env.periodo = R ? `na carteira, de ${fmtData(R.d0)} a ${fmtData(R.dN)}` : "na carteira (ainda não calculada)";
+    env.lista = st.cart.itens.filter((it) => it.tipo === "f").map((it) => { const k = R ? R.validos.indexOf(it) : -1;
+      return { c: it.v, nome: cad(it.v).NOME || nomeItem(it), classif: cad(it.v).CLASSIFICACAO_CVM, rentAA: R?.eA[k]?.anual, vol: R?.eA[k]?.vol }; });
   } else {
-    if (!st.res) return;
     const porC = new Map((st.ctx?.dados.linhas || []).map((l) => [l._c, l]));
     env.titulo = "da análise"; env.periodo = `no período ${st.perAtivo || ""}`;
-    env.lista = st.res.sel.filter((c) => st.res.fundos.get(c)).map((c) => { const l = porC.get(c), cad = st.porCnpj.get(c) || {};
+    env.lista = !st.res ? [] : st.res.sel.filter((c) => st.res.fundos.get(c)).map((c) => { const l = porC.get(c), cad = st.porCnpj.get(c) || {};
       return { c, nome: cad.NOME || cnpjFmt(c), classif: cad.CLASSIFICACAO_CVM, rentAA: l?.["% Anualizado"], vol: l?.Volatilidade }; });
   }
+  if (!env.lista.length) { await perguntar("Nenhum fundo para enviar", origem === "cart" ? "A carteira ainda não tem fundos." : "Calcule os fundos primeiro.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  if (!env.destino || env.destino === origem) env.destino = Object.keys(DESTINOS_ENV).find((d) => d !== origem);
+  env.marcados = new Set(env.lista.map((x) => x.c));          // começa com todos: o caso comum é trocar de tipo de análise com os mesmos fundos
+  env.juntar = false; if (!modelos()[env.modelo]) env.modelo = modelos()[st.rkXPModelo] ? st.rkXPModelo : "MM";
+  $("#envIr").checked = true;
   renderEnviar(); $("#dlgEnviar").showModal();
 }
 // prazo de resgate em uma linha: "D+30 / D+2" (cotização / liquidação), com o texto completo ao passar o mouse
 const prazoCurto = (t) => { const m = String(t ?? "").match(/D\s*\+\s*(\d+)/i); return m ? `D+${m[1]}` : t ? "…" : ""; };
 function renderEnviar() {
-  const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v)), rk = env.origem === "rk", xp = !!st.xp;
-  const novos = [...env.marcados].filter((c) => !naCart.has(c)).length;
-  $("#envInfo").innerHTML = `Marque os fundos ${esc(env.titulo)} que vão para a carteira (rentabilidade e volatilidade ${esc(env.periodo)}). ` +
-    (st.cart.itens.length ? "A carteira já tem ativos: os novos entram com peso 0 (defina os pesos depois ou use “Pesos iguais”)." : "A carteira está vazia: os fundos enviados entram com pesos iguais.");
+  const dest = env.destino, rk = env.origem === "rk", xp = !!st.xp;
+  const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v)), bloq = (c) => dest === "cart" && naCart.has(c);
+  const n = [...env.marcados].filter((c) => !bloq(c)).length, nf = (k) => `${k} fundo${pl(k)}`;
+  $("#envDest").innerHTML = Object.entries(DESTINOS_ENV).filter(([d]) => d !== env.origem)
+    .map(([d, rot]) => `<button type="button" data-env-dest="${d}" aria-pressed="${d === dest}">${rot}</button>`).join("");
+  const M = modeloDe(env.modelo);
+  $("#envInfo").innerHTML = dest === "cart"
+    ? `Marque os fundos ${esc(env.titulo)} que vão para a carteira (rentabilidade e volatilidade ${esc(env.periodo)}). ` +
+      (st.cart.itens.length ? "A carteira já tem ativos: os novos entram com peso 0 (defina os pesos depois ou use “Pesos iguais”)." : "A carteira está vazia: os fundos enviados entram com pesos iguais.")
+    : dest === "analise"
+    ? `Marque os fundos ${esc(env.titulo)} que vão para a análise (rentabilidade e volatilidade ${esc(env.periodo)}). Eles são calculados no período escolhido na lateral` +
+      (st.sel.length && !env.juntar ? ` e <b>substituem</b> os ${nf(st.sel.length)} selecionados na análise.` : ".")
+    : `Marque os fundos ${esc(env.titulo)} para calcular um ranking com eles (pelo menos 2) e escolha o tipo de cálculo: as métricas, os pesos e o período. ` +
+      `O ranking “${esc(NOME_RK_ENV)}” é temporário (não fica salvo); para guardá-lo, use <b>Montar rankings</b>.`;
+  $("#envOpcoes").innerHTML = dest === "analise" && st.sel.length
+    ? `<label class="tog"><input id="envJuntar" type="checkbox"${env.juntar ? " checked" : ""}> Juntar aos ${nf(st.sel.length)} já selecionados na análise</label>`
+    : dest === "rk" ? `<label class="ordem">Tipo de cálculo <select id="envModelo">${Object.entries(modelos()).map(([k, X]) => `<option value="${esc(k)}"${k === env.modelo ? " selected" : ""}>${esc(X.nome)}</option>`).join("")}</select></label>
+      <span class="nota">${esc(M.periodo)} · ${Object.keys(M.pesos).map((k) => `${esc(metricaRank(k)?.nome || k)} ${Math.abs(M.pesos[k])}%`).join(" · ")}</span>` : "";
   // colunas pequenas com largura fixa; o nome ocupa o que sobrar (a tabela nunca passa da largura da janela)
   // [chave, largura, título curto, título completo (ao passar o mouse)]
   const cols = [["sel", 30, ""], ...(rk ? [["pos", 42, "Pos.", "Posição no ranking"]] : []), ["nome", null, "Fundo"], ["classif", 96, "Classificação", "Classificação CVM"],
@@ -3644,12 +3684,13 @@ function renderEnviar() {
   const minimo = cols.reduce((s2, [, w]) => s2 + (w || 150), 0);     // abaixo disso (tela muito estreita) a lista rola para o lado
   const n1 = (v) => (typeof v === "number" ? br(v, 1) : "");
   $("#envLista").innerHTML = `<table class="tb env-tab" style="min-width:${minimo}px"><colgroup>${cols.map(([, w]) => `<col${w ? ` style="width:${w}px"` : ""}>`).join("")}</colgroup>
-    <thead><tr>${cols.map(([k, , n, compl]) => `<th class="${k === "nome" || k === "classif" ? "t" : ""}"${compl ? ` title="${compl}"` : ""}>${k === "sel" ? '<span class="sr-only">Enviar</span>' : `<span class="th-txt">${n}</span>`}</th>`).join("")}</tr></thead><tbody>${env.lista.map((x) => {
-    const ja = naCart.has(x.c), on = ja || env.marcados.has(x.c), q = xp ? camposXP(x.c) : null;
+    <thead><tr>${cols.map(([k, , t, compl]) => `<th class="${k === "nome" || k === "classif" ? "t" : ""}"${compl ? ` title="${compl}"` : ""}>${k === "sel" ? '<span class="sr-only">Enviar</span>' : `<span class="th-txt">${t}</span>`}</th>`).join("")}</tr></thead><tbody>${env.lista.map((x) => {
+    const ja = bloq(x.c), on = ja || env.marcados.has(x.c), q = xp ? camposXP(x.c) : null;
     const cel = {
       sel: `<td><input type="checkbox" ${on ? "checked" : ""} ${ja ? "disabled" : ""} aria-label="Enviar ${esc(x.nome)}" tabindex="-1"></td>`,
       pos: `<td>${posHTML(x.pos)}</td>`,
-      nome: `<td class="t env-nome" title="${esc(x.nome)} · ${cnpjFmt(x.c)}${ja ? " · já está na carteira" : ""}">${ja ? '<span class="env-ja">na carteira</span>' : ""}${esc(x.nome)}</td>`,
+      nome: `<td class="t env-nome" title="${esc(x.nome)} · ${cnpjFmt(x.c)}${ja ? " · já está na carteira" : ""}">${ja ? '<span class="env-ja">na carteira</span>' : ""}` +
+        `<span class="lk-fundo" data-pf="${x.c}" tabindex="0" role="button" title="Abrir o painel do fundo">${esc(x.nome)}</span></td>`,
       classif: `<td class="t env-nome" title="${esc(x.classif || "")}">${esc(x.classif || "")}</td>`,
       rent: `<td style="${corSinal(x.rentAA)}">${typeof x.rentAA === "number" ? brPct(x.rentAA) : ""}</td>`,
       vol: `<td>${typeof x.vol === "number" ? brPct(x.vol) : ""}</td>`,
@@ -3662,11 +3703,30 @@ function renderEnviar() {
     const XPK = new Set(["inv", "cap", "resg", "roa", "rxp"]), foraXP = xp && !q?._naXP;
     const tds = cols.filter(([k]) => !(foraXP && XPK.has(k))).map(([k]) => cel[k]).join("") + (foraXP ? `<td colspan="5" class="env-fora">não está na XP</td>` : "");
     return `<tr class="linha-f${on ? " marcado" : ""}${ja ? " env-bloq" : ""}" data-env="${x.c}" ${ja ? "" : 'tabindex="0"'}>${tds}</tr>`; }).join("")}</tbody></table>`;
-  $("#envOk").textContent = `Enviar ${novos} fundo${novos === 1 ? "" : "s"}`; $("#envOk").disabled = !novos;
+  $("#envIrTxt").textContent = { analise: "Abrir a análise depois de enviar", rk: "Abrir o ranking depois de calcular", cart: "Abrir a carteira depois de enviar" }[dest];
+  $("#envOk").textContent = dest === "rk" ? `Calcular o ranking com ${nf(n)}` : dest === "analise" ? `Calcular ${nf(n)} na análise` : `Enviar ${nf(n)}`;
+  $("#envOk").disabled = n < (dest === "rk" ? 2 : 1);
+}
+async function enviar() {
+  const dest = env.destino, ir = $("#envIr").checked;
+  if (dest === "cart") return enviarParaCarteira();
+  const lista = env.lista.map((x) => x.c).filter((c) => env.marcados.has(c));          // na ordem da lista de origem
+  if (lista.length < (dest === "rk" ? 2 : 1)) return;
+  $("#dlgEnviar").close();
+  if (dest === "analise") {
+    if (!env.juntar) st.sel = [];
+    adicionar(lista); atualizarXPSelInfo();
+    if (ir) mostrarPagina("analise");
+    await calcular();
+  } else {
+    st.rkXPModelo = env.modelo;
+    const R = await calcularRankingTemp(lista, env.modelo, NOME_RK_ENV, "_env");
+    if (R && ir) mostrarPagina("rankings");
+  }
 }
 function enviarParaCarteira() {
   const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v));
-  const novos = [...env.marcados].filter((c) => !naCart.has(c)); if (!novos.length) return;
+  const novos = env.lista.map((x) => x.c).filter((c) => env.marcados.has(c) && !naCart.has(c)); if (!novos.length) return;
   const vazia = !st.cart.itens.length;
   for (const c of novos) st.cart.itens.push({ tipo: "f", v: c, peso: 0 });
   if (vazia) st.cart.itens.forEach((it) => (it.peso = Math.round(10000 / st.cart.itens.length) / 100));
@@ -3678,13 +3738,17 @@ function enviarParaCarteira() {
 }
 document.addEventListener("click", (e) => {
   const t = e.target;
-  if (t.id === "btnEnviarCart") return abrirEnviar("analise");
-  if (t.id === "btnEnviarCartRk") return abrirEnviar("rk");
-  if (t.id === "envOk") return enviarParaCarteira();
+  const b = t.closest?.("[data-enviar]"); if (b) return abrirEnviar(b.dataset.enviar);
+  const d = t.closest?.("[data-env-dest]"); if (d) { env.destino = d.dataset.envDest; return renderEnviar(); }
+  if (t.id === "envOk") return enviar();
   if (t.closest?.("[data-ir-carteira]")) return mostrarPagina("carteira");
   if (t.id === "envTodos" || t.id === "envNenhum") { env.marcados = t.id === "envTodos" ? new Set(env.lista.map((x) => x.c)) : new Set(); return renderEnviar(); }
   const tr = t.closest?.("#envLista tr[data-env]");
-  if (tr && !tr.querySelector("input")?.disabled) { const c = tr.dataset.env; env.marcados.has(c) ? env.marcados.delete(c) : env.marcados.add(c); renderEnviar(); }
+  if (tr && !tr.classList.contains("env-bloq") && !arrasto.recente) { const c = tr.dataset.env; env.marcados.has(c) ? env.marcados.delete(c) : env.marcados.add(c); renderEnviar(); }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.id === "envJuntar") { env.juntar = e.target.checked; renderEnviar(); }
+  else if (e.target.id === "envModelo") { env.modelo = e.target.value; renderEnviar(); }
 });
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("#envLista tr[data-env]")) { e.preventDefault(); e.target.click(); }
@@ -4066,7 +4130,7 @@ function renderXPGeral() {
   ${quadroClassificacoes([["Classificação XP", classif], ["Categoria XP", categoria.size > 1 || !categoria.has("Sem categoria") ? categoria : null],
     ["Classe CVM", cvm], ["Gestora", gestora.size > 1 || !gestora.has("Sem gestora") ? gestora : null]], n)}
   </div>`;
-  $("#xpGeral").insertAdjacentHTML("afterbegin", barraFiltrosXP());
+  $("#xpFiltrosBox").innerHTML = barraFiltrosXP(); alturaFiltrosXP();
   filtrarAbaClassif();                                          // mantém a busca da aba depois de redesenhar
   atualizarXPSelInfo();
 }
@@ -4103,6 +4167,12 @@ function barraFiltrosXP() {
     <button type="button" class="sec" id="xpFiltroLimpar">Limpar filtros</button>
     <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>${ico("calc")}Calcular ${br(ok.length, 0)} fundo${pl(ok.length)}</button></div>`;
 }
+// a barra de período das métricas (página XP) para logo abaixo dos filtros, que ficam no topo enquanto houver filtro
+function alturaFiltrosXP() {
+  const box = $("#xpFiltrosBox");
+  $("#pgXP").style.setProperty("--xpf-h", getComputedStyle(box).position === "sticky" ? `${box.offsetHeight}px` : "0px");
+}
+new ResizeObserver(alturaFiltrosXP).observe($("#xpFiltrosBox"));
 const atualizarXPSelInfo = () => { const el = $("#xpSelInfo"); if (el) el.textContent = st.sel.length ? `${st.sel.length} fundo${pl(st.sel.length)} selecionado${pl(st.sel.length)}` : ""; };
 // fundos da XP que dá para calcular: estão na base da CVM e têm cota nos últimos 30 dias
 function calculaveisXP(lista) {
@@ -4139,17 +4209,22 @@ async function selecionarECalcular(lista, rotulo) {
 const NOME_RK_XP = "⚡ Seleção Fundos XP";
 const rankingXP = () => st.rk?.lista.find((x) => x._xp) || null;
 async function calcularRankingXP(cnpjs, modelo) {
+  const R = await calcularRankingTemp(cnpjs, modelo, NOME_RK_XP, "_xp");
+  if (R) st.rkXPAviso = `Ranking "${R.nome}" calculado com ${R.ordem.length} fundo${pl(R.ordem.length)} (${R.M.nome}); veja também na página Rankings.`;
+}
+// ranking temporário (não fica salvo): entra primeiro na lista dos calculados, no lugar do anterior com a mesma marca ("_xp", "_env")
+async function calcularRankingTemp(cnpjs, modelo, nome, marca) {
   await chartPronto;
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
     faseCarga(`calculando o ranking (${modeloDe(modelo).nome})…`, 95); await pausa();
-    const R = montarRanking(NOME_RK_XP, { modelo, cnpjs }, fundos); R._xp = true;
+    const R = montarRanking(nome, { modelo, cnpjs }, fundos); R[marca] = true;
     const todos = new Map(st.rk?.fundos || []); for (const [c, f] of fundos) todos.set(c, f);
-    st.rk = { lista: [R, ...(st.rk?.lista || []).filter((x) => !x._xp)], fundos: todos, ativo: 0 }; semZoom("gRkJM");
+    st.rk = { lista: [R, ...(st.rk?.lista || []).filter((x) => !x[marca])], fundos: todos, ativo: 0 }; semZoom("gRkJM");
     renderRankings(); renderCarteira(); fecharCarga(); atualizarEspaco();
-    st.rkXPAviso = `Ranking "${R.nome}" calculado com ${R.ordem.length} fundo${pl(R.ordem.length)} (${R.M.nome}); veja também na página Rankings.`;
-  } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); }
+    return R;
+  } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return null; }
 }
 document.addEventListener("change", (e) => { if (e.target.id === "xpOpRk") $("#xpOpModBox").hidden = !e.target.checked; });
 document.addEventListener("click", (e) => {
@@ -4953,7 +5028,9 @@ function renderRkBotao() {                       // botão da barra fixa (acompa
   const R = rkAtivo(), n = R?.ordem.length || 0, todos = !!st.rkTodos;
   for (const b of $$(".rk-alterna")) {
     b.hidden = n <= TOP_RANK; b.setAttribute("aria-pressed", String(todos)); b.setAttribute("aria-expanded", String(todos));
-    b.innerHTML = todos ? `▴ Mostrar só o top ${TOP_RANK}` : `▾ Mostrar o ranking completo <span class="nota">(${n} fundos)</span>`;
+    // os dois rótulos ficam no botão (um invisível): na barra fixa ele mantém a largura do maior, e a barra não muda de layout ao alternar
+    const rot = (ativo, html) => `<span class="rk-rot"${ativo ? "" : " data-off"}>${html}</span>`;
+    b.innerHTML = rot(todos, `▴ Mostrar só o top ${TOP_RANK}`) + rot(!todos, `▾ Mostrar o ranking completo <span class="nota">(${n} fundos)</span>`);
   }
 }
 function linhaRk(R, x) {
@@ -5491,7 +5568,7 @@ function aplicarMinimizados() {
 }
 // ---------- barra de período: acompanha a rolagem ou fica só no topo
 function desenharTravar() {
-  $(".barra").classList.toggle("solta", st.travar);
+  for (const el of $$(".barra")) el.classList.toggle("solta", st.travar);        // vale para a barra da análise e para a da carteira
   const b = $("#btnTravar");
   b.textContent = "Barra fixa";                                    // interruptor: ligado = a barra acompanha a rolagem
   b.setAttribute("aria-pressed", String(!st.travar));
@@ -5617,11 +5694,12 @@ let tBusca, tDest, tDlg;
 document.addEventListener("input", (e) => {
   const t = e.target;
   if (t.id === "busca") { clearTimeout(tBusca); tBusca = setTimeout(atualizarSidebar, 150); }
-  else if (t.id === "destaque" || t.id === "rkDestaque") {                 // um destaque só: Análise e Rankings
+  else if (t.id === "destaque" || t.id === "rkDestaque" || t.id === "cartDestaque") {   // um destaque só: Análise, Rankings e Carteira
     clearTimeout(tDest);
     tDest = setTimeout(() => {
-      st.destaque = t.value; for (const id of ["destaque", "rkDestaque"]) if ($("#" + id) !== t) $("#" + id).value = t.value;
-      if (st.res) renderResultado({ semCarteira: st.pagina !== "carteira" }); if (st.rk) { renderRankings(); avisoDestaqueRk(); }
+      st.destaque = t.value; for (const id of ["destaque", "rkDestaque", "cartDestaque"]) if ($("#" + id) !== t) $("#" + id).value = t.value;
+      if (st.res) renderResultado({ semCarteira: st.pagina !== "carteira" }); else if (st.pagina === "carteira") renderCarteira();
+      if (st.rk) { renderRankings(); avisoDestaqueRk(); }
     }, 200);
   }
   else if (t.id === "zIni" || t.id === "zFim") aoMoverSlider(e);

@@ -112,7 +112,7 @@ button.add small { display: block; color: var(--sub); font-size: var(--fs-xs); }
 .barra { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
   background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--borda); margin-bottom: 12px; }
 .barra:has(#barraPer:empty) { display: none; }
-#destaque { width: 220px; margin-left: auto; }
+#destaque, .barra-dest { width: 220px; margin-left: auto; }
 .slider { display: flex; align-items: center; gap: 10px; flex: 1 1 300px; min-width: 260px; }
 #zTxt { font-size: 12.5px; color: var(--sub); white-space: nowrap; }
 .trilho { position: relative; flex: 1; height: 22px; }
@@ -186,7 +186,7 @@ dialog::backdrop { background: rgb(8 10 40 / .55); }
 @media (max-width: 1100px) { .linha2 { grid-template-columns: 1fr; } .graf { height: 340px; } }
 @media (max-width: 900px) {
   .principal { padding: 0 12px 24px; }
-  #destaque { width: 100%; margin-left: 0; }
+  #destaque, .barra-dest { width: 100%; margin-left: 0; }
 }
 
 /* fundo cancelado / sem cotas até o fim do período */
@@ -536,7 +536,11 @@ dialog.dlg-pergunta { width: min(460px, 92vw); padding: 20px 22px; }
 .rk-fixa { position: sticky; top: 0; z-index: 15; background: var(--card); margin: -16px -18px 8px; padding: 12px 18px; border-radius: var(--r-lg) var(--r-lg) 0 0;
   border-bottom: 1px solid var(--borda); box-shadow: 0 8px 16px -14px rgb(20 26 74 / .35); }
 .cartao.min .rk-fixa { margin-bottom: -16px; border-radius: var(--r-lg); }
-.rk-fixa .rk-alterna { font-weight: 800; }
+.rk-fixa .rk-alterna { font-weight: 800; display: inline-grid; justify-items: center; }
+/* os dois rótulos ficam no botão, um invisível: a largura é sempre a do maior e a barra não muda de layout ao alternar */
+.rk-alterna > .rk-rot[data-off] { display: none; }
+.rk-fixa .rk-alterna > .rk-rot { grid-area: 1 / 1; }
+.rk-fixa .rk-alterna > .rk-rot[data-off] { display: block; visibility: hidden; }
 .rk-fixa .rk-alterna[aria-pressed=true] { background: var(--azul); color: #fff; border-color: var(--azul); }
 .rk-fixa .rk-alterna .nota { color: inherit; opacity: .8; }
 .rk-pos { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 50%; font-weight: 800; font-size: 12px; }
@@ -861,7 +865,13 @@ sup.gu { font-size: 10px; font-weight: 800; color: var(--link); margin-left: 2px
 .tab-fundos.rm-ini thead th:nth-child(2) { z-index: 4; background: var(--cab); }
 /* filtros combinados da visão geral (Fundos XP) */
 .xp-barra[aria-pressed=true] { background: color-mix(in srgb, var(--ouro) 22%, var(--card)); box-shadow: inset 3px 0 0 var(--ouro); font-weight: 800; }
-.xp-filtros { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 10px 0 0; padding: 10px 14px;
+/* a caixa dos filtros é filha da página: fica no topo durante toda a rolagem (visão geral, quadrantes e métricas);
+   a barra de período das métricas para logo abaixo dela (--xpf-h, medido no JS) */
+.xp-filtros-box { position: sticky; top: 0; z-index: 21; background: var(--bg); padding: 8px 0 10px; margin-top: -8px; container: xpg / inline-size; }
+.xp-filtros-box:has(> .vazia) { position: static; }
+.xp-filtros-box:empty { display: none; }
+#pgXP .barra { top: var(--xpf-h, 0px); }
+.xp-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0; padding: 10px 14px;
   border: 1px solid var(--ouro); border-radius: 12px; background: var(--card); box-shadow: 0 6px 16px -12px rgba(20,26,74,.5); }
 .xp-filtros[hidden] { display: none; }
 .xp-filtros .xf-lista { flex: 1 1 380px; font-size: 13px; line-height: 1.5; }
@@ -1124,7 +1134,7 @@ details.sem-dados > summary { font-weight: 600; }
   .xp-filtros { grid-template-columns: minmax(0, 1fr) auto auto; height: 92px; }
   .xp-filtros .xf-lista { grid-column: 1 / -1; -webkit-line-clamp: 1; }
 }
-.xp-filtros.vazia { position: static; border-style: dashed; border-color: var(--borda-forte); box-shadow: none; background: var(--zebra); }
+.xp-filtros.vazia { border-style: dashed; border-color: var(--borda-forte); box-shadow: none; background: var(--zebra); }
 .xp-filtros .xf-lista { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }   /* muitos filtros: até 2 linhas (o resto no title) */
 .xp-filtros.vazia > button { grid-column: -2 / -1; }          /* o botão fica no mesmo lugar do "Calcular" com filtro */
 
@@ -1153,6 +1163,15 @@ details.sem-dados > summary { font-weight: 600; }
 .menu-fixo { position: fixed; left: 22px; bottom: 22px; z-index: 30; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 12px;
   border: 0; border-radius: var(--r-pill); background: var(--prim); color: #fff; font: 700 var(--fs-base) var(--f-corpo); cursor: pointer; box-shadow: var(--sh-2);
   transition: background-color .15s, transform .12s var(--ease-out), padding .2s var(--ease-out), gap .2s var(--ease-out); }
+/* carteira: barra fixa com o período, o destaque, o envio para outra página e o relatório */
+#pgCarteira:has(#secCart[hidden]) .barra-cart { display: none; }
+.cart-datas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cart-datas label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; }
+.cart-datas input { width: auto; }
+/* janela de envio: para onde enviar e as opções do destino */
+.env-dest { margin: 2px 0 8px; }
+.env-op:empty { display: none; }
+.env-op { margin: 0 0 6px; }
 .menu-fixo span { max-width: 5em; overflow: hidden; white-space: nowrap; transition: max-width .2s var(--ease-out), opacity .2s; }
 /* no voo entre o topo e o canto é um círculo, sem o rótulo; o JS move e escala com transform a cada quadro */
 .menu-fixo.voando { gap: 0; padding: 0 12px; transform-origin: 0 0; transition: padding .2s var(--ease-out), gap .2s var(--ease-out); }
