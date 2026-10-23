@@ -1131,3 +1131,19 @@ details.sem-dados > summary { font-weight: 600; }
 .xp-barra { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 7.4em; }
 .xb-n { text-align: right; font-variant-numeric: tabular-nums; }
 @container xpg (min-width: 1240px) { .xp-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }    /* 4 quadros por linha quando o cartão é largo */
+
+/* painel do fundo: nome, CNPJ e copiar; coluna "desde o início"; anos antigos recolhidos */
+.pf-nome { display: flex; align-items: flex-start; gap: 8px; }
+.pf-cnpj { margin: 2px 0 0; font-size: var(--fs-base); font-weight: 600; color: var(--sub); font-variant-numeric: tabular-nums; }
+.pf-acoes a.sec { text-decoration: none; }
+.copiar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; margin-left: 4px; padding: 0; border: 1px solid var(--borda); border-radius: var(--r-sm);
+  background: var(--card); color: var(--sub); cursor: pointer; vertical-align: middle; transition: color .15s, border-color .15s; }
+.copiar:hover { color: var(--info-txt); border-color: var(--azul); }
+.copiar.ok { color: var(--pos); border-color: var(--pos); }
+.copiar .ico { width: 14px; height: 14px; }
+.pf-sec dd .copiar { width: 24px; height: 24px; margin-left: 6px; }
+.pf-mes-tab .pf-ini { border-left: 2px solid var(--borda-forte); background: color-mix(in srgb, var(--azul) 5%, transparent); }
+.pf-mes-tab thead th { line-height: 1.2; vertical-align: bottom; }
+.pf-mais-anos { display: block; margin: 10px 0 2px; }
+.lk-fundo[data-pf] { cursor: pointer; }
+.lk-fundo[data-pf]:hover { text-decoration: underline; text-decoration-color: var(--ouro); text-underline-offset: 3px; }

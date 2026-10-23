@@ -153,7 +153,7 @@ function atualizarSidebar() {
   // selecionados
   $("#nSel").textContent = st.sel.length;
   $("#selecionados").innerHTML = st.sel.map((c) => `<span class="chip" title="${esc(st.porCnpj.get(c)?.NOME)}">
-      <span>${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}</span><button data-rm="${c}" type="button" aria-label="Remover ${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}">×</button></span>`).join("")
+      <span class="lk-fundo" data-pf="${c}" tabindex="0" role="button" title="Abrir o painel do fundo">${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}</span><button data-rm="${c}" type="button" aria-label="Remover ${esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c))}">×</button></span>`).join("")
     || `<p class="nota">Nenhum fundo selecionado.</p>`;
   $("#limpar").hidden = !st.sel.length;
   // lista dos selecionados: o título mostra a quantidade e o botão abre/fecha
@@ -259,7 +259,7 @@ function celFundo(f, c) {
   if (c.tipo === "num") return `<td style="${corSinal(v)}">${v != null ? br(v, 2) : ""}</td>`;
   if (c.k === "NOME" && f._soXP) {
     const t = "Só na XP: sem cotas na base da CVM usada pelo site (ex.: FIDC, FII, FIP, FIAGRO ou fundo novo). Aparece com os dados da XP, mas não dá para calcular métricas.";
-    return `<td class="t" title="${esc((v || "") + " · " + t)}"><span class="so-xp" title="${esc(t)}">⚠</span>${esc(v || "")}</td>`;
+    return `<td class="t" title="${esc((v || "") + " · " + t)}"><span class="so-xp" title="${esc(t)}">⚠</span><span class="lk-fundo" data-pf="${f.CNPJ}" tabindex="0" role="button">${esc(v || "")}</span></td>`;
   }
   if (c.tipo === "xpcap") { const q = xpDe(f.CNPJ); return `<td class="xp-capcel">${cadeado(valFundo(f, c.k), q._motivoFechado)}${dinheiroNovo(q._dinheiroNovo)}</td>`; }
   if (c.tipo === "xpinv") return `<td>${badgeInv(valFundo(f, c.k))}</td>`;
@@ -270,7 +270,7 @@ function celFundo(f, c) {
   if (c.k === "NOME") { const sp = situacaoCadastro(f), oXP = st.xp && xpDe(f.CNPJ)["XP Nome"];
     const nome = oXP ? String(oXP).toLocaleUpperCase("pt-BR") : v || "";
     const dica = (oXP ? `XP: ${nome}\nCVM: ${v || ""}` : v || "") + (sp ? `\n${sp.txt}` : "");
-    return `<td class="t" title="${esc(dica)}">${sp ? `<span class="parado" title="${esc(sp.txt)}">⊘</span>` : ""}${esc(nome)}</td>`; }
+    return `<td class="t" title="${esc(dica)}">${sp ? `<span class="parado" title="${esc(sp.txt)}">⊘</span>` : ""}<span class="lk-fundo" data-pf="${f.CNPJ}" tabindex="0" role="button">${esc(nome)}</span></td>`; }
   return `<td class="t" title="${esc(v || "")}">${esc(v || "")}</td>`;
 }
 // cabeçalho clicável (ordenar: 1º clique maior primeiro / A→Z, 2º inverte, 3º volta ao padrão por PL)
@@ -3768,16 +3768,19 @@ function fontePainel(c, onde) {
   const l = st.ctx?.dados.linhas.find((x) => x._c === c);
   if (l) return { l, f: st.res?.fundos.get(c), dIni: st.ctx.dIni, dFim: st.ctx.dFim, rotulo: `período ${st.perAtivo || ""}` };
   // fundo carregado mas fora da análise: últimos 12 meses até a cota mais recente
-  const f = fundoCart(c); if (!f?.d.length) return null;
+  const f = fundoCart(c) || st.fundosPainel?.get(c); if (!f?.d.length) return null;
   const r = calcularFundo(f, st.idx.ibov, "12 Meses", Number($("#peso").value) / 100, { fimComum: f.d[f.d.length - 1], ...opcPeso() });
   return r && { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f, dIni: r["Data Inicial"], dFim: r["Data Final"], rotulo: "últimos 12 meses" };
 }
 function abrirPainelFundo(c, onde = "analise") {
   const fonte = fontePainel(c, onde); if (!fonte) return;
   const { l, f } = fonte, cad = st.porCnpj.get(c) || {}, q = st.xp ? camposXP(c) : {};
-  const nomeXP = q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : null;
+  const nomeXP = q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : null, cnpjTxt = l.CNPJ || cnpjFmt(c);
   $("#pfTit").textContent = nomeXP || l.Fundo;
-  $("#pfSub").innerHTML = `${nomeXP ? `CVM: ${esc(l.Fundo)} · ` : ""}CNPJ ${esc(l.CNPJ || cnpjFmt(c))} · ${esc(fonte.rotulo)} (${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))})` +
+  $("#pfCnpj").textContent = `CNPJ ${cnpjTxt}`;
+  $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, cnpjTxt);
+  $("#pfHubTopo").innerHTML = q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "";
+  $("#pfSub").innerHTML = `${nomeXP ? `CVM: ${esc(l.Fundo)} · ` : ""}${esc(fonte.rotulo)} (${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))})` +
     (fonte.extra ? `<br><b>${esc(fonte.extra)}</b>` : "");
   $("#pfSelos").innerHTML = q._naXP ? `${cadeado(q["Captação"], q._motivoFechado)}${dinheiroNovo(q._dinheiroNovo)} ${badgeInv(q.Investidor)}` : "";
   const kpi = (rot, v, t = "pct", nome = "") => `<div class="kpi"><div class="l">${rot}</div><div class="v">${valorPF(t, v, nome)}</div></div>`;
@@ -3806,11 +3809,11 @@ function abrirPainelFundo(c, onde = "analise") {
   const bloco = (titulo, pares, classe = "", extra = "") => `<section class="pf-sec ${classe}"><h3>${esc(titulo)}${extra}</h3><dl>${pares.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl></section>`;
   const cadExtra = [["Gestor", esc(cad.GESTOR || "–")], ["Administrador", esc(cad.ADMINISTRADOR || "–")], ["Situação na CVM", esc(cad.SITUACAO || "–")],
     ["Público-alvo (CVM)", esc(cad.PUBLICO_ALVO || "–")], ["PL mais recente", cad.VL_PATRIM_LIQ != null ? `R$ ${br(cad.VL_PATRIM_LIQ / 1e6, 1)} mi` : "–"]];
-  const secoes = [bloco("Cadastro", [...itens(PF_SECOES[0][1]), ...cadExtra], "pf-cad")];
+  const secoes = [bloco("Cadastro", [...itens(PF_SECOES[0][1]), ...cadExtra], "pf-cad", botaoCopiar(cad.NOME || l.Fundo, cnpjTxt))];
   if (q._naXP) {
     const R$ = (v, d = 0) => (v != null ? `R$ ${br(v, d)}` : "–"), txt = (v) => esc(v || "–");
     const linkHub = q._hubId ? `<a class="hub-link pf-hub" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">Página do Hub ↗</a>` : "";
-    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"])], ["Tipo", q._prev ? '<span class="xp-tag xp-tag-prev">Previdência</span>' : "Fundo de investimento"], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
+    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"]) + botaoCopiar(q["XP Nome"], cnpjTxt)], ["Tipo", q._prev ? '<span class="xp-tag xp-tag-prev">Previdência</span>' : "Fundo de investimento"], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
       ["Gestora", txt(q.Gestora)], ["Investidor", (badgeInv(q.Investidor) || "–") + (q._publicoDiverge ? ` <span class="xp-aviso-pub" title="O público-alvo escrito pela XP é diferente das marcações de qualificado/profissional">⚠ ${esc(q["Público-alvo"])}</span>` : "")],
       ["Captação", `${cadeado(q["Captação"], q._motivoFechado)} ${esc(q["Captação"] || "")}${q._motivoFechado ? ` <small class="nota">(${esc(q._motivoFechado)})</small>` : ""}`],
       ["Dinheiro novo", q._dinheiroNovo == null ? "Não" : `${dinheiroNovo(q._dinheiroNovo)} ${esc(q._dinheiroNovo || "Sim")}`],
@@ -3843,6 +3846,51 @@ function abrirPainelFundo(c, onde = "analise") {
   desenhar?.();                                                              // depois de abrir: o gráfico mede o tamanho certo
   $$("#pfConteudo .pf-longo").forEach((el) => recolhivel(el));
 }
+// botão de copiar nome e CNPJ (duas linhas) para a área de transferência
+const botaoCopiar = (nome, cnpj) => !nome && !cnpj ? "" :
+  `<button type="button" class="copiar" data-copiar="${esc([nome, cnpj].filter(Boolean).join("\n"))}" title="Copiar nome e CNPJ" aria-label="Copiar nome e CNPJ">${ico("copiar")}</button>`;
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest?.("[data-copiar]"); if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copiar); } catch { return; }
+  b.classList.add("ok"); b.innerHTML = ico("ok"); b.title = "Copiado";
+  clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove("ok"); b.innerHTML = ico("copiar"); b.title = "Copiar nome e CNPJ"; }, 1500);
+});
+// rentabilidade histórica: mostrar os anos mais antigos (acima de 5)
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".pf-mais-anos"); if (!b) return;
+  const box = b.previousElementSibling, abrir = box.hidden;
+  box.hidden = !abrir; b.setAttribute("aria-expanded", String(abrir));
+  if (!b.dataset.rot) b.dataset.rot = b.textContent;                   // guarda o texto original ("Mostrar os anos anteriores (…)")
+  b.textContent = abrir ? "Ocultar os anos anteriores" : b.dataset.rot;
+});
+// nome do fundo nas listas (lateral, lista de fundos, selecionados, colar CNPJs…): abre o painel sem marcar/desmarcar a linha.
+// Fundo ainda não baixado: busca as cotas dele e mostra os últimos 12 meses.
+st.fundosPainel = new Map();
+async function abrirPainelLista(c) {
+  if (fontePainel(c, "analise")) return abrirPainelFundo(c, "analise");
+  const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo");
+  $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").textContent = `CNPJ ${cnpjFmt(c)}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, cnpjFmt(c));
+  $("#pfHubTopo").innerHTML = ""; $("#pfSelos").innerHTML = "";
+  $("#pfSub").textContent = cad._soXP ? "Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos." : "Carregando as cotas…";
+  $("#pfConteudo").innerHTML = "";
+  if (!d.open) d.showModal();
+  if (cad._soXP) return;
+  try {
+    await chartPronto;
+    const fs = await D.carregarFundos([c], st.idx.cdiAnterior);
+    if (fs.get(c)) st.fundosPainel.set(c, fs.get(c));
+  } catch (err) { console.error(err); }
+  if (!d.open) return;                                                 // fechou enquanto carregava
+  if (fontePainel(c, "analise")) { d.close(); abrirPainelFundo(c, "analise"); }
+  else $("#pfSub").textContent = "Não foi possível carregar as cotas deste fundo na CVM.";
+}
+document.addEventListener("click", (e) => {
+  const el = e.target.closest?.("[data-pf]"); if (!el) return;
+  e.stopPropagation(); e.preventDefault(); abrirPainelLista(el.dataset.pf);
+}, true);                                                              // captura: chega antes do clique que seleciona a linha
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-pf]")) { e.stopPropagation(); e.preventDefault(); abrirPainelLista(e.target.dataset.pf); }
+}, true);
 // qualquer tabela: clique no nome do fundo (ou na linha das tabelas de métricas) abre o painel; janelas de seleção ficam de fora
 const ondePainel = (el) => (el.closest("#pgRankings") ? "rk" : el.closest("#pgCarteira") ? "cart" : "analise");
 const ALVO_PAINEL = ".principal [data-mini], .principal tr[data-fundo]";
@@ -4456,17 +4504,23 @@ function mensalPF(f, nome) {
   const pct = (v, cor = true) => (v == null || !Number.isFinite(v) ? "–" : `<span style="${cor ? corSinal(v) : ""}">${br(v * 100, 2)}</span>`);
   const pcdi = (v) => (v == null || !Number.isFinite(v) ? "–" : br(v, 2));
   const lista = [...anos.keys()].sort((a, b) => b - a);
-  return `<section class="pf-mensal"><h3>Rentabilidade histórica <small class="nota">(% ao mês · cota líquida de taxas, contra o CDI)</small></h3>` +
-    lista.map((a, i) => {
-      const A = anos.get(a), tot = ret(A.ini, A.fim), cel = (x, f2) => A.m.map((v) => `<td>${v ? f2(v) : "–"}</td>`).join("");
+  // até 5 anos à vista (o atual aberto); os mais antigos ficam atrás do botão
+  const anoHTML = (a, i) => {
+      const A = anos.get(a), tot = ret(A.ini, A.fim), ini = ret(0, A.fim), cel = (x, f2) => A.m.map((v) => `<td>${v ? f2(v) : "–"}</td>`).join("");
       const parcial = A.m.some((v) => v?.parcial);
       return `<details class="pf-ano"${i === 0 ? " open" : ""}><summary>Retorno mensal ${a}</summary><div class="pf-mes-rola"><table class="tb pf-mes-tab">
-        <thead><tr><th class="t"><span class="sr-only">Linha</span></th>${MESES_ABREV.map((m) => `<th>${m}</th>`).join("")}<th>Acumulado</th></tr></thead><tbody>
-        <tr><th class="t" scope="row">Rentabilidade</th>${cel(0, (v) => pct(v.rf) + (v.parcial ? `<sup title="Mês de início do fundo: a partir da 1ª cota">*</sup>` : ""))}<td><b>${pct(tot.rf)}</b></td></tr>
-        <tr><th class="t" scope="row">CDI</th>${cel(0, (v) => pct(v.rc, false))}<td><b>${pct(tot.rc, false)}</b></td></tr>
-        <tr><th class="t" scope="row">% sobre CDI</th>${cel(0, (v) => pcdi(v.pc))}<td><b>${pcdi(tot.pc)}</b></td></tr>
+        <thead><tr><th class="t"><span class="sr-only">Linha</span></th>${MESES_ABREV.map((m) => `<th>${m}</th>`).join("")}<th>Acumulado<br>no ano</th>
+          <th class="pf-ini" title="Da 1ª cota do fundo (${fmtData(d[0])}) até o fim de ${a}">Desde o<br>início</th></tr></thead><tbody>
+        <tr><th class="t" scope="row">Rentabilidade</th>${cel(0, (v) => pct(v.rf) + (v.parcial ? `<sup title="Mês de início do fundo: a partir da 1ª cota">*</sup>` : ""))}<td><b>${pct(tot.rf)}</b></td><td class="pf-ini"><b>${pct(ini.rf)}</b></td></tr>
+        <tr><th class="t" scope="row">CDI</th>${cel(0, (v) => pct(v.rc, false))}<td><b>${pct(tot.rc, false)}</b></td><td class="pf-ini"><b>${pct(ini.rc, false)}</b></td></tr>
+        <tr><th class="t" scope="row">% sobre CDI</th>${cel(0, (v) => pcdi(v.pc))}<td><b>${pcdi(tot.pc)}</b></td><td class="pf-ini"><b>${pcdi(ini.pc)}</b></td></tr>
         </tbody></table></div>${parcial ? `<p class="nota">* Mês de início do fundo: rentabilidade a partir da 1ª cota.</p>` : ""}</details>`;
-    }).join("") + `</section>`;
+  };
+  const MAX_ANOS = 5, antigos = lista.slice(MAX_ANOS);
+  return `<section class="pf-mensal"><h3>Rentabilidade histórica <small class="nota">(% ao mês · cota líquida de taxas, contra o CDI · "desde o início" = da 1ª cota, ${fmtData(d[0])}, até o fim do ano)</small></h3>` +
+    lista.slice(0, MAX_ANOS).map(anoHTML).join("") +
+    (antigos.length ? `<div class="pf-antigos" hidden>${antigos.map((a, i) => anoHTML(a, i + MAX_ANOS)).join("")}</div>
+      <button type="button" class="link pf-mais-anos" aria-expanded="false">Mostrar os anos anteriores (${antigos[antigos.length - 1]} a ${antigos[0]})</button>` : "") + `</section>`;
 }
 
 // ============================== filtros por coluna: redesenho, janelinha numérica e tratadores ==============================
