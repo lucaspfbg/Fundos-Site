@@ -3404,14 +3404,16 @@ function camposXP(cnpj) {
   const o = ofertaXP(cnpj), n = st.xp?.get(cnpj)?.length || 0;
   if (!o) return { "XP Nome": null, _naXP: false };
   const abertas = st.xp.get(cnpj).filter((x) => !verdadeiro(x.FUNDINGBLOCKED));
-  const minimos = (abertas.length ? abertas : st.xp.get(cnpj)).map((x) => numXP(x.MINIMALINITIALINVESTMENT)).filter((x) => x != null);
+  const ofsMin = abertas.length ? abertas : st.xp.get(cnpj);
+  const minimos = ofsMin.map((x) => numXP(x.MINIMALINITIALINVESTMENT)).filter((x) => x != null);
+  const movs = ofsMin.map((x) => numXP(x.MINIMALINVESTMENT)).filter((x) => x != null);      // movimentação mínima (aplicações seguintes)
   return { _naXP: true, _xpOfertas: n, "XP Nome": o.NAME, "Investidor": tipoInvestidor(o), "Captação": abertas.length ? "Aberto" : "Fechado",
     "Cotização": resumirPrazo(o.REDEMPTIONQUOTATION), "Liquidação": resumirPrazo(o.REDEMPTIONSETTLEMENT), "Classificação XP": o.CLASSIFICATIONXP,
     "Resgate": [prazoCompacto(o.REDEMPTIONQUOTATION), prazoCompacto(o.REDEMPTIONSETTLEMENT)].filter(Boolean).join("+"),
     _dinheiroNovo: (() => { for (const x of st.xp.get(cnpj)) { const t = lerTags(x.TAGS).find((g) => /dinheiro\s*novo/i.test(g.titulo)); if (t) return t.descricao || ""; } return null; })(),
     "Taxa adm.": numXP(o.ADMINISTRATIONRATE), "Taxa perf.": numXP(o.PERFORMANCERATE), "ROA": numXP(o.RETURNONASSETS),
     "Risco": numXP(o.RISKGENIUS), _riscoCor: o.RISKGENIUSCOLOR, _riscoDesc: o.RISKGENIUSDESCRIPTION,
-    "Aplicação mín.": minimos.length ? Math.min(...minimos) : null, _isento: verdadeiro(o.ISTAXFREEONINCOMEPF), "Isento": verdadeiro(o.ISTAXFREEONINCOMEPF) ? "Sim" : "",
+    "Aplicação mín.": minimos.length ? Math.min(...minimos) : null, "Movimentação mín.": movs.length ? Math.min(...movs) : null, _isento: verdadeiro(o.ISTAXFREEONINCOMEPF), "Isento": verdadeiro(o.ISTAXFREEONINCOMEPF) ? "Sim" : "",
     _hubId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(o.ID || "")) ? String(o.ID) : null,
     ...camposXPNovos(cnpj, o, abertas) };
 }
@@ -3671,7 +3673,7 @@ function colunasXPRel() {
     { nome: "SUSEP PGBL", tipo: "txt", v: (q) => q["SUSEP PGBL"] ?? "" }, { nome: "SUSEP VGBL", tipo: "txt", v: (q) => q["SUSEP VGBL"] ?? "" },
     { nome: "Categoria XP", tipo: "txt", v: (q) => q.Categoria ?? "" }, { nome: "Gestora (XP)", tipo: "txt", v: (q) => q.Gestora ?? "" },
     { nome: "Público-alvo (XP)", tipo: "txt", v: (q) => q["Público-alvo"] ?? "" }, { nome: "Tributação", tipo: "txt", v: (q) => q["Tributação"] ?? "" },
-    { nome: "Cotização da aplicação", tipo: "txt", v: (q) => q["Cotização da aplicação"] ?? "" }, { nome: "Aplicação adicional mínima", tipo: "valor", v: (q) => q["Aplicação adicional"] ?? null },
+    { nome: "Cotização da aplicação", tipo: "txt", v: (q) => q["Cotização da aplicação"] ?? "" }, { nome: "Movimentação mínima", tipo: "valor", v: (q) => q["Aplicação adicional"] ?? null },
     { nome: "Resgate mínimo", tipo: "valor", v: (q) => q["Resgate mínimo"] ?? null }, { nome: "Saldo mínimo de permanência", tipo: "valor", v: (q) => q["Saldo de permanência"] ?? null },
     { nome: "Taxa de perf. máxima", tipo: "pct", v: (q) => (typeof q["Taxa perf. máx."] === "number" ? q["Taxa perf. máx."] / 100 : null) },
     { nome: "Etiquetas", tipo: "txt", v: (q) => (q._tags || []).join(" | ") }, { nome: "Motivo do fechamento", tipo: "txt", v: (q) => q._motivoFechado || "" },
@@ -3812,7 +3814,7 @@ function abrirPainelFundo(c, onde = "analise") {
       ["Taxa de administração", q["Taxa adm."] != null ? `${br(q["Taxa adm."], 2)}% a.a.` : "–"], ["Taxa de performance", q["Taxa perf."] != null ? `${br(q["Taxa perf."], 2)}%` : "–"],
       ["Taxa de performance máxima", q["Taxa perf. máx."] != null ? `${br(q["Taxa perf. máx."], 2)}%` : "–"],
       ["ROA", q.ROA != null ? `${br(q.ROA, 2)}%` : "–"], ["Risco XP", q.Risco != null ? `<span class="xp-risco ${faixaRisco(q._riscoDesc)}">${br(q.Risco, 0)}</span> ${esc(q._riscoDesc || "")}` : "–"],
-      ["Aplicação mínima inicial", R$(q["Aplicação mín."])], ["Aplicação adicional mínima", R$(q["Aplicação adicional"])],
+      ["Aplicação mínima inicial", R$(q["Aplicação mín."])], ["Movimentação mínima", R$(q["Aplicação adicional"])],
       ["Resgate mínimo", R$(q["Resgate mínimo"])], ["Saldo mínimo de permanência", R$(q["Saldo de permanência"])], ["IOF", txt(q.IOF)],
       ["Clientes no fundo", q.Clientes != null ? `${br(q.Clientes, 0)} cliente${pl(q.Clientes)} · ${q["Volume clientes"] != null ? `R$ ${br(q["Volume clientes"] / 1e6, 2)} mi` : "–"}` : "–"],
       ["Na lista da rede", txt(q["Na lista da rede"])], ["Administradora (XP)", txt(q.Administradora)], ["Custodiante", txt(q.Custodiante)], ["Auditoria", txt(q.Auditoria)]], "pf-xp", linkHub));
@@ -3881,6 +3883,11 @@ st.xpFiltros = new Map();
 const xpConjuntos = new Map();                         // título -> rótulo -> CNPJs (preenchido a cada desenho)                            // id da barra -> CNPJs (clique seleciona e calcula)
 function plXP(c) { const cad = st.porCnpj.get(c); if (cad && !cad._soXP && cad.VL_PATRIM_LIQ != null) return cad.VL_PATRIM_LIQ; return numXP(ofertaXP(c)?.NETEQUITY); }
 const mediana = (v) => { const a = v.filter(Number.isFinite).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+// faixas dos quadros da visão geral da XP (o valor entra na primeira faixa cujo limite ele não passa)
+const FAIXAS_PRAZO = [["D+0", 0], ["D+1", 1], ["D+2 a D+5", 5], ["D+6 a D+10", 10], ["D+11 a D+30", 30], ["D+31 a D+60", 60], ["D+61 a D+90", 90],
+  ["D+91 a D+180", 180], ["acima de D+180", Infinity]];
+const FAIXAS_MINIMO = [["até R$ 100", 100], ["R$ 100 a 500", 500], ["R$ 500 a 1 mil", 1e3], ["R$ 1 mil a 5 mil", 5e3], ["R$ 5 mil a 10 mil", 1e4],
+  ["R$ 10 mil a 50 mil", 5e4], ["acima de R$ 50 mil", Infinity]];
 function faixaDe(v, limites) { if (v == null || !Number.isFinite(v)) return null; for (const [rot, lim] of limites) if (v <= lim) return rot; return limites[limites.length - 1][0]; }
 // bloco: dentro de um quadro maior (sem borda; o arrasto continua limitado a ele) · colunas: lista em N colunas
 // todos: mostra todos os itens (sem juntar o resto em "Outras") · tituloOculto: o nome vem da aba
@@ -3904,17 +3911,19 @@ function renderXPGeral() {
   const cs = [...st.xp.keys()], n = cs.length, q = new Map(cs.map((c) => [c, camposXP(c)]));
   const add = (m, k, c) => { if (k == null) return; (m.get(k) || m.set(k, []).get(k)).push(c); };
   const classif = new Map(), inv = new Map(), risco = new Map(), prazo = new Map(), faixaPL = new Map(), minimo = new Map(), roa = new Map(), adm = new Map(), cvm = new Map();
-  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map(), capt = new Map();
+  const categoria = new Map(), gestora = new Map(), trib = new Map(), volCli = new Map(), tipoF = new Map(), capt = new Map(), movMin = new Map();
   const naBase = cs.filter((c) => st.porCnpj.has(c) && !st.porCnpj.get(c)._soXP);
   for (const c of cs) {
     const x = q.get(c), o = ofertaXP(c);
     add(classif, x["Classificação XP"] || "Sem classificação", c);
     add(inv, { IG: "Geral (IG)", IQ: "Qualificado (IQ)", IP: "Profissional (IP)" }[x.Investidor], c);
     add(risco, x._riscoDesc ? String(x._riscoDesc) : "Sem risco", c);
-    const pc = prazoDias(x["Cotização"]), pq = prazoDias(x["Liquidação"]);
-    add(prazo, pc == null && pq == null ? "Prazo especial" : faixaDe((pc || 0) + (pq || 0), [["até D+1", 1.6], ["D+2 a D+5", 5.6], ["D+6 a D+30", 30.6], ["D+31 a D+90", 90.6], ["D+91 a D+180", 180.6], ["acima de D+180", Infinity]]), c);
+    // dias inteiros (o ",5" de "dias úteis" só serve para ordenar): D+0 úteis + D+1 úteis = D+1
+    const pc = prazoDias(x["Cotização"]), pq = prazoDias(x["Liquidação"]), dias = Math.trunc(pc || 0) + Math.trunc(pq || 0);
+    add(prazo, pc == null && pq == null ? "Prazo especial" : faixaDe(dias, FAIXAS_PRAZO), c);
     add(faixaPL, faixaDe(plXP(c), [["até R$ 50 mi", 50e6], ["R$ 50–200 mi", 200e6], ["R$ 200–500 mi", 500e6], ["R$ 500 mi–1 bi", 1e9], ["R$ 1–5 bi", 5e9], ["acima de R$ 5 bi", Infinity]]) || "Sem PL", c);
-    add(minimo, faixaDe(x["Aplicação mín."], [["até R$ 100", 100], ["até R$ 1 mil", 1e3], ["até R$ 5 mil", 5e3], ["até R$ 10 mil", 1e4], ["até R$ 50 mil", 5e4], ["acima de R$ 50 mil", Infinity]]) || "Sem informação", c);
+    add(minimo, faixaDe(x["Aplicação mín."], FAIXAS_MINIMO) || "Sem informação", c);
+    add(movMin, faixaDe(x["Movimentação mín."], FAIXAS_MINIMO) || "Sem informação", c);
     add(roa, faixaROA(x.ROA), c);
     add(adm, x["Taxa adm."] == null ? "Sem informação" : faixaDe(x["Taxa adm."], [["até 0,5%", 0.5], ["0,5% a 1%", 1], ["1% a 2%", 2], ["acima de 2%", Infinity]]), c);
     add(cvm, o?.CLASSIFICATIONCVM || "Sem classificação", c);
@@ -3955,9 +3964,10 @@ function renderXPGeral() {
   </div></section>
   <div class="xp-cards">
     ${cartaoBarras("Risco XP", risco, n, { ordem: ["Baixo", "Médio", "Alto", "Sem risco"], cores: { Baixo: "#087040", "Médio": "#f0b400", Alto: "#c4222a" } })}
-    ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: ["até D+1", "D+2 a D+5", "D+6 a D+30", "D+31 a D+90", "D+91 a D+180", "acima de D+180", "Prazo especial"] })}
+    ${cartaoBarras("Prazo de resgate (cotização + liquidação)", prazo, n, { ordem: [...FAIXAS_PRAZO.map(([r]) => r), "Prazo especial"] })}
     ${cartaoBarras("Patrimônio líquido", faixaPL, n, { ordem: ["até R$ 50 mi", "R$ 50–200 mi", "R$ 200–500 mi", "R$ 500 mi–1 bi", "R$ 1–5 bi", "acima de R$ 5 bi", "Sem PL"] })}
-    ${cartaoBarras("Aplicação mínima", minimo, n, { ordem: ["até R$ 100", "até R$ 1 mil", "até R$ 5 mil", "até R$ 10 mil", "até R$ 50 mil", "acima de R$ 50 mil", "Sem informação"] })}
+    ${cartaoBarras("Aplicação mínima inicial", minimo, n, { ordem: [...FAIXAS_MINIMO.map(([r]) => r), "Sem informação"] })}
+    ${cartaoBarras("Movimentação mínima", movMin, n, { ordem: [...FAIXAS_MINIMO.map(([r]) => r), "Sem informação"], nota: "Valor mínimo das aplicações seguintes (depois da inicial)." })}
     ${cartaoBarras("ROA", roa, n, { ordem: ORDEM_ROA, colunas: 3, classe: "xp-largo" })}
     ${cartaoBarras("Taxa de administração", adm, n, { ordem: ["até 0,5%", "0,5% a 1%", "1% a 2%", "acima de 2%", "Sem informação"] })}
     ${volCli.size > 1 || !volCli.has("Sem clientes") ? cartaoBarras("Volume dos clientes por fundo", volCli, n, { ordem: ["Sem clientes", "até R$ 100 mil", "R$ 100 mil–1 mi", "R$ 1–5 mi", "R$ 5–20 mi", "acima de R$ 20 mi"] }) : ""}
