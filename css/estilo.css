@@ -1090,3 +1090,9 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
 .aviso-calc .nota { margin: 6px 0 0; }
 .aviso-calc details { margin-top: 6px; font-size: var(--fs-sm); }
 .aviso-calc summary { cursor: pointer; color: var(--link); font-weight: 600; }
+
+/* símbolo de alerta (fundos sem cotas no período) */
+.alerta { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-right: 7px; border-radius: 50%; background: #f0b400; color: #2a1f00;
+  font: 800 12px/1 var(--f-corpo); vertical-align: -3px; flex: none; }
+.aviso-calc > b .alerta { width: 20px; height: 20px; font-size: 13px; vertical-align: -3px; }
+details.sem-dados > summary { font-weight: 600; }

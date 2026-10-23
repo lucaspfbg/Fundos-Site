@@ -676,7 +676,7 @@
     <h3>Regras dos cálculos</h3>
     <ul>
       <li><b>Mesma regra do macro em VBA</b>: o CDI de cada dia é o do dia útil anterior; na primeira cota do fundo, variação e quota anterior são zero; o fator do CDI é arredondado em 8 casas nas métricas por período.</li>
-      <li><b>Períodos de N meses</b> terminam na cota mais recente entre os fundos selecionados e começam N meses antes, para todos. Fundos que pararam antes (cancelados, em liquidação ou sem envio) aparecem com <span class="parado">⊘</span> e vão até a própria última cota.</li>
+      <li><b>Períodos de N meses</b> terminam na data mais recente da base (a de "Dados da CVM até", no topo) e começam N meses antes, para todos. Fundos que pararam no meio do período (cancelados, em liquidação ou sem envio) aparecem com <span class="parado">⊘</span> e vão até a própria última cota; os que não têm nenhuma cota no período ficam de fora, com aviso.</li>
       <li><b>Anualização</b>: 252 dias úteis. Nas métricas usa as linhas com cota; na janela móvel e nos índices, os dias úteis do calendário ANBIMA (feriados nacionais, com 20/11 a partir de 2024).</li>
       <li><b>Volatilidade</b>: desvio-padrão dos retornos logarítmicos diários × √252. <b>Sharpe</b>: (retorno anualizado − CDI anualizado) ÷ volatilidade.</li>
       <li><b>IPCA e IGP-M</b> são mensais: no gráfico, a variação de cada mês é distribuída pelos dias úteis do mês. O último mês aparece só depois de divulgado.</li>

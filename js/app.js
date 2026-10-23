@@ -754,10 +754,14 @@ async function calcular() {
     let fimComum = -Infinity;
     for (const f of fundos.values()) if (f.d.length) fimComum = Math.max(fimComum, f.d[f.d.length - 1]);
     if (!Number.isFinite(fimComum)) fimComum = undefined;
-    const opc = { ref: null, ini: diaDe(new Date($("#pIni").value)), fim: diaDe(new Date($("#pFim").value)), fimComum };
+    // fim dos períodos de N meses: a data mais recente da base ("Dados da CVM até"), não a última cota dos fundos escolhidos.
+    // Fundo sem cota nesse intervalo fica de fora (com aviso); o que parou no meio vai até a própria última cota (⊘).
+    const fimDados = st.meta ? diaDe(new Date(st.meta.ultimo_dado)) : undefined;
+    const fimPer = fimDados == null ? fimComum : Math.max(fimDados, fimComum ?? -Infinity);
+    const opc = { ref: null, ini: diaDe(new Date($("#pIni").value)), fim: diaDe(new Date($("#pFim").value)), fimComum: fimPer };
     const peso = Number($("#peso").value) / 100;
     const apel = apelidos(sel);
-    const res = { apelidos: apel, fundos, periodos: {}, fimComum, sel };
+    const res = { apelidos: apel, fundos, periodos: {}, fimComum, fimPer, sel };
     for (const per of PERIODOS.filter((p) => st.periodos.has(p))) {
       const ref = per === "Mês" ? diaYMD(ma, mm, 15) : per === "Ano" ? diaYMD(Number($("#refAno").value), 1, 1) : null;
       const linhas = [], semDados = [], series = new Map();
@@ -766,7 +770,7 @@ async function calcular() {
         const r = f ? calcularFundo(f, st.idx.ibov, per, peso, { ...opc, ref, ...opcPeso() }) : null;
         if (!r) { semDados.push(c); continue; }
         const cad = st.porCnpj.get(c) || {};
-        Object.assign(r, { _c: c, _parado: situacaoParado(f, cad, fimComum), _gestor: cad.GESTOR || "", "Fundo": cad.NOME, "CNPJ": cnpjFmt(c),
+        Object.assign(r, { _c: c, _parado: situacaoParado(f, cad, fimPer), _gestor: cad.GESTOR || "", "Fundo": cad.NOME, "CNPJ": cnpjFmt(c),
           "Classificação CVM": cad.CLASSIFICACAO_CVM || "", "Classificação ANBIMA": cad.CLASSIFICACAO_ANBIMA || "",
           "Objetivo de retorno": cad.INDICADOR_DESEMPENHO || "N/D" });
         linhas.push(r);
@@ -1385,14 +1389,15 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   desenharTravar();
   const dados = res.periodos[st.perAtivo];
   const nomeSem = (c) => esc(st.porCnpj.get(c)?.NOME || cnpjFmt(c));
+  const alerta = `<span class="alerta" aria-hidden="true">!</span>`;
   $("#semDados").innerHTML = !dados.linhas.length && dados.semDados.length         // nenhum fundo calculado: aviso em destaque, não só a linha discreta
-    ? `<div class="aviso-calc" role="alert"><b>Nenhum fundo pôde ser calculado no período "${esc(rotPer(st.perAtivo))}".</b>
+    ? `<div class="aviso-calc" role="alert"><b>${alerta}Nenhum fundo pôde ser calculado no período "${esc(rotPer(st.perAtivo))}".</b>
         ${dados.semDados.length === 1 ? `<span>${nomeSem(dados.semDados[0])}</span> não tem` : `Os ${dados.semDados.length} fundos selecionados não têm`} cotas na CVM neste período.
         <p class="nota">Fundos que só aparecem na lista da XP, ou que pararam de enviar cotas à CVM (como alguns FIDCs), ficam de fora.
         Escolha outro período (por exemplo, "Desde o início") ou outros fundos e clique em Calcular.</p>
         ${dados.semDados.length > 1 ? `<details><summary>Ver quais</summary>${dados.semDados.map(nomeSem).join("; ")}</details>` : ""}</div>`
     : dados.semDados.length
-    ? `<details><summary>${dados.semDados.length} fundo${pl(dados.semDados.length)} sem dados neste período · ver quais</summary>${dados.semDados.map(nomeSem).join("; ")}</details>` : "";
+    ? `<details class="sem-dados"><summary>${alerta}${dados.semDados.length} fundo${pl(dados.semDados.length)} sem cotas neste período · ver quais</summary>${dados.semDados.map(nomeSem).join("; ")}</details>` : "";
   $("#vazio").hidden = true;
   $("#limparTela").disabled = !st.res;          // o cálculo guarda o resultado depois da última atualização da lateral
   renderJM();
@@ -2576,7 +2581,7 @@ function blocosRel(k) {
   const img = (id, titulo) => { const i = imagemGrafico(id); if (i) B.push({ tipo: "img", titulo, ...i }); };
   switch (k) {
     case "fundos": {
-      const fim = res.fimComum;
+      const fim = res.fimPer ?? res.fimComum;
       B.push({ tipo: "tabela", nome: "Fundos analisados", colunas: [{ nome: "Fundo", tipo: "txt" }, { nome: "CNPJ", tipo: "txt" }, { nome: "Classificação CVM", tipo: "txt" },
           { nome: "Classificação ANBIMA", tipo: "txt" }, { nome: "Gestor", tipo: "txt" }, { nome: "1ª cota", tipo: "data" }, { nome: "Última cota", tipo: "data" }, { nome: "Situação", tipo: "txt" }],
         linhas: res.sel.map((c) => { const f = res.fundos.get(c), cad = st.porCnpj.get(c) || {}, pa = f ? situacaoParado(f, cad, fim) : null;
