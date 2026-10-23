@@ -653,22 +653,23 @@ dialog, .dlg-tab, .tb-wrap, .mx-vp, .pc-lista, .combo-lista, .resbusca, #rkLista
 .coluna > .topo h1 { font: 700 var(--fs-2xl) var(--f-marca); letter-spacing: .03em; margin: 0; }
 .topo-tit p { margin: 0; font-size: var(--fs-base); color: #e6ebff; }
 .principal { padding: 16px 20px 32px; min-width: 0; }
-/* celular e tablet em pé: a lateral vira gaveta (botão ☰ no topo); os resultados ficam na tela */
-.tema-btn.menu-btn, .veu { display: none; }
+/* a lateral é uma gaveta em qualquer largura (botão ☰ no topo): as páginas usam a largura inteira.
+   Abrir e fechar deslizam; fechar é um pouco mais rápido. O véu escurece e clareia junto. */
+.corpo { grid-template-columns: 1fr; }
+.lateral { position: fixed; inset: 0 auto 0 0; z-index: 80; width: min(88vw, 340px); height: 100dvh; max-height: none; border-right: 0;
+  transform: translateX(-100%); visibility: hidden; box-shadow: var(--sh-3); padding-bottom: env(safe-area-inset-bottom);
+  transition: transform .2s var(--ease-out), visibility 0s .2s; }
+.gaveta-aberta .lateral { transform: none; visibility: visible; transition: transform .25s var(--ease-out); }
+.veu { position: fixed; inset: 0; z-index: 79; background: rgb(8 10 40 / .45); opacity: 0; pointer-events: none; transition: opacity .2s var(--ease-out); }
+.gaveta-aberta .veu { opacity: 1; pointer-events: auto; transition-duration: .25s; }
+.tema-btn.menu-btn { display: inline-grid; flex: none; }
 @media (max-width: 900px) {
-  .corpo { grid-template-columns: 1fr; }
-  .lateral { position: fixed; inset: 0 auto 0 0; z-index: 80; width: min(88vw, 340px); height: 100dvh; max-height: none; border-right: 0;
-    transform: translateX(-100%); visibility: hidden; transition: transform .25s var(--ease-out), visibility 0s .25s; box-shadow: var(--sh-3);
-    padding-bottom: env(safe-area-inset-bottom); }
-  .gaveta-aberta .lateral { transform: none; visibility: visible; transition: transform .25s var(--ease-out); }
-  .gaveta-aberta .veu:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 79; background: rgb(8 10 40 / .45); animation: surgir .2s var(--ease-out); }
-  .tema-btn.menu-btn { display: inline-grid; flex: none; }
   .coluna > .topo { padding: 12px 14px; flex-wrap: wrap; gap: 10px; }
   .coluna > .topo h1 { font-size: var(--fs-xl); }
   .topo-tit { flex: 1 1 200px; }
   .topo-tit p { display: none; }
 }
-@media (max-width: 900px) and (prefers-reduced-motion: reduce) { .lateral, .gaveta-aberta .lateral { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .lateral { transition: visibility 0s .12s; } .gaveta-aberta .lateral { transition: none; } }
 
 /* ============ área da equipe ============ */
 .equipe-box { display: flex; align-items: center; }
@@ -1027,7 +1028,7 @@ button.fnum.ativo { border: 1px solid var(--ouro); color: var(--txt); background
 dialog[open] { animation: crescer .18s var(--ease-out); }
 dialog[open]::backdrop { animation: surgir .18s var(--ease-out); }
 dialog.dlg-fundo[open], dialog.dlg-pergunta[open] { animation-duration: .14s; }
-.lateral, .principal { transition: opacity .2s var(--ease-out); }
+.principal { transition: opacity .2s var(--ease-out); }
 
 /* ============ toque: alvos de pelo menos 40px e campos de 16px (o iOS não dá zoom ao focar) ============ */
 @media (pointer: coarse) {
@@ -1058,7 +1059,7 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
 .cfg-grupo h3 { font-size: var(--fs-xs); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--sub); }
 .cfg-grupo .nota { margin: 0; }
 .vazio-acao { margin-top: 14px; }
-@media (min-width: 901px) { .vazio-acao { display: none; } }
+
 
 /* montar rankings: painel dentro da página (as listas rolam por dentro) */
 .rk-painel { display: flex; flex-direction: column; gap: 8px; }

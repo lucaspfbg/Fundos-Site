@@ -419,6 +419,39 @@ function renderSelDialogo() {
   $("#dlgN").textContent = dlg.sel.length;
   $("#dlgAplicar").textContent = `Aplicar seleção (${dlg.sel.length} fundo${dlg.sel.length === 1 ? "" : "s"})`;
 }
+// lista de fundos: clicar e arrastar marca (ou desmarca) as linhas do intervalo, como numa planilha.
+// A 1ª linha decide: se estava desmarcada, o arrasto marca; se estava marcada, desmarca. Um clique sem arrastar continua no alternarDlg.
+const dlgArrasto = { ativo: false, moveu: false, recente: false };
+const intervaloArrasto = () => (dlgArrasto.ini <= dlgArrasto.fim ? [dlgArrasto.ini, dlgArrasto.fim] : [dlgArrasto.fim, dlgArrasto.ini]);
+document.addEventListener("pointerdown", (e) => {
+  const tr = e.target.closest?.("#dlgTabela tr.linha-f");
+  if (!tr || e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input, select, button, a, [data-pf]")) return;
+  e.preventDefault();                                                    // não seleciona o texto das linhas
+  const linhas = [...tr.parentElement.querySelectorAll("tr.linha-f")], i = linhas.indexOf(tr);
+  Object.assign(dlgArrasto, { ativo: true, moveu: false, linhas, ini: i, fim: i, marcar: !dlg.sel.includes(tr.dataset.c), base: new Set(dlg.sel) });
+});
+document.addEventListener("pointermove", (e) => {
+  if (!dlgArrasto.ativo) return;
+  const box = $("#dlgTabela"), r = box.getBoundingClientRect();         // perto da borda, a lista rola sozinha
+  if (e.clientY > r.bottom - 28) box.scrollTop += 14; else if (e.clientY < r.top + 70) box.scrollTop -= 14;
+  const tr = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#dlgTabela tr.linha-f");
+  const i = tr ? dlgArrasto.linhas.indexOf(tr) : -1; if (i < 0 || i === dlgArrasto.fim) return;
+  dlgArrasto.fim = i; dlgArrasto.moveu = true;
+  const [a, b] = intervaloArrasto();
+  dlgArrasto.linhas.forEach((el, k) => el.classList.toggle("marcado", k >= a && k <= b ? dlgArrasto.marcar : dlgArrasto.base.has(el.dataset.c)));
+});
+document.addEventListener("pointerup", () => {
+  if (!dlgArrasto.ativo) return;
+  dlgArrasto.ativo = false;
+  if (!dlgArrasto.moveu) return;
+  const [a, b] = intervaloArrasto(), sel = new Set(dlgArrasto.base);
+  for (const el of dlgArrasto.linhas.slice(a, b + 1)) dlgArrasto.marcar ? sel.add(el.dataset.c) : sel.delete(el.dataset.c);
+  dlg.sel = [...dlg.sel.filter((c) => sel.has(c)), ...[...sel].filter((c) => !dlg.sel.includes(c))];      // mantém a ordem; os novos entram no fim
+  dlgArrasto.recente = true; setTimeout(() => { dlgArrasto.recente = false; }, 0);                        // o "click" que vem depois não desfaz
+  for (const el of dlgArrasto.linhas) el.title = dlg.sel.includes(el.dataset.c) ? "Selecionado · clique para tirar" : "Clique para selecionar";
+  if ($("#dlgSoSel").checked) renderSeletor();
+  renderSelDialogo();
+});
 function alternarDlg(c) {
   dlg.sel = dlg.sel.includes(c) ? dlg.sel.filter((x) => x !== c) : [...dlg.sel, c];
   const tr = $(`#dlgTabela tr[data-c="${c}"]`);
@@ -573,7 +606,7 @@ document.addEventListener("click", async (e) => {
     if (fn) manterRolagem(bo, fn); return; }
   // janela da lista
   const lf = t.closest?.("#dlgTabela tr.linha-f");
-  if (lf && !t.closest("input, select, button")) return alternarDlg(lf.dataset.c);
+  if (lf && !t.closest("input, select, button") && !dlgArrasto.recente) return alternarDlg(lf.dataset.c);
   if (t.dataset?.dlgrm) { dlg.sel = dlg.sel.filter((c) => c !== t.dataset.dlgrm); renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgMarcarVis") { dlg.sel = [...new Set([...dlg.sel, ...(dlg.visiveis || [])])]; renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgTirarVis") { const vis = new Set(dlg.visiveis || []); dlg.sel = dlg.sel.filter((c) => !vis.has(c)); renderSeletor(); renderSelDialogo(); return; }
@@ -3777,8 +3810,8 @@ function abrirPainelFundo(c, onde = "analise") {
   const { l, f } = fonte, cad = st.porCnpj.get(c) || {}, q = st.xp ? camposXP(c) : {};
   const nomeXP = q["XP Nome"] ? String(q["XP Nome"]).toLocaleUpperCase("pt-BR") : null, cnpjTxt = l.CNPJ || cnpjFmt(c);
   $("#pfTit").textContent = nomeXP || l.Fundo;
-  $("#pfCnpj").textContent = `CNPJ ${cnpjTxt}`;
-  $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, cnpjTxt);
+  $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjTxt)}${botaoCopiar(cnpjTxt, "o CNPJ")}`;
+  $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, "o nome");
   $("#pfHubTopo").innerHTML = q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "";
   $("#pfSub").innerHTML = `${nomeXP ? `CVM: ${esc(l.Fundo)} · ` : ""}${esc(fonte.rotulo)} (${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))})` +
     (fonte.extra ? `<br><b>${esc(fonte.extra)}</b>` : "");
@@ -3809,11 +3842,13 @@ function abrirPainelFundo(c, onde = "analise") {
   const bloco = (titulo, pares, classe = "", extra = "") => `<section class="pf-sec ${classe}"><h3>${esc(titulo)}${extra}</h3><dl>${pares.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl></section>`;
   const cadExtra = [["Gestor", esc(cad.GESTOR || "–")], ["Administrador", esc(cad.ADMINISTRADOR || "–")], ["Situação na CVM", esc(cad.SITUACAO || "–")],
     ["Público-alvo (CVM)", esc(cad.PUBLICO_ALVO || "–")], ["PL mais recente", cad.VL_PATRIM_LIQ != null ? `R$ ${br(cad.VL_PATRIM_LIQ / 1e6, 1)} mi` : "–"]];
-  const secoes = [bloco("Cadastro", [...itens(PF_SECOES[0][1]), ...cadExtra], "pf-cad", botaoCopiar(cad.NOME || l.Fundo, cnpjTxt))];
+  const cadPares = [["Nome (CVM)", esc(cad.NOME || l.Fundo || "–") + botaoCopiar(cad.NOME || l.Fundo, "o nome")],
+    ...[...itens(PF_SECOES[0][1]), ...cadExtra].map(([k, v]) => (k === "CNPJ" ? [k, v + botaoCopiar(cnpjTxt, "o CNPJ")] : [k, v]))];
+  const secoes = [bloco("Cadastro", cadPares, "pf-cad")];
   if (q._naXP) {
     const R$ = (v, d = 0) => (v != null ? `R$ ${br(v, d)}` : "–"), txt = (v) => esc(v || "–");
     const linkHub = q._hubId ? `<a class="hub-link pf-hub" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">Página do Hub ↗</a>` : "";
-    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"]) + botaoCopiar(q["XP Nome"], cnpjTxt)], ["Tipo", q._prev ? '<span class="xp-tag xp-tag-prev">Previdência</span>' : "Fundo de investimento"], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
+    secoes.push(bloco("XP · confidencial", [["Nome comercial", txt(q["XP Nome"]) + botaoCopiar(q["XP Nome"], "o nome")], ["Tipo", q._prev ? '<span class="xp-tag xp-tag-prev">Previdência</span>' : "Fundo de investimento"], ["Categoria XP", txt(q.Categoria)], ["Classificação XP", txt(q["Classificação XP"])],
       ["Gestora", txt(q.Gestora)], ["Investidor", (badgeInv(q.Investidor) || "–") + (q._publicoDiverge ? ` <span class="xp-aviso-pub" title="O público-alvo escrito pela XP é diferente das marcações de qualificado/profissional">⚠ ${esc(q["Público-alvo"])}</span>` : "")],
       ["Captação", `${cadeado(q["Captação"], q._motivoFechado)} ${esc(q["Captação"] || "")}${q._motivoFechado ? ` <small class="nota">(${esc(q._motivoFechado)})</small>` : ""}`],
       ["Dinheiro novo", q._dinheiroNovo == null ? "Não" : `${dinheiroNovo(q._dinheiroNovo)} ${esc(q._dinheiroNovo || "Sim")}`],
@@ -3846,14 +3881,15 @@ function abrirPainelFundo(c, onde = "analise") {
   desenhar?.();                                                              // depois de abrir: o gráfico mede o tamanho certo
   $$("#pfConteudo .pf-longo").forEach((el) => recolhivel(el));
 }
-// botão de copiar nome e CNPJ (duas linhas) para a área de transferência
-const botaoCopiar = (nome, cnpj) => !nome && !cnpj ? "" :
-  `<button type="button" class="copiar" data-copiar="${esc([nome, cnpj].filter(Boolean).join("\n"))}" title="Copiar nome e CNPJ" aria-label="Copiar nome e CNPJ">${ico("copiar")}</button>`;
+// botão de copiar um texto (o nome ou o CNPJ) para a área de transferência; rotulo: "o nome" / "o CNPJ"
+const botaoCopiar = (texto, rotulo) => !texto ? "" :
+  `<button type="button" class="copiar" data-copiar="${esc(texto)}" title="Copiar ${rotulo}" aria-label="Copiar ${rotulo}">${ico("copiar")}</button>`;
 document.addEventListener("click", async (e) => {
   const b = e.target.closest?.("[data-copiar]"); if (!b) return;
   try { await navigator.clipboard.writeText(b.dataset.copiar); } catch { return; }
+  const titulo = b.dataset.titulo ||= b.title;
   b.classList.add("ok"); b.innerHTML = ico("ok"); b.title = "Copiado";
-  clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove("ok"); b.innerHTML = ico("copiar"); b.title = "Copiar nome e CNPJ"; }, 1500);
+  clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove("ok"); b.innerHTML = ico("copiar"); b.title = titulo; }, 1500);
 });
 // rentabilidade histórica: mostrar os anos mais antigos (acima de 5)
 document.addEventListener("click", (e) => {
@@ -3869,7 +3905,7 @@ st.fundosPainel = new Map();
 async function abrirPainelLista(c) {
   if (fontePainel(c, "analise")) return abrirPainelFundo(c, "analise");
   const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo");
-  $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").textContent = `CNPJ ${cnpjFmt(c)}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, cnpjFmt(c));
+  $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, "o nome");
   $("#pfHubTopo").innerHTML = ""; $("#pfSelos").innerHTML = "";
   $("#pfSub").textContent = cad._soXP ? "Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos." : "Carregando as cotas…";
   $("#pfConteudo").innerHTML = "";
@@ -5612,7 +5648,7 @@ $("#btnConfig").addEventListener("click", () => $("#dlgConfig").showModal());
 
 // celular: a lateral vira gaveta; fecha ao calcular, ao trocar de aba, no véu ou com Esc
 function gaveta(abrir) {
-  $("#app").classList.toggle("gaveta-aberta", abrir); $("#veu").hidden = !abrir;
+  $("#app").classList.toggle("gaveta-aberta", abrir);                  // o véu aparece e some pelo CSS (com transição)
   $("#btnMenu").setAttribute("aria-expanded", String(abrir));
   if (abrir) $("#lateral [role=tab][aria-selected=true]")?.focus(); else if ($("#lateral").contains(document.activeElement)) $("#btnMenu").focus();
 }
