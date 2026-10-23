@@ -1077,3 +1077,8 @@ dialog.dlg-config { width: min(520px, 94vw); padding: 18px 20px 20px; }
 .sec[aria-pressed=true]::before { background: var(--pos); }
 .opcoes { max-width: 100%; }
 .opcoes select, .opcoes .combo { max-width: 100%; min-width: 0; }
+.minigraf { left: 0; top: 0; will-change: transform; }        /* a posição vem do transform (moverDica, no JS) */
+
+/* seções fora da tela não são desenhadas até chegar perto (páginas longas com muitos fundos ficam mais leves) */
+.cartao[data-sec] { content-visibility: auto; contain-intrinsic-size: auto 640px; }
+.cartao[data-sec]:has(.combo-lista:not([hidden])) { content-visibility: visible; }   /* lista aberta: o cartão não corta o que passa da borda */

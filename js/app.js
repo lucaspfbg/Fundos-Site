@@ -25,6 +25,7 @@ const br = (v, c = 2) => (v == null || Number.isNaN(v) ? "" : (NF[c] ||= nf(c)).
 const brPct = (v, c = 2) => (typeof v !== "number" || Number.isNaN(v) ? "" : br(v * 100, c) + "%");
 const cnpjFmt = (c) => (c || "").replace(/^([0-9A-Z]{2})([0-9A-Z]{3})([0-9A-Z]{3})([0-9A-Z]{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 const normCnpj = (c) => String(c).toUpperCase().replace(/[^0-9A-Z]/g, "").padStart(14, "0");     // aceita o CNPJ alfanumérico (2026+)
+const pl = (n) => (Number(n) === 1 ? "" : "s");                                   // plural: `${n} fundo${pl(n)}`
 const rotPer = (p) => (p === "Vida Toda" ? "Desde o início" : p.replace(" Meses", " meses"));     // rótulo do período na tela (a chave interna continua "12 Meses")
 const ico = (n) => `<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;      // ícones do <svg> no topo do index.html
 const curto = (s, n = 45) => (s.length <= n ? s : s.slice(0, n - 1) + "…");
@@ -156,7 +157,7 @@ function atualizarSidebar() {
     || `<p class="nota">Nenhum fundo selecionado.</p>`;
   $("#limpar").hidden = !st.sel.length;
   // lista dos selecionados: o título mostra a quantidade e o botão abre/fecha
-  const xpi = $("#xpSelInfo"); if (xpi) xpi.textContent = st.sel.length ? `${st.sel.length} fundo(s) selecionado(s)` : "";
+  const xpi = $("#xpSelInfo"); if (xpi) xpi.textContent = st.sel.length ? `${st.sel.length} fundo${pl(st.sel.length)} selecionado${pl(st.sel.length)}` : "";
   $("#selMostrar").hidden = !st.sel.length;
   $("#selecionados").hidden = !st.sel.length || !st.selAberta;
   $("#selMostrar").textContent = st.selAberta ? "Ocultar" : "Mostrar"; $("#selMostrar").setAttribute("aria-expanded", String(!!st.selAberta));
@@ -391,7 +392,7 @@ function renderSeletor(soLinhas = false) {
     ` <button class="link" type="button" data-xp-todos="1" ${dlg.xpTodos ? "disabled" : ""}>Mostrar todos</button> · <button class="link" type="button" data-xp-todos="0" ${dlg.xpTodos ? "" : "disabled"}>Voltar a ${LIMITE_LISTA}</button>`;
   dlg.visiveis = linhas.map((f) => f.CNPJ);
   const nSoXP = todos.filter((f) => f._soXP).length, faltam = todos.length - linhas.length;
-  $("#dlgInfo").innerHTML = `<b>${br(todos.length, 0)}</b> fundo(s)` + (nSoXP ? ` · <span class="so-xp">⚠</span> ${br(nSoXP, 0)} só na XP (sem dados na CVM: não dá para calcular)` : "") + (faltam ? ` · mostrando ${br(linhas.length, 0)}` : "") +
+  $("#dlgInfo").innerHTML = `<b>${br(todos.length, 0)}</b> fundo${pl(todos.length)}` + (nSoXP ? ` · <span class="so-xp">⚠</span> ${br(nSoXP, 0)} só na XP (sem dados na CVM: não dá para calcular)` : "") + (faltam ? ` · mostrando ${br(linhas.length, 0)}` : "") +
     ` · clique no título da coluna para ordenar`;
   const corpo = linhas.map((f) =>
     `<tr class="linha-f${marcados.has(f.CNPJ) ? " marcado" : ""}" data-c="${f.CNPJ}" tabindex="0" title="${marcados.has(f.CNPJ) ? "Selecionado · clique para tirar" : "Clique para selecionar"}">` +
@@ -449,7 +450,7 @@ function buscarColagem() {
 }
 function renderColagem() {
   const lista = ordenarFundos(col.lista.map((c) => st.porCnpj.get(c)), "col"), jaSel = new Set(col.base || st.sel);
-  $("#colInfo").innerHTML = `<b>${col.lista.length}</b> fundo(s) encontrado(s)` + (col.lista.some((c) => jaSel.has(c)) ? ` · ${col.lista.filter((c) => jaSel.has(c)).length} já estão ${col.aoConfirmar ? "no ranking" : "selecionados"}` : "") +
+  $("#colInfo").innerHTML = `<b>${col.lista.length}</b> fundo${pl(col.lista.length)} encontrado${pl(col.lista.length)}` + (col.lista.some((c) => jaSel.has(c)) ? ` · ${col.lista.filter((c) => jaSel.has(c)).length} já estão ${col.aoConfirmar ? "no ranking" : "selecionados"}` : "") +
     (col.faltam.length ? `<br><span class="neg">Não encontrados na base (${col.faltam.length}): ${col.faltam.map(cnpjFmt).join(", ")}</span>` : "");
   recolhivel($("#colInfo"));
   $("#colTabela").innerHTML = lista.length ? `<table class="tb tab-fundos rm-ini">${cabFundos("col", false, "x", "")}<tbody>${lista.map((f) =>
@@ -512,28 +513,28 @@ async function salvarGrupo() {
   // com login: salva na conta (um grupo seu com o mesmo nome é atualizado)
   if (st.nuvem) {
     const ex = Object.values(g).find((x) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase());
-    if (ex && !(await perguntar("Substituir o grupo?", `Você já tem na conta o grupo <b>${esc(ex._nome)}</b> com ${ex.cnpjs.length} fundo(s). Substituir pelos ${st.sel.length} fundos selecionados agora?`,
+    if (ex && !(await perguntar("Substituir o grupo?", `Você já tem na conta o grupo <b>${esc(ex._nome)}</b> com ${ex.cnpjs.length} fundo${pl(ex.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`,
       [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
     const r = await salvarNaNuvem({ id: ex?._id, tipo: "grupo", nome, compartilhado: $("#grComp").checked, conteudo: { cnpjs: [...st.sel] } });
-    if (r.ok) { $("#grNome").value = ""; renderGrupos(); avisoSel(`<span class="ok">Grupo "${esc(nome)}" salvo na sua conta${$("#grComp").checked ? " e compartilhado com a equipe" : ""} (${st.sel.length} fundo(s)).</span>`); return; }
+    if (r.ok) { $("#grNome").value = ""; renderGrupos(); avisoSel(`<span class="ok">Grupo "${esc(nome)}" salvo na sua conta${$("#grComp").checked ? " e compartilhado com a equipe" : ""} (${st.sel.length} fundo${pl(st.sel.length)}).</span>`); return; }
     if (!(await perguntar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, [{ rot: "Cancelar", v: false }, { rot: "Salvar neste computador", v: true, classe: "prim" }]))) return;
   }
   const loc = g[nome]?._origem === "local" ? g[nome] : null;
   if (loc) {
-    const r = await perguntar("Substituir o grupo?", `Já existe o grupo <b>${esc(nome)}</b> com ${loc.cnpjs.length} fundo(s). Substituir pelos ${st.sel.length} fundos selecionados agora?`,
+    const r = await perguntar("Substituir o grupo?", `Já existe o grupo <b>${esc(nome)}</b> com ${loc.cnpjs.length} fundo${pl(loc.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`,
       [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]);
     if (!r) return;
   }
   g[nome] = { cnpjs: [...st.sel], atualizado: new Date().toISOString() };
   gravarGrupos(g); $("#grNome").value = ""; renderGrupos();
-  avisoSel(`<span class="ok">Grupo "${esc(nome)}" salvo com ${st.sel.length} fundo(s).</span>`);
+  avisoSel(`<span class="ok">Grupo "${esc(nome)}" salvo com ${st.sel.length} fundo${pl(st.sel.length)}.</span>`);
 }
 function carregarGrupo(nome, substituir) {
   const x = lerGrupos()[nome]; if (!x) return;
   if (substituir) st.sel = [];
   const { ok, faltam } = adicionar(x.cnpjs);
   $("#dlgGrupos").close();
-  avisoSel(`<span class="ok">Grupo "${esc(nome)}": ${ok} fundo(s) ${substituir ? "carregado(s)" : "acrescentado(s)"}.</span>` +
+  avisoSel(`<span class="ok">Grupo "${esc(nome)}": ${ok} fundo${pl(ok)} ${substituir ? "carregado" : "adicionado"}${pl(ok)}.</span>` +
     (faltam.length ? `<br><span class="neg">${faltam.length} fora da base atual: ${faltam.map(cnpjFmt).join(", ")}</span>` : ""));
 }
 function exportarGrupos() {
@@ -549,14 +550,14 @@ async function importarGrupos(arquivo) {
   const repetidos = validos.filter(([n]) => g[n]).map(([n]) => n);
   let sobrescrever = true;
   if (repetidos.length) {
-    const r = await perguntar("Grupos com o mesmo nome", `Já existem ${repetidos.length} grupo(s) com o mesmo nome: <b>${repetidos.map(esc).join(", ")}</b>.`,
+    const r = await perguntar("Grupos com o mesmo nome", `Já existe${repetidos.length === 1 ? "" : "m"} ${repetidos.length} grupo${pl(repetidos.length)} com o mesmo nome: <b>${repetidos.map(esc).join(", ")}</b>.`,
       [{ rot: "Cancelar", v: null }, { rot: "Manter os meus", v: false }, { rot: "Substituir pelos do arquivo", v: true, classe: "prim" }]);
     if (r == null) return; sobrescrever = r;
   }
   let n = 0;
   for (const [nome, x] of validos) if (!g[nome] || sobrescrever) { g[nome] = { cnpjs: x.cnpjs.map(normCnpj), atualizado: x.atualizado || new Date().toISOString() }; n++; }
   gravarGrupos(g); renderGrupos();
-  avisoSel(`<span class="ok">${n} grupo(s) importado(s).</span>`);
+  avisoSel(`<span class="ok">${n} grupo${pl(n)} importado${pl(n)}.</span>`);
 }
 
 // ---------- eventos da seleção
@@ -585,7 +586,7 @@ document.addEventListener("click", async (e) => {
     const lista = dlg.sel.filter((c) => st.porCnpj.has(c));
     $("#seletor").close();
     if (dlg.aoAplicar) { const f = dlg.aoAplicar; dlg.aoAplicar = null; return f(lista); }
-    st.sel = lista; atualizarSidebar(); avisoSel(`<span class="ok">${st.sel.length} fundo(s) selecionado(s).</span>`); return;
+    st.sel = lista; atualizarSidebar(); avisoSel(`<span class="ok">${st.sel.length} fundo${pl(st.sel.length)} selecionado${pl(st.sel.length)}.</span>`); return;
   }
   if (t.id === "dlgCancelar") return $("#seletor").close();
   // janela de colar
@@ -598,7 +599,7 @@ document.addEventListener("click", async (e) => {
     if (col.aoConfirmar) { const f = col.aoConfirmar; col.aoConfirmar = null; $("#dlgColar").close(); return f([...col.lista], t.id === "colSubstituir"); }
     if (t.id === "colSubstituir") st.sel = [];
     const { ok } = adicionar(col.lista); $("#dlgColar").close();
-    avisoSel(`<span class="ok">${ok} fundo(s) ${t.id === "colSubstituir" ? "importado(s), substituindo a seleção anterior" : "acrescentado(s)"}.</span>`); return;
+    avisoSel(`<span class="ok">${ok} fundo${pl(ok)} ${t.id === "colSubstituir" ? "importado" + pl(ok) + ", substituindo a seleção anterior" : "adicionado" + pl(ok)}.</span>`); return;
   }
   // grupos
   if (t.id === "grSalvar") return salvarGrupo();
@@ -742,7 +743,7 @@ async function calcular() {
     abrirCarga(sel);
     const fundos = await carregarFundosCancelavel(sel, (feitos, total, ev) => {
       barraPct(barra.firstElementChild, 5 + 75 * feitos / total);
-      $("#progTxt").textContent = `baixando cotas · ${feitos}/${total} fundo(s)`;
+      $("#progTxt").textContent = `baixando cotas · ${feitos}/${total} fundo${pl(total)}`;
       atualizarCarga(feitos, total, ev);
     });
     $("#progTxt").textContent = "calculando…";
@@ -791,7 +792,7 @@ async function calcular() {
     fecharCarga();
     atualizarEspaco();
     const recValor = D.recusadasPorValor ? [...D.recusadasPorValor()] : [];
-    if (recValor.length) avisoSel(`<span class="neg">${recValor.length} cota(s) da XP ignorada(s) por valor muito diferente da última cota da CVM: ` +
+    if (recValor.length) avisoSel(`<span class="neg">${recValor.length} cota${pl(recValor.length)} da XP ignorada${pl(recValor.length)} por valor muito diferente da última cota da CVM: ` +
       `${recValor.slice(0, 3).map(([c]) => esc(curto(st.porCnpj.get(c)?.NOME || cnpjFmt(c), 40))).join("; ")}${recValor.length > 3 ? "…" : ""}. O cálculo usou a cota da CVM.</span>`);
   } catch (e) {
     $("#progTxt").textContent = e.message === INTERROMPIDO ? "Carregamento interrompido." : `Não foi possível calcular (${e.message}). Confira a conexão e clique em Calcular de novo.`;
@@ -993,7 +994,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       colunas = colunas.filter((_, k) => manter[k]);
     }
     if (tabColunas.get(ordenavel).length > 5)
-      ferr = `<div class="tab-ferr"><button type="button" class="sec mini-btn cols-btn${nOc ? " ativo" : ""}" data-ctab="${esc(ordenavel)}" aria-haspopup="dialog">${ico("colunas")}Colunas${nOc ? ` · ${nOc} oculta(s)` : ""}</button></div>`;
+      ferr = `<div class="tab-ferr"><button type="button" class="sec mini-btn cols-btn${nOc ? " ativo" : ""}" data-ctab="${esc(ordenavel)}" aria-haspopup="dialog">${ico("colunas")}Colunas${nOc ? ` · ${nOc} oculta${pl(nOc)}` : ""}</button></div>`;
   }
   const esq = larguras.map((_, j) => larguras.slice(0, j).reduce((s, x) => s + x, 0));
   // coluna de números (algum valor numérico, sem pedir centro): à direita, casas decimais alinhadas
@@ -1024,7 +1025,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     h += linhaFiltros(ordenavel, colunas, linhas, (j) => fx(j, ""));
     if (filtrosAtivos(ordenavel)) {
       const nPassa = linhas.filter((l) => !l._cab && passaFiltros(ordenavel, colunas, l)).length;
-      antes = `<div class="filtro-info" role="status">Filtro: <b>${nPassa}</b> de ${nDados} fundo(s) · <button type="button" class="link" data-flimpar="${esc(ordenavel)}">Limpar filtros</button></div>`;
+      antes = `<div class="filtro-info" role="status">Filtro: <b>${nPassa}</b> de ${nDados} fundo${pl(nDados)} · <button type="button" class="link" data-flimpar="${esc(ordenavel)}">Limpar filtros</button></div>`;
     }
   }
   const passa = linhas.map((l) => !comFiltro || l._cab || passaFiltros(ordenavel, colunas, l));
@@ -1139,7 +1140,7 @@ function tabelaMetricas(dados) {
   const parados = dados.linhas.filter((l) => l._parado);
   const notaGU = st.grossUp ? `<p class="nota">Gross up ligado: nos fundos isentos de IR para pessoa física (marcados com <sup class="gu">GU</sup>), a rentabilidade
     mostrada é a equivalente a um fundo tributado com IR de 15% (rentabilidade ÷ 0,85). Perdas não mudam.</p>` : "";
-  const nota = notaGU + (parados.length ? `<p class="nota-parado"><span class="parado">⊘</span> ${parados.length} fundo(s) sem cotas até o fim do período
+  const nota = notaGU + (parados.length ? `<p class="nota-parado"><span class="parado">⊘</span> ${parados.length} fundo${pl(parados.length)} sem cotas até o fim do período
     (cancelado, em liquidação ou sem envio recente). O cálculo usa o mesmo início dos demais e vai até a última cota de cada um.
     Passe o mouse sobre o símbolo para ver a data.</p>` : "");
   const dicaClique = `<p class="nota">Clique na linha de um fundo para ver o painel com todas as métricas, o cadastro${st.xp ? ", os dados da XP" : ""} e os gráficos.</p>`;
@@ -1382,7 +1383,7 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   desenharTravar();
   const dados = res.periodos[st.perAtivo];
   $("#semDados").innerHTML = dados.semDados.length
-    ? `<details><summary>${dados.semDados.length} fundo(s) sem dados neste período · ver quais</summary>${dados.semDados.map((c) => esc(st.porCnpj.get(c)?.NOME || c)).join("; ")}</details>` : "";
+    ? `<details><summary>${dados.semDados.length} fundo${pl(dados.semDados.length)} sem dados neste período · ver quais</summary>${dados.semDados.map((c) => esc(st.porCnpj.get(c)?.NOME || c)).join("; ")}</details>` : "";
   $("#vazio").hidden = true;
   $("#limparTela").disabled = !st.res;          // o cálculo guarda o resultado depois da última atualização da lateral
   renderJM();
@@ -1514,7 +1515,7 @@ function renderJM() {
   if (!jm.porFundo.length) { $("#jmInfo").innerHTML = `<p class="nota">Nenhuma janela completa no intervalo escolhido. Aumente o intervalo ou diminua a duração.</p>`; return; }
   const prim = Math.min(...jm.porFundo.map((x) => x.resumo.primeira)), ult = Math.max(...jm.porFundo.map((x) => x.resumo.ultima));
   $("#jmInfo").innerHTML = [`<b>${jm.p.meses} meses</b> de aplicação`, `benchmark: <b>${esc(jm.nomeB || "nenhum")}</b>`,
-    `aplicações de <b>${fmtData(prim)}</b> a <b>${fmtData(ult)}</b>`, `<b>${jm.porFundo.length}</b> fundo(s) · <b>${br(n, 0)}</b> janelas`]
+    `aplicações de <b>${fmtData(prim)}</b> a <b>${fmtData(ult)}</b>`, `<b>${jm.porFundo.length}</b> fundo${pl(jm.porFundo.length)} · <b>${br(n, 0)}</b> janelas`]
     .map((t) => `<span>${t}</span>`).join("");
   const series = jm.porFundo.map(({ c, linhas }) => {
     const v = linhas.filter((l) => l.dif != null);
@@ -1729,17 +1730,21 @@ function renderMatrizCorr(contId, chave, itens, m) {
   obsMatriz[contId].desenhar = desenhar; obsMatriz[contId].observe(vp);
   desenhar();
   const tip = $("#corrTip");
+  let par = "";                                                  // o texto só é refeito quando o mouse muda de célula
+  const esconder = () => { tip.hidden = true; par = ""; };
   cv.onmousemove = (e) => {
     const b = cv.getBoundingClientRect(), px = e.clientX - b.left, py = e.clientY - b.top;
-    if (px < MX.rotulo || py > vp.clientHeight - MX.pe) { tip.hidden = true; return; }
+    if (px < MX.rotulo || py > vp.clientHeight - MX.pe) return esconder();
     const i = Math.floor((py + vp.scrollTop) / MX.lin), j = Math.floor((px - MX.rotulo + vp.scrollLeft) / MX.col);
-    if (i < 0 || j < 0 || i >= n || j >= n) { tip.hidden = true; return; }
-    const v = r(i, j);
-    tip.innerHTML = `<div class="mini-tit">${i + 1}. ${esc(itens[i].nome)}</div><div class="mini-tit">× ${j + 1}. ${esc(itens[j].nome)}</div>
+    if (i < 0 || j < 0 || i >= n || j >= n) return esconder();
+    if (par !== i + "," + j) {
+      par = i + "," + j; const v = r(i, j);
+      tip.innerHTML = `<div class="mini-tit">${i + 1}. ${esc(itens[i].nome)}</div><div class="mini-tit">× ${j + 1}. ${esc(itens[j].nome)}</div>
       <div class="mini-rod">Correlação: <b>${v == null ? "n/a (menos de 20 dias em comum)" : br(v, 2)}</b></div>`;
-    tip.style.left = Math.min(e.clientX + 14, innerWidth - 290) + "px"; tip.style.top = (e.clientY + 14) + "px"; tip.hidden = false;
+    }
+    moverDica(tip, Math.min(e.clientX + 14, innerWidth - 290), e.clientY + 14); tip.hidden = false;
   };
-  cv.onmouseleave = () => { tip.hidden = true; };
+  cv.onmouseleave = esconder;
 }
 
 // fundo destacado: os mais correlacionados, os mais próximos de zero e os menos correlacionados com ele
@@ -1779,15 +1784,18 @@ function matrizImagem(cont, itens, r, marc, ext) {
   g.strokeStyle = OURO; g.lineWidth = 2;
   marc.forEach((mk, i) => { if (mk) { g.strokeRect(0, i * lado, tam, lado); g.strokeRect(i * lado, 0, lado, tam); } });
   const tip = $("#corrTip");
+  let par = "";
   cv.onmousemove = (e) => {
     const b = cv.getBoundingClientRect(), i = Math.floor((e.clientY - b.top) / lado), j = Math.floor((e.clientX - b.left) / lado);
-    if (i < 0 || j < 0 || i >= n || j >= n) { tip.hidden = true; return; }
-    const v = r(i, j);
-    tip.innerHTML = `<div class="mini-tit">${i + 1}. ${esc(itens[i].nome)}</div><div class="mini-tit">× ${j + 1}. ${esc(itens[j].nome)}</div>
+    if (i < 0 || j < 0 || i >= n || j >= n) { tip.hidden = true; par = ""; return; }
+    if (par !== i + "," + j) {
+      par = i + "," + j; const v = r(i, j);
+      tip.innerHTML = `<div class="mini-tit">${i + 1}. ${esc(itens[i].nome)}</div><div class="mini-tit">× ${j + 1}. ${esc(itens[j].nome)}</div>
       <div class="mini-rod">Correlação: <b>${v == null ? "n/a" : br(v, 2)}</b></div>`;
-    tip.style.left = Math.min(e.clientX + 14, innerWidth - 290) + "px"; tip.style.top = (e.clientY + 14) + "px"; tip.hidden = false;
+    }
+    moverDica(tip, Math.min(e.clientX + 14, innerWidth - 290), e.clientY + 14); tip.hidden = false;
   };
-  cv.onmouseleave = () => { tip.hidden = true; };
+  cv.onmouseleave = () => { tip.hidden = true; par = ""; };
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-corr-tudo]");
@@ -2248,7 +2256,7 @@ async function calcularCarteiraBotao() {
   await chartPronto;
   const faltam = [...new Set(st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v) && st.porCnpj.has(it.v)).map((it) => it.v))];
   if (faltam.length) {
-    abrirCarga(faltam); $("#cargaTit").textContent = `Carteira: carregando ${faltam.length} fundo(s)`;
+    abrirCarga(faltam); $("#cargaTit").textContent = `Carteira: carregando ${faltam.length} fundo${pl(faltam.length)}`;
     try {
       const novos = await carregarFundosCancelavel(faltam, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
       st.cartFundos = new Map([...(st.cartFundos || new Map()), ...novos]);
@@ -2273,7 +2281,7 @@ document.addEventListener("click", (e) => {
     if (vazia && st.cart.itens.length) st.cart.itens.forEach((it) => (it.peso = Math.round(10000 / st.cart.itens.length) / 100));
     salvarCart(); renderCarteira();
     const tirados = atuais.filter((c) => !quer.has(c)).length;
-    $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo(s) adicionado(s)${tirados ? `, ${tirados} retirado(s)` : ""}.</span>` +
+    $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo${pl(novos.length)} adicionado${pl(novos.length)}${tirados ? `, ${tirados} retirado${pl(tirados)}` : ""}.</span>` +
       (novos.length && !vazia ? " Os novos entraram com peso 0: defina os pesos ou use “Pesos iguais”. Clique em Calcular carteira para baixar as cotas que faltarem." : novos.length ? " Clique em Calcular carteira para baixar as cotas que faltarem." : "");
   }, "Fundos da carteira");
 });
@@ -2636,7 +2644,7 @@ const pdfTxt = (s) => String(s ?? "").replace(/−/g, "-").replace(/[–—]/g, 
   .replace(/…/g, "...").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/≈/g, "~").replace(/[^\x00-\xFF]/g, "");
 const cabecalhoRel = () => {
   const m = st.meta, n = st.res?.sel.length || 0;
-  return `Gerado em ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · dados da CVM até ${fmtData(diaDe(new Date(m.ultimo_dado)))} · ${n} fundo(s)`;
+  return `Gerado em ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · dados da CVM até ${fmtData(diaDe(new Date(m.ultimo_dado)))} · ${n} fundo${pl(n)}`;
 };
 
 // ---------- PDF (A4 deitado; tabelas largas continuam na página seguinte, repetindo a 1ª coluna)
@@ -3178,8 +3186,8 @@ function salvarBackup() {
     { type: "application/json" }));
   a.download = `backup_analise_de_fundos_${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   const n = (x) => (Array.isArray(x) ? x.length : x && typeof x === "object" ? Object.keys(x).length : 0);
-  avisoSel(`<span class="ok">Backup salvo: ${n(dados.grupos)} grupo(s), ${n(dados.rankings)} ranking(s), ${n(dados.modelosRank)} tipo(s) de cálculo próprio(s)` +
-    `${dados.carteira?.itens?.length ? `, carteira com ${dados.carteira.itens.length} ativo(s)` : ""} e as preferências.</span>`);
+  avisoSel(`<span class="ok">Backup salvo: ${n(dados.grupos)} grupo${pl(n(dados.grupos))}, ${n(dados.rankings)} ranking${pl(n(dados.rankings))}, ${n(dados.modelosRank)} tipo${pl(n(dados.modelosRank))} de cálculo próprio${pl(n(dados.modelosRank))}` +
+    `${dados.carteira?.itens?.length ? `, carteira com ${dados.carteira.itens.length} ativo${pl(dados.carteira.itens.length)}` : ""} e as preferências.</span>`);
 }
 async function restaurarBackup(arquivo) {
   let b;
@@ -3190,8 +3198,8 @@ async function restaurarBackup(arquivo) {
   }
   const d = b.dados, n = (x) => (x && typeof x === "object" ? Object.keys(x).length : 0);
   const ok = await perguntar("Restaurar o backup?", `Backup de ${new Date(b.criado).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` +
-    `${b.origem ? ` (feito em ${esc(b.origem.replace(/^https?:\/\//, ""))})` : ""}: ${n(d.grupos)} grupo(s), ${n(d.rankings)} ranking(s), ${n(d.modelosRank)} tipo(s) de cálculo` +
-    `${d.carteira?.itens?.length ? ` e uma carteira com ${d.carteira.itens.length} ativo(s)` : ""}.<br><b>As configurações deste navegador serão substituídas</b> e a página vai recarregar.`,
+    `${b.origem ? ` (feito em ${esc(b.origem.replace(/^https?:\/\//, ""))})` : ""}: ${n(d.grupos)} grupo${pl(n(d.grupos))}, ${n(d.rankings)} ranking${pl(n(d.rankings))}, ${n(d.modelosRank)} tipo${pl(n(d.modelosRank))} de cálculo` +
+    `${d.carteira?.itens?.length ? ` e uma carteira com ${d.carteira.itens.length} ativo${pl(d.carteira.itens.length)}` : ""}.<br><b>As configurações deste navegador serão substituídas</b> e a página vai recarregar.`,
     [{ rot: "Cancelar", v: false }, { rot: "Restaurar", v: true, classe: "prim" }]);
   if (!ok) return;
   for (const k of CHAVES_BACKUP) { if (k in d) localStorage.setItem("fundos." + k, JSON.stringify(d[k])); else localStorage.removeItem("fundos." + k); }
@@ -3492,7 +3500,7 @@ function cotasXP() {
 }
 function avisoCotasIgnoradas() {
   const L = st.xpCotasIgnoradas || [];
-  return L.length ? `<br><span class="neg">${L.length} cota(s) da XP ignorada(s) por data impossível: ${L.slice(0, 3).map((x) => `${esc(x.nome || cnpjFmt(x.c))} (${fmtData(x.d)}, ${x.motivo})`).join("; ")}${L.length > 3 ? "…" : ""}.</span>` : "";
+  return L.length ? `<br><span class="neg">${L.length} cota${pl(L.length)} da XP ignorada${pl(L.length)} por data impossível: ${L.slice(0, 3).map((x) => `${esc(x.nome || cnpjFmt(x.c))} (${fmtData(x.d)}, ${x.motivo})`).join("; ")}${L.length > 3 ? "…" : ""}.</span>` : "";
 }
 // fundos que estão na XP mas não na base da CVM do site (ex.: FIDC, FII, FIP, FIAGRO ou fundo novo): entram na lista com aviso
 function incluirFundosSoXP() {
@@ -3607,9 +3615,9 @@ function enviarParaCarteira() {
   if (vazia) st.cart.itens.forEach((it) => (it.peso = Math.round(10000 / st.cart.itens.length) / 100));
   salvarCart(); $("#dlgEnviar").close();
   renderCarteira();
-  $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo(s) enviado(s) ${esc(env.titulo)}.</span>` + (vazia ? " Pesos iguais aplicados." : " Entraram com peso 0: defina os pesos ou use “Pesos iguais”.");
+  $("#cartAviso").innerHTML = `<span class="ok">${novos.length} fundo${pl(novos.length)} enviado${pl(novos.length)} ${esc(env.titulo)}.</span>` + (vazia ? " Pesos iguais aplicados." : " Entraram com peso 0: defina os pesos ou use “Pesos iguais”.");
   if ($("#envIr").checked) mostrarPagina("carteira");
-  else avisoSel(`<span class="ok">${novos.length} fundo(s) enviado(s) para a carteira.</span> <button class="link" type="button" data-ir-carteira>Abrir a carteira</button>`);
+  else avisoSel(`<span class="ok">${novos.length} fundo${pl(novos.length)} enviado${pl(novos.length)} para a carteira.</span> <button class="link" type="button" data-ir-carteira>Abrir a carteira</button>`);
 }
 document.addEventListener("click", (e) => {
   const t = e.target;
@@ -3790,7 +3798,7 @@ function abrirPainelFundo(c, onde = "analise") {
       ["ROA", q.ROA != null ? `${br(q.ROA, 2)}%` : "–"], ["Risco XP", q.Risco != null ? `<span class="xp-risco ${faixaRisco(q._riscoDesc)}">${br(q.Risco, 0)}</span> ${esc(q._riscoDesc || "")}` : "–"],
       ["Aplicação mínima inicial", R$(q["Aplicação mín."])], ["Aplicação adicional mínima", R$(q["Aplicação adicional"])],
       ["Resgate mínimo", R$(q["Resgate mínimo"])], ["Saldo mínimo de permanência", R$(q["Saldo de permanência"])], ["IOF", txt(q.IOF)],
-      ["Clientes no fundo", q.Clientes != null ? `${br(q.Clientes, 0)} cliente(s) · ${q["Volume clientes"] != null ? `R$ ${br(q["Volume clientes"] / 1e6, 2)} mi` : "–"}` : "–"],
+      ["Clientes no fundo", q.Clientes != null ? `${br(q.Clientes, 0)} cliente${pl(q.Clientes)} · ${q["Volume clientes"] != null ? `R$ ${br(q["Volume clientes"] / 1e6, 2)} mi` : "–"}` : "–"],
       ["Na lista da rede", txt(q["Na lista da rede"])], ["Administradora (XP)", txt(q.Administradora)], ["Custodiante", txt(q.Custodiante)], ["Auditoria", txt(q.Auditoria)]], "pf-xp", linkHub));
     if (q._prev) secoes.push(bloco("Previdência (XP)", [["Seguradora", txt(q.Seguradora)], ["Processo SUSEP (PGBL)", txt(q["SUSEP PGBL"])], ["Processo SUSEP (VGBL)", txt(q["SUSEP VGBL"])],
       ["Política do plano", txt(q["Política do plano"])],
@@ -3870,7 +3878,7 @@ function cartaoBarras(titulo, contagem, total, { ordem = null, cores = {}, max =
     const id = `g${xpGrupos.size}`; xpGrupos.set(id, { titulo, rot, cs });
     (xpConjuntos.get(titulo) || xpConjuntos.set(titulo, new Map()).get(titulo)).set(rot, cs);
     const on = !!st.xpFiltros.get(titulo)?.has(rot);
-    return `<button type="button" class="xp-barra" data-xpg="${id}" aria-pressed="${on}" title="${esc(`${rot}: ${cs.length} fundo(s) (${br(cs.length / total * 100, 1)}%) · clique para ${on ? "tirar do" : "incluir no"} filtro`)}">
+    return `<button type="button" class="xp-barra" data-xpg="${id}" aria-pressed="${on}" title="${esc(`${rot}: ${cs.length} fundo${pl(cs.length)} (${br(cs.length / total * 100, 1)}%) · clique para ${on ? "tirar do" : "incluir no"} filtro`)}">
       <span class="xb-rot">${esc(rot)}</span><span class="xb-trilho"><i style="width:${(cs.length / maior * 100).toFixed(1)}%;${cores[rot] ? `background:${cores[rot]}` : ""}"></i></span>
       <span class="xb-n">${cs.length} <small>(${br(cs.length / total * 100, 0)}%)</small></span></button>`; }).join("")}</div>${nota ? `<p class="nota">${nota}</p>` : ""}</div>`;
 }
@@ -3908,7 +3916,7 @@ function renderXPGeral() {
     if (typeof v === "string" && /^#{3,}$/.test(v.trim())) cerquilhas++;
     else if (typeof v === "string" && /^\d+,\d+E\+\d+$/i.test(v.trim())) numerosCortados++;
   }
-  const avisoDados = cerquilhas || numerosCortados ? `<p class="nota xp-aviso-dados">⚠ A planilha da XP tem ${cerquilhas ? `${br(cerquilhas, 0)} célula(s) "########"` : ""}${cerquilhas && numerosCortados ? " e " : ""}${numerosCortados ? `${br(numerosCortados, 0)} número(s) arredondado(s) como "1,92E+09"` : ""}:
+  const avisoDados = cerquilhas || numerosCortados ? `<p class="nota xp-aviso-dados">⚠ A planilha da XP tem ${cerquilhas ? `${br(cerquilhas, 0)} célula${pl(cerquilhas)} "########"` : ""}${cerquilhas && numerosCortados ? " e " : ""}${numerosCortados ? `${br(numerosCortados, 0)} número${pl(numerosCortados)} arredondado${pl(numerosCortados)} como "1,92E+09"` : ""}:
     os valores foram colados como apareciam na tela do Excel. Os sim/não foram interpretados corretamente, mas para ter os números exatos importe o arquivo no Google Sheets (Arquivo → Importar → Substituir página atual).</p>` : "";
   $("#xpGeral").innerHTML = avisoDados + `<div class="kpis xp-kpis">
     ${kpi("Fundos na XP", br(n, 0), `${br(n - (st.xpPrev || 0), 0)} de investimento · ${br(st.xpPrev || 0, 0)} de previdência`)}
@@ -3921,7 +3929,7 @@ function renderXPGeral() {
     ${kpi("Taxa de adm. mediana", `${br(mediana(cs.map((c) => q.get(c)["Taxa adm."])) ?? 0, 2)}%`)}
     ${(() => { const cli = cs.map((c) => q.get(c).Clientes).filter(Number.isFinite); if (!cli.length) return "";
       const vol = cs.map((c) => q.get(c)["Volume clientes"]).filter(Number.isFinite), com = cs.filter((c) => q.get(c).Clientes > 0).length;
-      return kpi("Clientes nos fundos", br(cli.reduce((a, b) => a + b, 0), 0), `em ${br(com, 0)} fundo(s)`) +
+      return kpi("Clientes nos fundos", br(cli.reduce((a, b) => a + b, 0), 0), `em ${br(com, 0)} fundo${pl(com)}`) +
         kpi("Volume dos clientes", `R$ ${br(vol.reduce((a, b) => a + b, 0) / 1e6, 1)} mi`, `mediana R$ ${br((mediana(vol.filter((v) => v > 0)) || 0) / 1e6, 2)} mi por fundo`); })()}
   </div>
   <section class="xp-card xp-faixa" aria-label="Perfil dos fundos"><div class="xp-faixa-grade">
@@ -3971,11 +3979,11 @@ function barraFiltrosXP() {
   const desc = [...st.xpFiltros].filter(([, r]) => r.size).map(([t, r]) => `<b>${esc(t.replace(/ \(.*\)$/, ""))}:</b> ${esc(descFiltro(t, r))}`).join(" · ");
   const { ok } = calculaveisXP(lista);
   return `<div class="xp-filtros" role="region" aria-label="Filtros escolhidos"><span class="xf-lista">${desc}</span>
-    <span class="xf-n">${br(lista.length, 0)} fundo(s)${ok.length !== lista.length ? ` <small class="nota">(${br(ok.length, 0)} com cotas para calcular)</small>` : ""}</span>
+    <span class="xf-n">${br(lista.length, 0)} fundo${pl(lista.length)}${ok.length !== lista.length ? ` <small class="nota">(${br(ok.length, 0)} com cotas para calcular)</small>` : ""}</span>
     <button type="button" class="sec" id="xpFiltroLimpar">Limpar filtros</button>
-    <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>${ico("calc")}Calcular ${br(ok.length, 0)} fundo(s)</button></div>`;
+    <button type="button" class="prim" id="xpFiltroCalc" ${ok.length ? "" : "disabled"}>${ico("calc")}Calcular ${br(ok.length, 0)} fundo${pl(ok.length)}</button></div>`;
 }
-const atualizarXPSelInfo = () => { const el = $("#xpSelInfo"); if (el) el.textContent = st.sel.length ? `${st.sel.length} fundo(s) selecionado(s)` : ""; };
+const atualizarXPSelInfo = () => { const el = $("#xpSelInfo"); if (el) el.textContent = st.sel.length ? `${st.sel.length} fundo${pl(st.sel.length)} selecionado${pl(st.sel.length)}` : ""; };
 // fundos da XP que dá para calcular: estão na base da CVM e têm cota nos últimos 30 dias
 function calculaveisXP(lista) {
   const base = diaDe(new Date(st.meta.ultimo_dado));
@@ -3987,10 +3995,10 @@ async function selecionarECalcular(lista, rotulo) {
   const { ok, fora } = calculaveisXP(lista);
   if (!ok.length) { await perguntar("Nenhum fundo para calcular", `${esc(rotulo)}: nenhum desses fundos tem cotas recentes na CVM.`, [{ rot: "OK", v: 1, classe: "prim" }]); return; }
   const opModelos = Object.entries(modelos()).map(([k, M]) => `<option value="${esc(k)}"${k === (st.rkXPModelo || "MM") ? " selected" : ""}>${esc(M.nome)}</option>`).join("");
-  const r = await perguntar(`Calcular ${ok.length} fundo(s)?`, `<b>${esc(rotulo)}</b>: ${ok.length} fundo(s) com cotas recentes na CVM` +
+  const r = await perguntar(`Calcular ${ok.length} fundo${pl(ok.length)}?`, `<b>${esc(rotulo)}</b>: ${ok.length} fundo${pl(ok.length)} com cotas recentes na CVM` +
     (fora ? ` (${fora} ficam de fora: sem dados na CVM ou sem cota nos últimos 30 dias)` : "") + "." +
     `<div class="xp-calc-op">
-      <label class="tog"><input type="checkbox" id="xpOpMet" checked> <span><b>Calcular as métricas</b> — tabela, gráficos e gráfico de quadrantes (substitui a seleção atual de ${st.sel.length} fundo(s))</span></label>
+      <label class="tog"><input type="checkbox" id="xpOpMet" checked> <span><b>Calcular as métricas</b> — tabela, gráficos e gráfico de quadrantes (substitui a seleção atual de ${st.sel.length} fundo${pl(st.sel.length)})</span></label>
       <label class="tog"><input type="checkbox" id="xpOpRk"${st.rkXPMarcado ? " checked" : ""}> <span><b>Calcular um ranking</b> com estes fundos (as pontuações entram no gráfico de quadrantes)</span></label>
       <label class="xp-calc-mod" id="xpOpModBox"${st.rkXPMarcado ? "" : " hidden"}>Tipo de cálculo do ranking <select id="xpOpModelo">${opModelos}</select></label>
     </div>` + (ok.length > 150 ? `<p class="nota">Com muitos fundos o cálculo pode levar alguns minutos na primeira vez (depois fica guardado neste computador).</p>` : ""),
@@ -4011,7 +4019,7 @@ const NOME_RK_XP = "⚡ Seleção Fundos XP";
 const rankingXP = () => st.rk?.lista.find((x) => x._xp) || null;
 async function calcularRankingXP(cnpjs, modelo) {
   await chartPronto;
-  abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo(s)`;
+  abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
     faseCarga(`calculando o ranking (${modeloDe(modelo).nome})…`, 95); await pausa();
@@ -4019,7 +4027,7 @@ async function calcularRankingXP(cnpjs, modelo) {
     const todos = new Map(st.rk?.fundos || []); for (const [c, f] of fundos) todos.set(c, f);
     st.rk = { lista: [R, ...(st.rk?.lista || []).filter((x) => !x._xp)], fundos: todos, ativo: 0 }; semZoom("gRkJM");
     renderRankings(); renderCarteira(); fecharCarga(); atualizarEspaco();
-    st.rkXPAviso = `Ranking "${R.nome}" calculado com ${R.ordem.length} fundo(s) (${R.M.nome}); veja também na página Rankings.`;
+    st.rkXPAviso = `Ranking "${R.nome}" calculado com ${R.ordem.length} fundo${pl(R.ordem.length)} (${R.M.nome}); veja também na página Rankings.`;
   } catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); }
 }
 document.addEventListener("change", (e) => { if (e.target.id === "xpOpRk") $("#xpOpModBox").hidden = !e.target.checked; });
@@ -4165,7 +4173,7 @@ function renderROA() {
     if (qq === 2) verde.push(n); if (qq === 0) vermelho.push(n);
   }
   const quad = pts.length >= 2 && medX != null && medY != null ? { x: medX, y: medY, melhorX: EX.melhor, melhorY: EY.melhor, rotulos: rot } : null;
-  $("#roaNota").innerHTML = esc(`${pts.length} fundo(s) no gráfico${pts.length !== totalQ ? ` (filtro da tabela: ${pts.length} de ${totalQ})` : ""} · período ${st.perAtivo} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
+  $("#roaNota").innerHTML = esc(`${pts.length} fundo${pl(pts.length)} no gráfico${pts.length !== totalQ ? ` (filtro da tabela: ${pts.length} de ${totalQ})` : ""} · período ${st.perAtivo} (${fmtData(st.ctx.dIni)} a ${fmtData(st.ctx.dFim)})`) +
     (quad ? ` · medianas: ${esc(EY.curto)} <b>${esc(EY.fmt(medY))}</b> · ${esc(EX.curto)} <b>${esc(EX.fmt(medX))}</b> —
       ${[1, 2, 3, 4].map((n) => `<span class="roa-q${verde.includes(n) ? " bom" : vermelho.includes(n) ? " ruim" : ""}">Q${n}: ${cont[n]}</span>`).join(" · ")}` : "") +
     esc((semCli ? ` · ${semCli} sem clientes (ocultos)` : "") + (semY ? ` · ${semY} sem ${EY.curto}` : "") + (semX ? ` · ${semX} sem ${EX.curto}` : "") +
@@ -4177,7 +4185,7 @@ function renderROA() {
   graficoRR("gROA", pts, { fmtX: tick(EX), tituloX: EX.titulo, refX: null, fmtY: tick(EY), tituloY: EY.titulo, yMin: EY.zeroMin ? 0 : null, quad, xLog: !!EX.log, yLog: !!EY.log,
     rotulo: (it) => { const p = pts.find((x) => x.nome === it.raw.nome) || {};
       return `${it.raw.nome}: ${EY.curto} ${EY.fmt(it.parsed.y)} · ${EX.curto} ${EX.fmt(it.parsed.x)}` + (ET && Number.isFinite(p.t) ? ` · ${ET.curto} ${ET.fmt(p.t)}` : "") +
-        (p.cli != null && st.roaTam !== "qtdCli" && st.roaTam !== "volCli" ? ` · ${br(p.cli, 0)} cliente(s)` : ""); } });
+        (p.cli != null && st.roaTam !== "qtdCli" && st.roaTam !== "volCli" ? ` · ${br(p.cli, 0)} cliente${pl(p.cli)}` : ""); } });
 }
 
 document.addEventListener("change", (e) => {
@@ -4349,13 +4357,13 @@ async function salvarCarteiraAtual() {
 }
 async function carregarCarteiraSalva(n) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return;
-  if (st.cart.itens.length && !(await perguntar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo(s)) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo(s)).`,
+  if (st.cart.itens.length && !(await perguntar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`,
     [{ rot: "Cancelar", v: false }, { rot: "Carregar", v: true, classe: "prim" }]))) return;
   Object.assign(st.cart, JSON.parse(JSON.stringify(x.cart)));
   salvarCart(); $("#dlgCarteiras").close(); mostrarPagina("carteira"); renderCarteira();
   const faltam = st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v)).length;
   $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(x._nome)}" carregada${x._origem === "equipe" ? ` (de ${esc(x._autor)})` : ""}.</span>` +
-    (faltam ? ` Clique em Calcular carteira para baixar as cotas de ${faltam} fundo(s).` : "");
+    (faltam ? ` Clique em Calcular carteira para baixar as cotas de ${faltam} fundo${pl(faltam)}.` : "");
 }
 document.addEventListener("click", async (e) => {
   const t = e.target;
@@ -4630,7 +4638,7 @@ const modeloDe = (id) => modelos()[id] || st.modelosEquipe[id] || MODELOS_RANK.M
 
 function resumoLateralRk() {
   const n = Object.keys(lerRankings()).length, m = [...rkSel].filter((x) => lerRankings()[x]).length;
-  $("#rkResumoLat").textContent = n ? `${n} ranking(s) salvo(s) · ${m} marcado(s) para calcular` : "Nenhum ranking montado ainda.";
+  $("#rkResumoLat").textContent = n ? `${n} ranking${pl(n)} salvo${pl(n)} · ${m} marcado${pl(m)} para calcular` : "Nenhum ranking montado ainda.";
 }
 // montar rankings: painel dentro da página Rankings (antes era uma janela por cima)
 function abrirRank() {
@@ -4662,7 +4670,7 @@ function renderRkLista() {
   $("#rkCalcular").disabled = !m;
   $("#rkCalcular").innerHTML = ico("trofeu") + `Calcular ${m || ""} ranking${m === 1 ? "" : "s"}`.replace("  ", " ");
   const fundos = new Set([...rkSel].flatMap((n) => g[n]?.cnpjs || []));
-  $("#rkResumo").textContent = m ? `${m} ranking(s) marcado(s) · ${fundos.size} fundo(s) diferentes para carregar` : "Marque pelo menos um ranking.";
+  $("#rkResumo").textContent = m ? `${m} ranking${pl(m)} marcado${pl(m)} · ${fundos.size} fundo${pl(fundos.size)} diferente${pl(fundos.size)} para carregar` : "Marque pelo menos um ranking.";
   salvarRkSel(); resumoLateralRk();
 }
 
@@ -4687,8 +4695,8 @@ function renderEditorRk() {
   const lista = ordenarFundos(rkEd.cnpjs.map((c) => st.porCnpj.get(c)).filter(Boolean), "rkEd");
   const fora = rkEd.cnpjs.filter((c) => !st.porCnpj.has(c));
   const parados = lista.filter((f) => situacaoCadastro(f));
-  $("#rkEdInfo").innerHTML = `<b>${rkEd.cnpjs.length}</b> fundo(s) no ranking` +
-    (parados.length ? ` · <span class="neg"><span class="parado">⊘</span> ${parados.length} cancelado(s) ou sem cota recente: ficam fora do cálculo` +
+  $("#rkEdInfo").innerHTML = `<b>${rkEd.cnpjs.length}</b> fundo${pl(rkEd.cnpjs.length)} no ranking` +
+    (parados.length ? ` · <span class="neg"><span class="parado">⊘</span> ${parados.length} cancelado${pl(parados.length)} ou sem cota recente: ficam fora do cálculo` +
       ` (${parados.map((f) => `${esc(curto(f.NOME, 30))}: ${esc(situacaoCadastro(f).rot.toLowerCase())}`).join("; ")})</span>` : "") +
     (fora.length ? ` · <span class="neg">${fora.length} fora da base atual: ${fora.map(cnpjFmt).join(", ")}</span>` : "") +
     (parados.length || fora.length ? ` · entram no ranking cerca de <b>${rkEd.cnpjs.length - parados.length - fora.length}</b>` : "");
@@ -4699,7 +4707,7 @@ function renderEditorRk() {
 }
 async function juntarNoEditor(cnpjs, substituir) {
   if (substituir === undefined && rkEd.cnpjs.length) {
-    substituir = await perguntar("Juntar ou substituir?", `O ranking já tem ${rkEd.cnpjs.length} fundo(s). Os ${cnpjs.length} novos entram junto ou no lugar deles?`,
+    substituir = await perguntar("Juntar ou substituir?", `O ranking já tem ${rkEd.cnpjs.length} fundo${pl(rkEd.cnpjs.length)}. Os ${cnpjs.length} novos entram junto ou no lugar deles?`,
       [{ rot: "Cancelar", v: null }, { rot: "Adicionar aos atuais", v: false }, { rot: "Substituir", v: true, classe: "prim" }]);
     if (substituir == null) return;
   }
@@ -4720,7 +4728,7 @@ async function salvarEditorRk() {
     if (rkEd.nomeOrig) rkSel.delete(rkEd.nomeOrig);
     rkSel.add(nome); rkEd.aberto = false; $("#rkEditor").hidden = true; $("#rkListaBox").hidden = false; renderRkLista(); return;
   }
-  if (g[nome] && nome !== rkEd.nomeOrig && !(await perguntar("Substituir o ranking?", `Já existe o ranking <b>${esc(nome)}</b> com ${g[nome].cnpjs.length} fundo(s). Substituir?`,
+  if (g[nome] && nome !== rkEd.nomeOrig && !(await perguntar("Substituir o ranking?", `Já existe o ranking <b>${esc(nome)}</b> com ${g[nome].cnpjs.length} fundo${pl(g[nome].cnpjs.length)}. Substituir?`,
     [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
   if (rkEd.nomeOrig && rkEd.nomeOrig !== nome) { delete g[rkEd.nomeOrig]; if (rkSel.delete(rkEd.nomeOrig)) rkSel.add(nome); }
   g[nome] = { modelo: rkEd.modelo, cnpjs: [...rkEd.cnpjs], atualizado: new Date().toISOString() };
@@ -4777,7 +4785,7 @@ async function calcularRankings() {
   if (!nomes.length) return;
   const cnpjs = [...new Set(nomes.flatMap((n) => todos[n].cnpjs))].filter((c) => st.porCnpj.has(c));
   $("#dlgRank").hidden = true;
-  abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo(s)`;
+  abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
     const lista = [];
@@ -4881,7 +4889,7 @@ function renderRkTabela() {
   const todos = !!st.rkTodos, colunas = colunasRkTela(R);
   const linhas = ordenar(fundosVisiveis(R).map((x) => linhaRkTela(R, x)), "rk", colunas);
   $("#rkInfo").innerHTML = !R.fim ? "Nenhum fundo com cotas." : `<b>${esc(R.M.nome)}</b> · métricas dos últimos ${esc(R.M.periodo.toLowerCase())} até ${fmtData(R.fim)} · janela móvel de ${R.M.jmMeses} meses ` +
-    `contra o ${esc(nomeIndice(R.M.bench))} (aplicações desde ${fmtData(R.iniJM)}) · <b>${R.ordem.length}</b> fundo(s) analisado(s)` +
+    `contra o ${esc(nomeIndice(R.M.bench))} (aplicações desde ${fmtData(R.iniJM)}) · <b>${R.ordem.length}</b> fundo${pl(R.ordem.length)} analisado${pl(R.ordem.length)}` +
     (R.nDef > R.ordem.length ? ` (de ${R.nDef} no ranking; os demais estão listados abaixo da tabela)` : "") +
     (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
   $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 64, 58, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
@@ -5129,7 +5137,7 @@ function somaModelo() {
   $("#rkmSoma").innerHTML = GRUPOS_RANK.map((x) => `<span class="rkm-chip" style="border-color:${CORES_GRUPO[x]}">${x}: <b>${br(g[x], 0)}%</b></span>`).join("") +
     `<span class="rkm-total ${ok ? "ok" : "neg"}">Total: <b>${br(total, 1).replace(",0", "")}%</b> ${ok ? "✓" : total > 0
       ? `— não é 100%: o ranking vai considerar os pesos proporcionalmente, como se ${br(total, 1).replace(",0", "")}% fossem 100% (cada peso × ${br(100 / total, 3)}). Os valores digitados não mudam.`
-      : "— coloque peso em pelo menos uma métrica"} · ${n} métrica(s)</span>`;
+      : "— coloque peso em pelo menos uma métrica"} · ${n} métrica${pl(n)}</span>`;
   return { ok, total, n };
 }
 async function salvarModelo() {
@@ -5382,12 +5390,19 @@ function mostrarMini(el, x, y) {
     <div class="mini-rod">12 meses até ${fmtData(ult)}: <b style="${corSinal(var12)}">${brPct(var12)}</b></div>`;
   posicionarMini(x, y); box.hidden = false;
 }
+// dica que segue o mouse: anda com transform, no máximo uma vez por quadro (não recalcula o layout a cada movimento)
+function moverDica(el, x, y) {
+  el._xy = [x, y];
+  if (el.hidden) { el.style.transform = `translate3d(${x}px, ${y}px, 0)`; return; }     // vai aparecer agora: já no lugar certo
+  if (el._quadro) return;
+  el._quadro = requestAnimationFrame(() => { el._quadro = 0; el.style.transform = `translate3d(${el._xy[0]}px, ${el._xy[1]}px, 0)`; });
+}
 function posicionarMini(x, y) {
   const box = $("#mini"), w = 250, h = 120;
   let l = x + 16, t = y + 16;
   if (l + w > innerWidth - 8) l = x - w - 12;
   if (t + h > innerHeight - 8) t = y - h - 12;
-  box.style.left = Math.max(8, l) + "px"; box.style.top = Math.max(8, t) + "px";
+  moverDica(box, Math.max(8, l), Math.max(8, t));
 }
 if (MINIGRAFICOS && matchMedia("(hover: hover)").matches) {
   document.addEventListener("mouseover", (e) => {
@@ -5615,7 +5630,7 @@ function quadroClassificacoes(listas, n) {
   return `<section class="xp-card xp-classif" aria-label="Classificações">
     <div class="xp-classif-cab"><h3>Classificações</h3>
       <div class="xp-abas" role="tablist" aria-label="Classificações">${abas.map(([t, m]) => { const k = marcados(t), on = t === st.xpAba;
-        return `<button type="button" role="tab" class="xp-aba" id="xpAba-${slug(t)}" aria-controls="xpPainel-${slug(t)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-xpaba="${esc(t)}">${esc(t)} <small>${m.size}</small>${k ? ` <b class="xp-aba-n" title="${k} filtro(s) marcado(s)">${k}</b>` : ""}</button>`; }).join("")}</div>
+        return `<button type="button" role="tab" class="xp-aba" id="xpAba-${slug(t)}" aria-controls="xpPainel-${slug(t)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-xpaba="${esc(t)}">${esc(t)} <small>${m.size}</small>${k ? ` <b class="xp-aba-n" title="${k} filtro${pl(k)} marcado${pl(k)}">${k}</b>` : ""}</button>`; }).join("")}</div>
       <input type="search" id="xpClassBusca" placeholder="procurar nesta aba…" aria-label="Procurar na aba de classificação" autocomplete="off" value="${esc(st.xpClassBusca || "")}">
     </div>
     ${abas.map(([t, m]) => `<div role="tabpanel" id="xpPainel-${slug(t)}" aria-labelledby="xpAba-${slug(t)}"${t === st.xpAba ? "" : " hidden"}>
