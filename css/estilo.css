@@ -1150,9 +1150,13 @@ details.sem-dados > summary { font-weight: 600; }
 .lk-fundo[data-pf]:hover { text-decoration: underline; text-decoration-color: var(--ouro); text-underline-offset: 3px; }
 
 /* ☰ flutuante: abre a gaveta de qualquer ponto da página (espelha o "voltar ao topo", à direita) */
-.menu-fixo { position: fixed; left: 22px; bottom: 22px; z-index: 30; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 14px;
+.menu-fixo { position: fixed; left: 22px; bottom: 22px; z-index: 30; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 12px;
   border: 0; border-radius: var(--r-pill); background: var(--prim); color: #fff; font: 700 var(--fs-base) var(--f-corpo); cursor: pointer; box-shadow: var(--sh-2);
-  animation: surgir .15s var(--ease-out); transition: background-color .15s, transform .12s var(--ease-out); }
+  transition: background-color .15s, transform .12s var(--ease-out), padding .2s var(--ease-out), gap .2s var(--ease-out); }
+.menu-fixo span { max-width: 5em; overflow: hidden; white-space: nowrap; transition: max-width .2s var(--ease-out), opacity .2s; }
+/* no voo entre o topo e o canto é um círculo, sem o rótulo; o JS move e escala com transform a cada quadro */
+.menu-fixo.voando { gap: 0; padding: 0 12px; transform-origin: 0 0; transition: padding .2s var(--ease-out), gap .2s var(--ease-out); }
+.menu-fixo.voando span { max-width: 0; opacity: 0; }
 .menu-fixo:hover { background: var(--prim-hover); }
 .menu-fixo:active { transform: scale(.96); }
 .menu-fixo .ico { width: 18px; height: 18px; }

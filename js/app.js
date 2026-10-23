@@ -5650,7 +5650,7 @@ $("#btnConfig").addEventListener("click", () => $("#dlgConfig").showModal());
 function gaveta(abrir) {
   $("#app").classList.toggle("gaveta-aberta", abrir);                  // o véu aparece e some pelo CSS (com transição)
   for (const b of $$("#btnMenu, #btnMenuFixo")) b.setAttribute("aria-expanded", String(abrir));
-  if (abrir) $("#lateral [role=tab][aria-selected=true]")?.focus(); else if ($("#lateral").contains(document.activeElement)) $("#btnMenu").focus();
+  if (abrir) $("#lateral [role=tab][aria-selected=true]")?.focus(); else if ($("#lateral").contains(document.activeElement)) ($("#btnMenuFixo").hidden ? $("#btnMenu") : $("#btnMenuFixo")).focus();
 }
 document.addEventListener("click", (e) => {
   const t = e.target;
@@ -5658,8 +5658,28 @@ document.addEventListener("click", (e) => {
   else if (t.id === "veu" || t.closest?.("#calcular, .lat-topo [role=tab]")) { if ($("#app").classList.contains("gaveta-aberta")) gaveta(false); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#app").classList.contains("gaveta-aberta")) gaveta(false); });
-// ☰ flutuante (canto inferior esquerdo): aparece quando o ☰ do topo sai da tela, em qualquer página
-new IntersectionObserver(([e]) => { $("#btnMenuFixo").hidden = e.isIntersecting; }).observe($("#btnMenu"));
+// ☰ flutuante (canto inferior esquerdo): quando o ☰ do topo começa a sair da tela, ele "voa" até o canto; ao voltar ao topo, voa de volta.
+// Técnica FLIP (como o Flip do GSAP): parte de onde o botão está e anda até o destino. Na volta persegue o ☰ do topo, que se move com a rolagem.
+const menuTopo = $("#btnMenu"), menuFixo = $("#btnMenuFixo");
+let vooMenu = 0, menuFora = false;
+function voarMenu(descer) {
+  const id = ++vooMenu, de = (menuFixo.hidden ? menuTopo : menuFixo).getBoundingClientRect();   // onde o botão está agora (no meio de um voo, inclusive)
+  menuFixo.hidden = false; menuFixo.classList.add("voando"); menuTopo.style.visibility = "hidden";
+  menuFixo.style.transform = ""; const casa = menuFixo.getBoundingClientRect();
+  const pousar = () => { menuFixo.style.transform = ""; menuFixo.classList.remove("voando");
+    if (!descer) { menuFixo.hidden = true; menuTopo.style.visibility = ""; } };
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return pousar();
+  const t0 = performance.now(), DUR = 500;
+  requestAnimationFrame(function passo(agora) {
+    if (id !== vooMenu) return;                                          // outro voo começou: ele continua daqui
+    const p = Math.min(1, (agora - t0) / DUR), k = p < .5 ? 4 * p ** 3 : 1 - (2 - 2 * p) ** 3 / 2;   // acelera e freia (ease in-out)
+    const para = descer ? casa : menuTopo.getBoundingClientRect();
+    const x = de.left + (para.left - de.left) * k - casa.left, y = de.top + (para.top - de.top) * k - casa.top;
+    menuFixo.style.transform = `translate(${x}px, ${y}px) scale(${(de.height + (para.height - de.height) * k) / casa.height})`;
+    if (p < 1) requestAnimationFrame(passo); else pousar();
+  });
+}
+new IntersectionObserver(([e]) => { const fora = e.intersectionRatio < 1; if (fora !== menuFora) voarMenu(menuFora = fora); }, { threshold: 1 }).observe(menuTopo);
 
 aplicarMinimizados();
 desenharTravar();
