@@ -1148,3 +1148,12 @@ details.sem-dados > summary { font-weight: 600; }
 .pf-mais-anos { display: block; margin: 10px 0 2px; }
 .lk-fundo[data-pf] { cursor: pointer; }
 .lk-fundo[data-pf]:hover { text-decoration: underline; text-decoration-color: var(--ouro); text-underline-offset: 3px; }
+
+/* ☰ flutuante: abre a gaveta de qualquer ponto da página (espelha o "voltar ao topo", à direita) */
+.menu-fixo { position: fixed; left: 22px; bottom: 22px; z-index: 30; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 14px;
+  border: 0; border-radius: var(--r-pill); background: var(--prim); color: #fff; font: 700 var(--fs-base) var(--f-corpo); cursor: pointer; box-shadow: var(--sh-2);
+  animation: surgir .15s var(--ease-out); transition: background-color .15s, transform .12s var(--ease-out); }
+.menu-fixo:hover { background: var(--prim-hover); }
+.menu-fixo:active { transform: scale(.96); }
+.menu-fixo .ico { width: 18px; height: 18px; }
+@media (max-width: 600px) { .menu-fixo span { display: none; } .menu-fixo { width: 42px; padding: 0; justify-content: center; } }

@@ -5649,15 +5649,17 @@ $("#btnConfig").addEventListener("click", () => $("#dlgConfig").showModal());
 // celular: a lateral vira gaveta; fecha ao calcular, ao trocar de aba, no véu ou com Esc
 function gaveta(abrir) {
   $("#app").classList.toggle("gaveta-aberta", abrir);                  // o véu aparece e some pelo CSS (com transição)
-  $("#btnMenu").setAttribute("aria-expanded", String(abrir));
+  for (const b of $$("#btnMenu, #btnMenuFixo")) b.setAttribute("aria-expanded", String(abrir));
   if (abrir) $("#lateral [role=tab][aria-selected=true]")?.focus(); else if ($("#lateral").contains(document.activeElement)) $("#btnMenu").focus();
 }
 document.addEventListener("click", (e) => {
   const t = e.target;
-  if (t.closest?.("#btnMenu, [data-abrir-gaveta]")) gaveta(!$("#app").classList.contains("gaveta-aberta"));
+  if (t.closest?.("#btnMenu, #btnMenuFixo, [data-abrir-gaveta]")) gaveta(!$("#app").classList.contains("gaveta-aberta"));
   else if (t.id === "veu" || t.closest?.("#calcular, .lat-topo [role=tab]")) { if ($("#app").classList.contains("gaveta-aberta")) gaveta(false); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#app").classList.contains("gaveta-aberta")) gaveta(false); });
+// ☰ flutuante (canto inferior esquerdo): aparece quando o ☰ do topo sai da tela, em qualquer página
+new IntersectionObserver(([e]) => { $("#btnMenuFixo").hidden = e.isIntersecting; }).observe($("#btnMenu"));
 
 aplicarMinimizados();
 desenharTravar();
