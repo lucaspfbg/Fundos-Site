@@ -1240,3 +1240,17 @@ details.sem-dados > summary { font-weight: 600; }
   #rkDestaque { order: 4; flex: 1 1 70px; min-width: 0; max-width: none; }
   .rk-fixa .mini-btn { order: 5; }
 }
+
+/* janela de envio: a lista ocupa o espaço que sobra e rola (o rodapé com os botões fica sempre à vista) */
+#envLista { flex: 1 1 auto; min-height: 140px; overflow: auto; }
+@media (max-width: 600px) {
+  dialog.dlg-medio { padding: 12px; width: calc(100vw - 16px); max-width: none; }
+  dialog.dlg-medio[open] { max-height: calc(100dvh - 16px); }
+  .dlg-pe { flex-wrap: wrap; align-items: center; gap: 8px; }
+  .dlg-pe .botoes { margin-left: auto; }
+  #envInfo { font-size: var(--fs-xs); margin: 0; }
+  /* o nome do fundo fica preso à esquerda ao rolar a lista para o lado */
+  .env-tab th.env-fundo, .env-tab td.env-fundo { position: sticky; left: 0; z-index: 1; background: var(--card); box-shadow: inset -1px 0 0 var(--borda); }
+  .env-tab tbody tr:nth-child(even) td.env-fundo { background: var(--zebra); }
+  .env-tab thead th.env-fundo { z-index: 3; background: var(--cab); }
+}

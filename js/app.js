@@ -3689,12 +3689,12 @@ function renderEnviar() {
   const minimo = cols.reduce((s2, [, w]) => s2 + (w || 150), 0);     // abaixo disso (tela muito estreita) a lista rola para o lado
   const n1 = (v) => (typeof v === "number" ? br(v, 1) : "");
   $("#envLista").innerHTML = `<table class="tb env-tab" style="min-width:${minimo}px"><colgroup>${cols.map(([, w]) => `<col${w ? ` style="width:${w}px"` : ""}>`).join("")}</colgroup>
-    <thead><tr>${cols.map(([k, , t, compl]) => `<th class="${k === "nome" || k === "classif" ? "t" : ""}"${compl ? ` title="${compl}"` : ""}>${k === "sel" ? '<span class="sr-only">Enviar</span>' : `<span class="th-txt">${t}</span>`}</th>`).join("")}</tr></thead><tbody>${env.lista.map((x) => {
+    <thead><tr>${cols.map(([k, , t, compl]) => `<th class="${k === "nome" ? "t env-fundo" : k === "classif" ? "t" : ""}"${compl ? ` title="${compl}"` : ""}>${k === "sel" ? '<span class="sr-only">Enviar</span>' : `<span class="th-txt">${t}</span>`}</th>`).join("")}</tr></thead><tbody>${env.lista.map((x) => {
     const ja = bloq(x.c), on = ja || env.marcados.has(x.c), q = xp ? camposXP(x.c) : null;
     const cel = {
       sel: `<td><input type="checkbox" ${on ? "checked" : ""} ${ja ? "disabled" : ""} aria-label="Enviar ${esc(x.nome)}" tabindex="-1"></td>`,
       pos: `<td>${posHTML(x.pos)}</td>`,
-      nome: `<td class="t env-nome" title="${esc(x.nome)} · ${cnpjFmt(x.c)}${ja ? " · já está na carteira" : ""}">${ja ? '<span class="env-ja">na carteira</span>' : ""}` +
+      nome: `<td class="t env-nome env-fundo" title="${esc(x.nome)} · ${cnpjFmt(x.c)}${ja ? " · já está na carteira" : ""}">${ja ? '<span class="env-ja">na carteira</span>' : ""}` +
         `<span class="lk-fundo" data-pf="${x.c}" tabindex="0" role="button" title="Abrir o painel do fundo">${esc(x.nome)}</span></td>`,
       classif: `<td class="t env-nome" title="${esc(x.classif || "")}">${esc(x.classif || "")}</td>`,
       rent: `<td style="${corSinal(x.rentAA)}">${typeof x.rentAA === "number" ? brPct(x.rentAA) : ""}</td>`,
