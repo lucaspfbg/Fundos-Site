@@ -1190,3 +1190,53 @@ details.sem-dados > summary { font-weight: 600; }
 .menu-fixo:active { transform: scale(.96); }
 .menu-fixo .ico { width: 18px; height: 18px; }
 @media (max-width: 600px) { .menu-fixo span { display: none; } .menu-fixo { width: 42px; padding: 0; justify-content: center; } }
+
+/* celular: as colunas fixas somadas passam da largura da tela (no ranking da XP são 7). Só o nome do fundo (a última fixa)
+   continua preso, mais estreito; as outras rolam junto com a tabela e o nome fica por cima delas. */
+@media (max-width: 700px) {
+  .tb .fx:not(.fx-ult) { left: auto !important; }
+  .tb td.fx:not(.fx-ult) { position: static; }
+  .tb .fx-ult { left: 0 !important; min-width: 132px !important; max-width: 132px !important; }
+  .tb td.fx-ult { z-index: 2; }
+  .tb thead th.fx-ult { z-index: 4; }
+  .dlg-tab .tab-fundos th:first-child, .dlg-tab .tab-fundos td:first-child,
+  .tab-fundos.rm-ini th:nth-child(2), .tab-fundos.rm-ini td:nth-child(2) { min-width: 150px; max-width: 150px; }
+}
+/* painel do fundo: os quadros nunca pedem mais largura que a tela (no celular ficam um embaixo do outro, sem cortar a direita) */
+.pf-grafs { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+.pf-grade { grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); }
+.pf-grade > *, .pf-grafs > * { min-width: 0; }
+@media (max-width: 600px) {
+  .pf-corpo { padding: 12px 12px 16px; }
+  .pf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pf-sec dd { overflow-wrap: anywhere; }
+}
+
+/* celular: as barras fixas (análise, ranking e carteira) ficam baixas — os períodos numa linha que rola de lado,
+   "Enviar" e "Baixar relatório" só com o ícone (o nome fica no aria-label e no title) */
+.rot-c { display: none; }
+.mini-btn .rot { pointer-events: none; }                   /* o clique no texto chega ao botão (os handlers olham o id do alvo) */
+@media (max-width: 600px) {
+  .barra { gap: 8px; padding: 8px 0; }
+  .barra .mini-btn .rot, .rk-fixa .mini-btn .rot { display: none; }
+  .rot-l { display: none; }
+  .rot-c { display: inline; }
+  #barraPer, #cartPers, #rkPills { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  #barraPer > button, #cartPers > button, #rkPills > button { flex: none; white-space: nowrap; }
+  #barraPer, #cartPers { flex: 1 1 100%; }
+  .barra .slider { flex: 1 1 100%; min-width: 0; }
+  #destaque, .barra-dest { flex: 1 1 120px; width: auto; min-width: 0; margin-left: 0; }
+  .barra-cart .cart-datas { flex: 1 1 100%; flex-wrap: nowrap; }
+  .barra-cart .cart-datas label { flex: 1 1 0; min-width: 0; }
+  .barra-cart .cart-datas input { flex: 1 1 0; width: 0; min-width: 0; padding-inline: 6px; font-size: var(--fs-sm); }
+  /* ranking: título + rankings (rolam de lado) + minimizar; depois "Comparar com"; depois destaque e botões */
+  .rk-fixa { gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+  .rk-fixa h2 { order: 0; flex: none; }
+  .rk-fixa .opcoes:has(#rkPills) { order: 1; flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .rk-fixa .btn-min { order: 2; }
+  .rk-fixa .opcoes:has(.rk-comp-sel) { order: 3; flex: 1 1 100%; }
+  .rk-fixa .opcoes:has(.rk-comp-sel) label { display: flex; align-items: center; gap: 8px; width: 100%; }
+  .rk-fixa .rk-comp-sel { min-width: 0; flex: 1 1 auto; }
+  #rkDestaque { order: 4; flex: 1 1 70px; min-width: 0; max-width: none; }
+  .rk-fixa .mini-btn { order: 5; }
+}

@@ -1055,13 +1055,15 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
   const esq = larguras.map((_, j) => larguras.slice(0, j).reduce((s, x) => s + x, 0));
   // coluna de números (algum valor numérico, sem pedir centro): à direita, casas decimais alinhadas
   const numCol = colunas.map((c) => !aEsquerda(c) && !c.centro && linhas.some((l) => !l._cab && typeof (c.valor ? c.valor(l) : l[c.chave]) === "number"));
-  const fx = (j, extra = "") => (j < fixas ? ` class="fx${extra}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px"` : extra ? ` class="${extra.trim()}"` : "");
+  // fx-ult: a última coluna fixa (o nome do fundo); no celular só ela continua presa (o CSS solta as outras)
+  const ult = (j) => (j === fixas - 1 ? " fx-ult" : "");
+  const fx = (j, extra = "") => (j < fixas ? ` class="fx${ult(j)}${extra}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px"` : extra ? ` class="${extra.trim()}"` : "");
   const o = ordenavel ? st.ord[ordenavel] : null;
   let h = `<div class="tb-wrap" style="max-height:${altura}px"><table class="tb${centralizar ? " tb-centro" : ""}"><thead>`;
   if (grupos) {
     h += "<tr>";
     for (let j = 0; j < colunas.length;) {
-      if (j < fixas) { h += `<th class="g fx" style="left:${esq[j]}px">${j === 0 ? esc(grupos[0]) : `<span class="sr-only">${esc(grupos[j] || "")}</span>`}</th>`; j++; continue; }
+      if (j < fixas) { h += `<th class="g fx${ult(j)}" style="left:${esq[j]}px">${j === 0 ? esc(grupos[0]) : `<span class="sr-only">${esc(grupos[j] || "")}</span>`}</th>`; j++; continue; }
       let k = j; while (k + 1 < colunas.length && grupos[k + 1] === grupos[j]) k++;
       h += `<th class="g" colspan="${k - j + 1}">${esc(grupos[j])}</th>`; j = k + 1;
     }
@@ -1107,7 +1109,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       if (j === 0 && l._g) txt = `<span class="guia" data-guia="${esc(l._g)}" title="Recolher este grupo"></span>` + txt;
       const estilo = c.cor ? corSinal(v) : "";
       const alinh = aEsquerda(c) ? " t" : numCol[j] ? " n" : "";
-      if (j < fixas) h += `<td class="fx${aEsquerda(c) ? " t" : ""}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px;${estilo}" title="${esc(c.titulo ? c.titulo(l) : typeof v === "number" ? "" : v)}">${txt}</td>`;
+      if (j < fixas) h += `<td class="fx${ult(j)}${aEsquerda(c) ? " t" : ""}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px;${estilo}" title="${esc(c.titulo ? c.titulo(l) : typeof v === "number" ? "" : v)}">${txt}</td>`;
       else {                                   // texto longo (ex.: "Índice de Preços ao Consumidor Amplo"): largura máxima e "…", texto inteiro ao passar o mouse
         const longo = c.tipo === "txt" && typeof v === "string" && v.length > 30;
         h += `<td class="${(alinh + (longo ? " longo" : "")).trim()}" style="${estilo}"${longo ? ` title="${esc(v)}"` : ""}>${txt}</td>`;
@@ -2078,7 +2080,7 @@ function renderCartResumo() {
     kpi("Melhor / pior mês", `${brPct(eT.melhorMes)} / ${brPct(eT.piorMes)}`) + `</div>`;
   const maxC = Math.max(1e-9, ...sim.contrib.map(Math.abs));
   const celP = (v) => `<td style="${corSinal(v)}">${brPct(v)}</td>`;
-  const nomeFx = (txt) => `<td class="fx t" style="left:0;min-width:240px;max-width:240px" title="${esc(txt.replace(/<[^>]+>/g, ""))}">${txt}</td>`;
+  const nomeFx = (txt) => `<td class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px" title="${esc(txt.replace(/<[^>]+>/g, ""))}">${txt}</td>`;
   const o = st.ord.cartAtivos;
   const linhasO = validos.map((it, k) => ({ k, nome: nomeItem(it), peso: pesos[k], total: eA[k].total, anual: eA[k].anual, vol: eA[k].vol, sharpe: eA[k].sharpe, mdd: eA[k].mdd, contrib: sim.contrib[k] }));
   const colsO = ["nome", "peso", "total", "anual", "vol", "sharpe", "mdd", "contrib"].map((ch) => ({ chave: ch, tipo: ch === "nome" ? "txt" : "pct" }));
@@ -2093,7 +2095,7 @@ function renderCartResumo() {
   const linhaE = (cls, rot, e, extra = "") => `<tr class="${cls}">${nomeFx(rot)}<td>${extra}</td>${celP(e.total)}${celP(e.anual)}<td>${brPct(e.vol)}</td>
     <td style="${corSinal(e.sharpe)}">${e.sharpe == null ? "–" : br(e.sharpe, 2)}</td>${celP(e.mdd)}<td></td></tr>`;
   const somaC = sim.contrib.reduce((a, b) => a + b, 0);
-  h += `<div class="tb-wrap"><table class="tb cart-tab"><thead><tr>${thO("nome", "Ativo", ' class="fx t" style="left:0;min-width:240px;max-width:240px"')}${thO("peso", "Peso")}${thO("total", "Retorno")}${thO("anual", "Ao ano")}
+  h += `<div class="tb-wrap"><table class="tb cart-tab"><thead><tr>${thO("nome", "Ativo", ' class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px"')}${thO("peso", "Peso")}${thO("total", "Retorno")}${thO("anual", "Ao ano")}
     ${thO("vol", "Volatilidade")}${thO("sharpe", "Sharpe")}${thO("mdd", "Máx. queda")}${thO("contrib", "Contribuição para o retorno")}</tr></thead><tbody>${linhasA}
     <tr class="cart-total">${nomeFx(`Carteira${rebal ? ` (rebalanceamento ${REBAL[rebal]})` : " (comprar e manter)"}`)}<td>100%</td>${celP(eT.total)}${celP(eT.anual)}
       <td>${brPct(eT.vol)}</td><td style="${corSinal(eT.sharpe)}">${eT.sharpe == null ? "–" : br(eT.sharpe, 2)}</td>${celP(eT.mdd)}<td style="${corSinal(somaC)}"><b>${brPct(somaC)}</b></td></tr>` +
@@ -5050,7 +5052,9 @@ function renderRkBotao() {                       // botão da barra fixa (acompa
     b.hidden = n <= TOP_RANK; b.setAttribute("aria-pressed", String(todos)); b.setAttribute("aria-expanded", String(todos));
     // os dois rótulos ficam no botão (um invisível): na barra fixa ele mantém a largura do maior, e a barra não muda de layout ao alternar
     const rot = (ativo, html) => `<span class="rk-rot"${ativo ? "" : " data-off"}>${html}</span>`;
-    b.innerHTML = rot(todos, `▴ Mostrar só o top ${TOP_RANK}`) + rot(!todos, `▾ Mostrar o ranking completo <span class="nota">(${n} fundos)</span>`);
+    // rot-l / rot-c: texto longo (computador) e curto (celular)
+    b.innerHTML = rot(todos, `▴ <span class="rot-l">Mostrar só o top ${TOP_RANK}</span><span class="rot-c">Top ${TOP_RANK}</span>`) +
+      rot(!todos, `▾ <span class="rot-l">Mostrar o ranking completo</span><span class="rot-c">Todos</span> <span class="nota">(${n}<span class="rot-l"> fundos</span>)</span>`);
   }
 }
 function linhaRk(R, x) {
