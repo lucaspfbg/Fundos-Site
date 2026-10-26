@@ -1244,8 +1244,12 @@ details.sem-dados > summary { font-weight: 600; }
 /* janela de envio: a lista ocupa o espaço que sobra e rola (o rodapé com os botões fica sempre à vista) */
 #envLista { flex: 1 1 auto; min-height: 140px; overflow: auto; }
 @media (max-width: 600px) {
-  dialog.dlg-medio { padding: 12px; width: calc(100vw - 16px); max-width: none; }
+  /* a tela do celular é baixa (as barras do navegador ocupam espaço): a janela inteira rola e o rodapé com os botões
+     fica preso embaixo, sempre à vista; a lista de envio cresce com os fundos (sem uma rolagem dentro da outra) */
+  dialog.dlg-medio { padding: 12px; width: calc(100vw - 16px); max-width: none; overflow-y: auto; }
   dialog.dlg-medio[open] { max-height: calc(100dvh - 16px); }
+  dialog.dlg-medio .dlg-pe { position: sticky; bottom: -12px; z-index: 5; margin: 0 -12px -12px; padding: 8px 12px 12px; }
+  #envLista { flex: none; min-height: 0; max-height: none; overscroll-behavior: auto; }
   .dlg-pe { flex-wrap: wrap; align-items: center; gap: 8px; }
   .dlg-pe .botoes { margin-left: auto; }
   #envInfo { font-size: var(--fs-xs); margin: 0; }
