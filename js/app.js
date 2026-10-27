@@ -18,7 +18,7 @@ const MINIGRAFICOS = true;                 // minigráfico ao passar o mouse sob
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const nf = (c) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: c, maximumFractionDigits: c });
 const NF = [0, 1, 2, 4, 6].reduce((o, c) => ((o[c] = nf(c)), o), {});
 const br = (v, c = 2) => (v == null || Number.isNaN(v) ? "" : (NF[c] ||= nf(c)).format(v));     // cria o formato que faltar (qualquer nº de casas)
@@ -28,6 +28,60 @@ const normCnpj = (c) => String(c).toUpperCase().replace(/[^0-9A-Z]/g, "").padSta
 const pl = (n) => (Number(n) === 1 ? "" : "s");                                   // plural: `${n} fundo${pl(n)}`
 const rotPer = (p) => (p === "Vida Toda" ? "Desde o início" : p.replace(" Meses", " meses"));     // rótulo do período na tela (a chave interna continua "12 Meses")
 const ico = (n) => `<svg class="ico" aria-hidden="true"><use href="#i-${n}"/></svg>`;      // ícones do <svg> no topo do index.html
+
+// ---------- dados de fora (conta da equipe, arquivos importados, backup e o que ficou guardado no navegador): só entra o formato esperado.
+// Um item compartilhado com código no lugar de um número ou de um CNPJ não chega à página. Nomes continuam texto livre e são escapados ao mostrar.
+const txtSeguro = (s, max = 120) => (typeof s === "string" || typeof s === "number" ? String(s).slice(0, max) : "");
+const numSeguro = (v, padrao = 0) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : padrao);
+const idSeguro = (s) => (/^[^\s<>"'&`]{1,100}$/.test(String(s ?? "")) ? String(s) : "");     // ids da conta e dos tipos de cálculo: sem espaço nem caractere de HTML
+const dataSegura = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(String(s ?? "")) ? String(s) : "");
+const instanteSeguro = (s) => (/^[\d\-T:.Z+]{10,40}$/.test(String(s ?? "")) ? String(s) : "");
+const cnpjSeguro = (c) => { const v = normCnpj(c ?? ""); return /^[0-9A-Z]{14}$/.test(v) && /[1-9A-Z]/.test(v) ? v : ""; };
+const cnpjsSeguros = (a) => (Array.isArray(a) ? [...new Set(a.map(cnpjSeguro).filter(Boolean))] : []);
+const objSeguro = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+// mapa nome → item (grupos, rankings, carteiras e tipos de cálculo guardados): descarta o que não tiver o formato certo
+const mapaSeguro = (obj, limpar) => Object.fromEntries(Object.entries(objSeguro(obj)).map(([n, x]) => [txtSeguro(n), limpar(x)]).filter(([n, x]) => n && x));
+// ativo da carteira: fundo (CNPJ válido) ou índice conhecido; "n" = sem referência
+function ativoSeguro(it) {
+  if (it?.tipo === "f") { const v = cnpjSeguro(it.v); return v ? { tipo: "f", v, peso: numSeguro(it.peso) } : null; }
+  if (it?.tipo === "i" && Object.hasOwn(INDICES, it.v)) return { tipo: "i", v: it.v, peso: numSeguro(it.peso) };
+  return null;
+}
+function cartSegura(c) {
+  c = objSeguro(c);
+  const r = c.ref?.tipo === "n" ? { tipo: "n", v: "" } : ativoSeguro(c.ref);
+  return { itens: (Array.isArray(c.itens) ? c.itens : []).map(ativoSeguro).filter(Boolean),
+    ref: r ? { tipo: r.tipo, v: r.v, rot: txtSeguro(c.ref.rot) || (r.tipo === "i" ? nomeIndice(r.v) : cnpjFmt(r.v)) } : { tipo: "i", v: "CDI", rot: "CDI" },
+    rebal: [0, 1, 3, 6, 12].includes(Number(c.rebal)) ? Number(c.rebal) : 0, valor: Math.max(0, numSeguro(c.valor, 10000)), ini: dataSegura(c.ini), fim: dataSegura(c.fim) };
+}
+// tipo de cálculo: só métricas que existem, pesos numéricos, grupos conhecidos, índice conhecido e período em meses
+function modeloSeguro(M) {
+  M = objSeguro(M);
+  const pesos = {}, grupos = {}, dirs = {};
+  for (const [k, v] of Object.entries(objSeguro(M.pesos))) if (metricaRank(k)) pesos[k] = numSeguro(v);
+  if (!Object.keys(pesos).length) return null;
+  for (const [k, g] of Object.entries(objSeguro(M.grupos))) if (k in pesos && GRUPOS_RANK.includes(g)) grupos[k] = g;
+  for (const [k, d] of Object.entries(objSeguro(M.dirs))) if (k in pesos) dirs[k] = Number(d) < 0 ? -1 : 1;
+  const meses = String(M.periodo ?? "").match(/^(\d{1,3}) Meses$/);
+  return { nome: txtSeguro(M.nome, 60) || "Tipo de cálculo", periodo: meses ? `${meses[1]} Meses` : "36 Meses",
+    jmMeses: Math.max(1, Math.min(120, Math.round(numSeguro(M.jmMeses, 12)))), bench: Object.hasOwn(INDICES, M.bench) ? M.bench : "CDI", pesos,
+    ...(Object.keys(grupos).length ? { grupos } : {}), ...(Object.keys(dirs).length ? { dirs } : {}), ...(M.jmProporcional ? { jmProporcional: true } : {}) };
+}
+const grupoSeguro = (x) => (Array.isArray(x?.cnpjs) ? { cnpjs: cnpjsSeguros(x.cnpjs), atualizado: instanteSeguro(x.atualizado) } : null);
+const rankingSeguro = (x) => (Array.isArray(x?.cnpjs) ? { modelo: idSeguro(x.modelo) || "MM", ...(x.comparar ? { comparar: idSeguro(x.comparar) } : {}),
+  cnpjs: cnpjsSeguros(x.cnpjs), atualizado: instanteSeguro(x.atualizado) } : null);
+const carteiraSalvaSegura = (x) => (x?.cart ? { cart: cartSegura(x.cart), atualizado: instanteSeguro(x.atualizado) } : null);
+// item salvo na conta da equipe (o Apps Script devolve o que cada um gravou, inclusive os colegas)
+function itemNuvemSeguro(it) {
+  if (!["grupo", "carteira", "ranking", "favoritos"].includes(it?.tipo)) return null;
+  const c = objSeguro(it.conteudo), def = c.modeloDef ? modeloSeguro(c.modeloDef) : null;
+  const conteudo = it.tipo === "grupo" ? { cnpjs: cnpjsSeguros(c.cnpjs) }
+    : it.tipo === "carteira" ? { cart: cartSegura(c.cart || c) }
+    : it.tipo === "ranking" ? { modelo: idSeguro(c.modelo) || "MM", cnpjs: cnpjsSeguros(c.cnpjs), ...(def ? { modeloDef: def } : {}) }
+    : { chaves: (Array.isArray(c.chaves) ? c.chaves : []).map(String).filter((k) => k.startsWith("id:") && idSeguro(k.slice(3))) };
+  return { id: idSeguro(it.id), tipo: it.tipo, nome: txtSeguro(it.nome) || "(sem nome)", autor: txtSeguro(it.autor), meu: !!it.meu, compartilhado: !!it.compartilhado,
+    atualizado: instanteSeguro(it.atualizado), conteudo };
+}
 const curto = (s, n = 45) => (s.length <= n ? s : s.slice(0, n - 1) + "…");
 const barraPct = (el, pct) => { el.style.transform = `translateX(${Math.min(100, Math.max(0, pct)) - 100}%)`; };   // barra de progresso: anda com transform
 const VERDE = "#0c8a4e", VERMELHO = "#d0262c", OURO = "#c9a23a", ANIL = "#2b2c78";
@@ -50,7 +104,7 @@ const st = {
   idxSel: new Set(pref("indices", ["CDI", "IBOV"])), riscoEixo: pref("riscoEixo", "ret"),
   rel: { on: false, alvo: "CDI", modo: "dif" }, todos: {}, graficos: {},
   jmBench: { tipo: "i", v: "CDI", rot: "CDI" },
-  cart: Object.assign({ itens: [], rebal: 0, ref: { tipo: "i", v: "CDI", rot: "CDI" }, valor: 10000, ini: "", fim: "" }, pref("carteira", {})),
+  cart: cartSegura(pref("carteira", {})),
   ctx: null,                                            // contexto do último cálculo exibido (período, cores, datas)
   cartRes: null,                                        // último cálculo da carteira
   cartUI: { rel: { on: false, alvo: "CDI", modo: "dif" }, eixo: "ret", jmBench: { tipo: "i", v: "CDI", rot: "CDI" }, jmMeses: 12, pts: null },
@@ -508,7 +562,7 @@ function renderColagem() {
 
 // ---------- grupos salvos (neste navegador)
 // grupos de três origens: deste computador (local), meus na conta (meu) e compartilhados pelos colegas (equipe)
-const lerGruposLocais = () => pref("grupos", {});
+const lerGruposLocais = () => mapaSeguro(pref("grupos", {}), grupoSeguro);
 function lerGrupos() {
   const out = {};
   for (const [n, x] of Object.entries(lerGruposLocais())) out[n] = { ...x, _origem: "local", _nome: n };
@@ -599,7 +653,7 @@ async function importarGrupos(arquivo) {
     if (r == null) return; sobrescrever = r;
   }
   let n = 0;
-  for (const [nome, x] of validos) if (!g[nome] || sobrescrever) { g[nome] = { cnpjs: x.cnpjs.map(normCnpj), atualizado: x.atualizado || new Date().toISOString() }; n++; }
+  for (const [nome, x] of validos) if (!g[nome] || sobrescrever) { g[nome] = { cnpjs: cnpjsSeguros(x.cnpjs), atualizado: instanteSeguro(x.atualizado) || new Date().toISOString() }; n++; }
   gravarGrupos(g); renderGrupos();
   avisoSel(`<span class="ok">${n} grupo${pl(n)} importado${pl(n)}.</span>`);
 }
@@ -4457,7 +4511,7 @@ async function carregarNuvem() {
   const token = lerSessaoEquipe(); if (!token) return;
   const r = await apiEquipe("salvos", { token });
   if (!r.ok) { if (r.erro && !/Ação desconhecida/.test(r.erro)) avisoSel(`<span class="neg">Grupos e rankings da conta: ${esc(r.erro)}</span>`); return; }
-  st.nuvem = { itens: r.itens || [] };
+  st.nuvem = { itens: (Array.isArray(r.itens) ? r.itens : []).map(itemNuvemSeguro).filter(Boolean) };
   const fv = st.nuvem.itens.find((x) => x.tipo === "favoritos" && x.meu);
   if (fv?.conteudo?.chaves) { for (const k of fv.conteudo.chaves) st.favs.add(k); salvar("favoritos", [...st.favs]); }
   atualizarListasSalvos();
@@ -4465,7 +4519,7 @@ async function carregarNuvem() {
 async function salvarNaNuvem(item) {
   const token = lerSessaoEquipe(); if (!token || !st.nuvem) return { ok: false, erro: "Entre na área da equipe para salvar na conta." };
   const r = await apiEquipe("salvar", { token, item });
-  if (r.ok) { st.nuvem.itens = [...st.nuvem.itens.filter((x) => x.id !== r.item.id), r.item]; atualizarListasSalvos(); }
+  if (r.ok) { r.item = itemNuvemSeguro(r.item); if (r.item) st.nuvem.itens = [...st.nuvem.itens.filter((x) => x.id !== r.item.id), r.item]; atualizarListasSalvos(); }
   else if (/Ação desconhecida/.test(r.erro || "")) r.erro = "O Apps Script precisa ser atualizado (versão 2026-10-08.9 ou mais nova) para salvar na conta.";
   return r;
 }
@@ -4519,7 +4573,7 @@ document.addEventListener("change", (e) => {
 
 // ============================== carteiras salvas ==============================
 // cópia completa da carteira montada (ativos e pesos, referência, rebalanceamento, valor inicial e período)
-const lerCarteirasLocais = () => pref("carteirasSalvas", {});
+const lerCarteirasLocais = () => mapaSeguro(pref("carteirasSalvas", {}), carteiraSalvaSegura);
 function lerCarteiras() {
   const out = {};
   for (const [n, x] of Object.entries(lerCarteirasLocais())) out[n] = { ...x, _origem: "local", _nome: n };
@@ -4827,7 +4881,7 @@ document.addEventListener("click", (e) => {
 // Um ranking = nome + tipo de cálculo (pesos) + lista de fundos. Ficam guardados neste navegador, como os grupos.
 // rankings de três origens, como os grupos: deste computador, meus na conta e compartilhados pelos colegas.
 // os da conta levam junto o tipo de cálculo personalizado (modeloDef), para calcular igual em qualquer computador
-const lerRankingsLocais = () => pref("rankings", {});
+const lerRankingsLocais = () => mapaSeguro(pref("rankings", {}), rankingSeguro);
 st.modelosNuvemMeus = {}; st.modelosEquipe = {};
 function lerRankings() {
   const out = {};
@@ -4857,7 +4911,7 @@ const salvarRkSel = () => salvar("rankingsSel", [...rkSel]);
 const rkEd = { aberto: false, nomeOrig: null, modelo: "MM", cnpjs: [] };
 const TOP_RANK = 10;
 // tipos de cálculo: os 4 padrão (ranking.js) + os editados/criados aqui (o editado de um padrão usa o mesmo id e o substitui)
-const modelosSalvos = () => pref("modelosRank", {});
+const modelosSalvos = () => Object.fromEntries(Object.entries(objSeguro(pref("modelosRank", {}))).map(([id, M]) => [idSeguro(id), modeloSeguro(M)]).filter(([id, M]) => id && M));
 const modelos = () => ({ ...MODELOS_RANK, ...modelosSalvos(), ...st.modelosNuvemMeus });       // os meus da conta aparecem em qualquer computador
 const modeloDe = (id) => modelos()[id] || st.modelosEquipe[id] || MODELOS_RANK.MM;
 
@@ -5433,8 +5487,8 @@ async function importarRankings(arquivo) {
   let dados; try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar rankings.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
   // tipos de cálculo do arquivo: entram com o mesmo id; se já existir um diferente com esse id, entram com id novo
   const salvos = modelosSalvos(), troca = {};
-  for (const [id, M] of Object.entries(dados?.modelos || {})) {
-    if (!M?.pesos) continue;
+  for (const [id, M0] of Object.entries(objSeguro(dados?.modelos))) {
+    const M = modeloSeguro(M0); if (!M || !idSeguro(id)) continue;
     if (!salvos[id] || JSON.stringify(salvos[id]) === JSON.stringify(M)) salvos[id] = M;
     else { const novo = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`; salvos[novo] = M; troca[id] = novo; }
   }
@@ -5445,7 +5499,7 @@ async function importarRankings(arquivo) {
   let sob = true;
   if (rep.length) { const r = await perguntar("Rankings com o mesmo nome", `Já existem: <b>${rep.map(esc).join(", ")}</b>.`,
     [{ rot: "Cancelar", v: null }, { rot: "Manter os meus", v: false }, { rot: "Substituir pelos do arquivo", v: true, classe: "prim" }]); if (r == null) return; sob = r; }
-  for (const [n, x] of novos) if (!g[n] || sob) g[n] = { modelo: x.modelo, comparar: x.comparar || "1m", cnpjs: x.cnpjs.map(normCnpj), atualizado: x.atualizado || new Date().toISOString() };
+  for (const [n, x] of novos) if (!g[n] || sob) g[n] = { ...rankingSeguro(x), comparar: idSeguro(x.comparar) || "1m", atualizado: instanteSeguro(x.atualizado) || new Date().toISOString() };
   gravarRankings(g); renderRkLista();
 }
 
