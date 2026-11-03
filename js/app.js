@@ -4204,6 +4204,7 @@ function renderXPGeral() {
       return kpi("Clientes nos fundos", br(cli.reduce((a, b) => a + b, 0), 0), `em ${br(com, 0)} fundo${pl(com)}`) +
         kpi("Volume dos clientes", `R$ ${br(vol.reduce((a, b) => a + b, 0) / 1e6, 1)} mi`, `mediana R$ ${br((mediana(vol.filter((v) => v > 0)) || 0) / 1e6, 2)} mi por fundo`); })()}
   </div>
+  <div id="xpBuscaSlot"></div>
   <section class="xp-card xp-faixa" aria-label="Perfil dos fundos"><div class="xp-faixa-grade">
     ${cartaoBarras("Tipo de fundo", tipoF, n, { bloco: true, ordem: ["Fundos de investimento", "Previdência"], cores: { "Fundos de investimento": "#1f5aa6", "Previdência": "#c9a23a" } })}
     ${cartaoBarras("Captação", capt, n, { bloco: true, ordem: ["Abertos para aplicação", "Fechados para aplicação"], cores: { "Abertos para aplicação": "#087040", "Fechados para aplicação": "#c4222a" } })}
@@ -4224,9 +4225,87 @@ function renderXPGeral() {
     ["Classe CVM", cvm], ["Gestora", gestora.size > 1 || !gestora.has("Sem gestora") ? gestora : null]], n)}
   </div>`;
   $("#xpFiltrosBox").innerHTML = barraFiltrosXP(); alturaFiltrosXP();
+  montarBuscaXP();                                              // a caixa "Encontrar um fundo" volta para o lugar e remarca as barras do fundo escolhido
   filtrarAbaClassif();                                          // mantém a busca da aba depois de redesenhar
   atualizarXPSelInfo();
 }
+// ---------- página XP: encontrar um fundo. Mostra em que barra (categoria) de cada quadro ele está, marca essas barras
+// e deixa juntá-lo à seleção. A caixa é criada uma vez e volta para o lugar a cada redesenho da visão geral (não perde o texto).
+st.xpFoco = null; st.xpAdicionados = new Set();
+let xpBuscaEl = null, tXPBusca;
+const nomeXPde = (c) => camposXP(c)["XP Nome"] || st.porCnpj.get(c)?.NOME || cnpjFmt(c);
+function montarBuscaXP() {
+  if (!xpBuscaEl) {
+    xpBuscaEl = document.createElement("section"); xpBuscaEl.className = "xp-busca"; xpBuscaEl.setAttribute("aria-label", "Encontrar um fundo");
+    xpBuscaEl.innerHTML = `<label class="xp-busca-rot" for="xpBuscaIn">Encontrar um fundo</label>
+      <div class="xp-busca-campo"><input id="xpBuscaIn" type="search" placeholder="Nome comercial, nome na CVM ou CNPJ (mín. 3 letras)" autocomplete="off" spellcheck="false" aria-controls="xpBuscaRes">
+        <div id="xpBuscaRes" class="xp-busca-res" role="listbox" aria-label="Fundos da XP encontrados" hidden></div></div>
+      <div id="xpFicha"></div>`;
+  }
+  $("#xpBuscaSlot")?.append(xpBuscaEl);
+  if (st.xpFoco && !st.xp?.has(st.xpFoco)) st.xpFoco = null;
+  renderFichaXP();
+}
+function buscarXP(txt) {
+  const q = semAcento(txt).trim(), dig = q.replace(/\D/g, "");
+  if (q.length < 3) return [];
+  const out = [];
+  for (const c of st.xp.keys()) {
+    if (semAcento(`${camposXP(c)["XP Nome"] || ""} ${st.porCnpj.get(c)?.NOME || ""}`).includes(q) || (dig.length >= 4 && c.includes(dig))) out.push(c);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+function renderBuscaXP() {
+  const box = $("#xpBuscaRes"), txt = $("#xpBuscaIn").value, achados = buscarXP(txt);
+  box.hidden = semAcento(txt).trim().length < 3;
+  box.innerHTML = achados.length ? achados.map((c) => `<button type="button" class="xp-busca-op" role="option" data-xpfoco="${c}"><span>${esc(nomeXPde(c))}</span>` +
+    `<small>${cnpjFmt(c)}${st.sel.includes(c) ? " · na seleção" : ""}</small></button>`).join("") : `<p class="nota">Nenhum fundo da XP com esse nome ou CNPJ.</p>`;
+}
+// ficha do fundo escolhido: a categoria em cada quadro (clique leva até a barra) e o botão de juntar à seleção
+function renderFichaXP() {
+  const el = $("#xpFicha"); if (!el) return;
+  $$(".xp-barra.xp-foco").forEach((b) => b.classList.remove("xp-foco"));
+  const c = st.xpFoco; if (!c) { el.innerHTML = ""; return; }
+  const cats = [];
+  for (const [id, g] of xpGrupos) if (g.cs.includes(c)) { cats.push([g.titulo, g.rot, id]); $(`.xp-barra[data-xpg="${id}"]`)?.classList.add("xp-foco"); }
+  const naSel = st.sel.includes(c), { ok } = calculaveisXP([c]), filtrados = fundosFiltradosXP();
+  el.innerHTML = `<div class="xp-ficha">
+    <div class="xp-ficha-cab"><div class="xp-ficha-nome"><span class="lk-fundo" data-pf="${c}" role="button" tabindex="0" title="Abrir o painel do fundo">${esc(nomeXPde(c))}</span>
+      <small class="nota">CNPJ ${cnpjFmt(c)}${filtrados ? (filtrados.includes(c) ? " · entra nos filtros marcados" : " · fica fora dos filtros marcados") : ""}</small></div>
+      <div class="xp-ficha-acoes">${naSel ? `<span class="xp-ficha-ok">${ico("ok")}Na seleção</span><button type="button" class="sec mini-btn" data-xpsel-tirar="${c}">Tirar da seleção</button>`
+        : ok.length ? `<button type="button" class="prim mini-btn" data-xpsel-add="${c}">${ico("mais")}Adicionar à seleção</button>`
+        : `<span class="nota">Sem cotas recentes na CVM: não entra no cálculo</span>`}
+        <button type="button" class="sec mini-btn" data-xpfoco-limpar title="Fechar" aria-label="Fechar a ficha do fundo">${ico("fechar")}</button></div></div>
+    <div class="xp-ficha-cats" aria-label="Categorias do fundo em cada quadro">${cats.map(([t, r, id]) =>
+      `<button type="button" class="xp-cat" data-xpir="${id}" title="Ir até a barra no quadro ${esc(t)}"><small>${esc(t.replace(/ \(.*\)$/, ""))}</small><span>${esc(r)}</span></button>`).join("")}</div>
+    <p class="nota xp-ficha-dica">As barras deste fundo ficam marcadas com <span class="xp-foco-amostra">este fundo</span> nos quadros abaixo.</p></div>`;
+}
+document.addEventListener("input", (e) => { if (e.target.id === "xpBuscaIn") { clearTimeout(tXPBusca); tXPBusca = setTimeout(renderBuscaXP, 120); } });
+document.addEventListener("keydown", (e) => {
+  if (e.target.id !== "xpBuscaIn") return;
+  if (e.key === "Escape") $("#xpBuscaRes").hidden = true;
+  else if (e.key === "Enter") { e.preventDefault(); renderBuscaXP(); $("#xpBuscaRes [data-xpfoco]")?.click(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); $("#xpBuscaRes [data-xpfoco]")?.focus(); }
+});
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (!t.closest?.(".xp-busca-campo") && $("#xpBuscaRes")) $("#xpBuscaRes").hidden = true;
+  const f = t.closest?.("[data-xpfoco]");
+  if (f) { st.xpFoco = f.dataset.xpfoco; $("#xpBuscaIn").value = nomeXPde(st.xpFoco); $("#xpBuscaRes").hidden = true; renderFichaXP(); return; }
+  if (t.closest?.("[data-xpfoco-limpar]")) { st.xpFoco = null; $("#xpBuscaIn").value = ""; renderFichaXP(); $("#xpBuscaIn").focus(); return; }
+  const a = t.closest?.("[data-xpsel-add]");
+  if (a) { adicionar([a.dataset.xpselAdd]); st.xpAdicionados.add(a.dataset.xpselAdd); atualizarXPSelInfo(); renderFichaXP(); return; }
+  const r = t.closest?.("[data-xpsel-tirar]");
+  if (r) { remover(r.dataset.xpselTirar); st.xpAdicionados.delete(r.dataset.xpselTirar); atualizarXPSelInfo(); renderFichaXP(); return; }
+  const ir = t.closest?.("[data-xpir]");
+  if (ir) {                                                              // a barra pode estar numa aba escondida das classificações
+    const b = $(`.xp-barra[data-xpg="${ir.dataset.xpir}"]`); if (!b) return;
+    const aba = b.closest("[role=tabpanel][hidden]"); if (aba) trocarAbaClassif($(`[aria-controls="${aba.id}"]`).dataset.xpaba);
+    b.scrollIntoView({ block: "center", behavior: rolagemSuave() });
+    b.classList.remove("xp-pisca"); void b.offsetWidth; b.classList.add("xp-pisca");
+  }
+});
 // descrição dos filtros: faixas seguidas de ROA viram um intervalo ("0,15 até 0,75%")
 function descFiltro(titulo, rots) {
   if (titulo !== "ROA") return [...rots].join(", ");
@@ -4277,11 +4356,15 @@ function calculaveisXP(lista) {
 async function selecionarECalcular(lista, rotulo) {
   const { ok, fora } = calculaveisXP(lista);
   if (!ok.length) { await perguntar("Nenhum fundo para calcular", `${esc(rotulo)}: nenhum desses fundos tem cotas recentes na CVM.`, [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  // fundos da seleção que não estão no filtro (por exemplo, os juntados pela busca "Encontrar um fundo"): podem entrar no cálculo
+  const extras = st.sel.filter((c) => !ok.includes(c)), juntarPadrao = extras.some((c) => st.xpAdicionados.has(c));
   const opModelos = Object.entries(modelos()).map(([k, M]) => `<option value="${esc(k)}"${k === (st.rkXPModelo || "MM") ? " selected" : ""}>${esc(M.nome)}</option>`).join("");
   const r = await perguntar(`Calcular ${ok.length} fundo${pl(ok.length)}?`, `<b>${esc(rotulo)}</b>: ${ok.length} fundo${pl(ok.length)} com cotas recentes na CVM` +
     (fora ? ` (${fora} ficam de fora: sem dados na CVM ou sem cota nos últimos 30 dias)` : "") + "." +
     `<div class="xp-calc-op">
-      <label class="tog"><input type="checkbox" id="xpOpMet" checked> <span><b>Calcular as métricas</b> — tabela, gráficos e gráfico de quadrantes (substitui a seleção atual de ${st.sel.length} fundo${pl(st.sel.length)})</span></label>
+      <label class="tog"><input type="checkbox" id="xpOpMet" checked> <span><b>Calcular as métricas</b> — tabela, gráficos e gráfico de quadrantes${extras.length ? "" : ` (substitui a seleção atual de ${st.sel.length} fundo${pl(st.sel.length)})`}</span></label>
+      ${extras.length ? `<label class="tog"><input type="checkbox" id="xpOpJuntar"${juntarPadrao ? " checked" : ""}> <span><b>Juntar ${extras.length === 1 ? "o fundo" : `os ${extras.length} fundos`} da seleção</b> que ${extras.length === 1 ? "está" : "estão"} fora deste filtro
+        <small class="nota">(${esc(extras.slice(0, 3).map((c) => curto(nomeXPde(c), 40)).join("; "))}${extras.length > 3 ? "…" : ""}); desmarcado, a seleção é substituída</small></span></label>` : ""}
       <label class="tog"><input type="checkbox" id="xpOpRk"${st.rkXPMarcado ? " checked" : ""}> <span><b>Calcular um ranking</b> com estes fundos (as pontuações entram no gráfico de quadrantes)</span></label>
       <label class="xp-calc-mod" id="xpOpModBox"${st.rkXPMarcado ? "" : " hidden"}>Tipo de cálculo do ranking <select id="xpOpModelo">${opModelos}</select></label>
     </div>` + (ok.length > 150 ? `<p class="nota">Com muitos fundos o cálculo pode levar alguns minutos na primeira vez (depois fica guardado neste computador).</p>` : ""),
@@ -4289,6 +4372,7 @@ async function selecionarECalcular(lista, rotulo) {
   if (!r) return;
   const met = $("#xpOpMet").checked, rk = $("#xpOpRk").checked, modelo = $("#xpOpModelo").value;
   if (!met && !rk) return;
+  if ($("#xpOpJuntar")?.checked) ok.push(...extras);                     // juntar: os de fora entram nas métricas e no ranking
   st.rkXPMarcado = rk; if (rk) st.rkXPModelo = modelo;
   if (met) { st.sel = []; adicionar(ok); atualizarSidebar(); atualizarXPSelInfo(); await calcular(); if (carga.interrompida) return;
     if (!$("#secROA").hidden) $("#secROA").scrollIntoView({ block: "start", behavior: rolagemSuave() }); }      // o resultado aparece logo abaixo da visão geral
