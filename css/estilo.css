@@ -1258,3 +1258,7 @@ details.sem-dados > summary { font-weight: 600; }
   .env-tab tbody tr:nth-child(even) td.env-fundo { background: var(--zebra); }
   .env-tab thead th.env-fundo { z-index: 3; background: var(--cab); }
 }
+/* janela de envio: o destino já tem fundos → Adicionar ou Substituir */
+.env-modo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-right: 12px; }
+.env-modo .pilulas button { display: inline-flex; align-items: center; gap: 4px; }
+.env-modo .ico { width: 13px; height: 13px; }

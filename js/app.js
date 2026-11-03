@@ -3684,7 +3684,16 @@ const colunaHub = () => ({ chave: "_hubId", nome: "Link Hub", tipo: "txt", ord: 
 
 // ---------- enviar fundos de uma página para outra (análise, ranking ou carteira), sem buscar de novo
 // origem: "analise" (também na página XP, que mostra a mesma análise), "rk" (o ranking aberto) ou "cart"; o destino se escolhe no topo da janela
-const env = { origem: null, destino: null, lista: [], marcados: new Set(), juntar: false, modelo: null };
+// modo: o destino já tem fundos → "add" junta os enviados aos que já estão lá; "sub" troca tudo (o padrão de cada destino é o de antes)
+const env = { origem: null, destino: null, lista: [], marcados: new Set(), modo: { analise: "sub", cart: "add", rk: "sub" }, modelo: null };
+// o que já existe no destino (para a escolha Adicionar / Substituir)
+function jaNoDestino(dest) {
+  if (dest === "analise") return { n: st.sel.length, txt: `A análise já tem ${st.sel.length} fundo${pl(st.sel.length)} selecionado${pl(st.sel.length)}` };
+  if (dest === "cart") return { n: st.cart.itens.length, txt: `A carteira já tem ${st.cart.itens.length} ativo${pl(st.cart.itens.length)}` };
+  const R = st.rk?.lista.find((x) => x._env), n = R ? R.def.cnpjs.length : 0;
+  return { n, cnpjs: R ? R.def.cnpjs : [], txt: `O ranking “${NOME_RK_ENV}” já tem ${n} fundo${pl(n)}` };
+}
+const modoEnv = (dest) => (jaNoDestino(dest).n ? env.modo[dest] : "sub");
 const DESTINOS_ENV = { analise: "Para a análise", rk: "Para um ranking", cart: "Para a carteira" };
 const NOME_RK_ENV = "⚡ Fundos enviados";
 async function abrirEnviar(origem) {
@@ -3708,31 +3717,35 @@ async function abrirEnviar(origem) {
   if (!env.lista.length) { await perguntar("Nenhum fundo para enviar", origem === "cart" ? "A carteira ainda não tem fundos." : "Calcule os fundos primeiro.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
   if (!env.destino || env.destino === origem) env.destino = Object.keys(DESTINOS_ENV).find((d) => d !== origem);
   env.marcados = new Set(env.lista.map((x) => x.c));          // começa com todos: o caso comum é trocar de tipo de análise com os mesmos fundos
-  env.juntar = false; if (!modelos()[env.modelo]) env.modelo = modelos()[st.rkXPModelo] ? st.rkXPModelo : "MM";
+  if (!modelos()[env.modelo]) env.modelo = modelos()[st.rkXPModelo] ? st.rkXPModelo : "MM";
   $("#envIr").checked = true;
   renderEnviar(); $("#dlgEnviar").showModal();
 }
 // prazo de resgate em uma linha: "D+30 / D+2" (cotização / liquidação), com o texto completo ao passar o mouse
 const prazoCurto = (t) => { const m = String(t ?? "").match(/D\s*\+\s*(\d+)/i); return m ? `D+${m[1]}` : t ? "…" : ""; };
 function renderEnviar() {
-  const dest = env.destino, rk = env.origem === "rk", xp = !!st.xp;
-  const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v)), bloq = (c) => dest === "cart" && naCart.has(c);
+  const dest = env.destino, rk = env.origem === "rk", xp = !!st.xp, ja = jaNoDestino(dest), add = modoEnv(dest) === "add";
+  const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v)), bloq = (c) => dest === "cart" && add && naCart.has(c);
   const n = [...env.marcados].filter((c) => !bloq(c)).length, nf = (k) => `${k} fundo${pl(k)}`;
+  const nRk = add ? new Set([...ja.cnpjs || [], ...env.marcados]).size : n;           // fundos do ranking depois de enviar
   $("#envDest").innerHTML = Object.entries(DESTINOS_ENV).filter(([d]) => d !== env.origem)
     .map(([d, rot]) => `<button type="button" data-env-dest="${d}" aria-pressed="${d === dest}">${rot}</button>`).join("");
   const M = modeloDe(env.modelo);
   $("#envInfo").innerHTML = dest === "cart"
     ? `Marque os fundos ${esc(env.titulo)} que vão para a carteira (rentabilidade e volatilidade ${esc(env.periodo)}). ` +
-      (st.cart.itens.length ? "A carteira já tem ativos: os novos entram com peso 0 (defina os pesos depois ou use “Pesos iguais”)." : "A carteira está vazia: os fundos enviados entram com pesos iguais.")
+      (!ja.n ? "A carteira está vazia: os fundos enviados entram com pesos iguais." : add ? "Os novos entram com peso 0 (defina os pesos depois ou use “Pesos iguais”); os que já estão nela ficam marcados como “na carteira”."
+        : "Os ativos de agora <b>saem</b> e os enviados entram com pesos iguais.")
     : dest === "analise"
     ? `Marque os fundos ${esc(env.titulo)} que vão para a análise (rentabilidade e volatilidade ${esc(env.periodo)}). Eles são calculados no período escolhido na lateral` +
-      (st.sel.length && !env.juntar ? ` e <b>substituem</b> os ${nf(st.sel.length)} selecionados na análise.` : ".")
+      (!ja.n ? "." : add ? ` junto com os ${nf(ja.n)} que já estão selecionados.` : ` e <b>substituem</b> os ${nf(ja.n)} selecionados na análise.`)
     : `Marque os fundos ${esc(env.titulo)} para calcular um ranking com eles (pelo menos 2) e escolha o tipo de cálculo: as métricas, os pesos e o período. ` +
-      `O ranking “${esc(NOME_RK_ENV)}” é temporário (não fica salvo); para guardá-lo, use <b>Montar rankings</b>.`;
-  $("#envOpcoes").innerHTML = dest === "analise" && st.sel.length
-    ? `<label class="tog"><input id="envJuntar" type="checkbox"${env.juntar ? " checked" : ""}> Juntar aos ${nf(st.sel.length)} já selecionados na análise</label>`
-    : dest === "rk" ? `<label class="ordem">Tipo de cálculo <select id="envModelo">${Object.entries(modelos()).map(([k, X]) => `<option value="${esc(k)}"${k === env.modelo ? " selected" : ""}>${esc(X.nome)}</option>`).join("")}</select></label>
-      <span class="nota">${esc(M.periodo)} · ${Object.keys(M.pesos).map((k) => `${esc(metricaRank(k)?.nome || k)} ${Math.abs(M.pesos[k])}%`).join(" · ")}</span>` : "";
+      `O ranking “${esc(NOME_RK_ENV)}” é temporário (não fica salvo); para guardá-lo, use <b>Montar rankings</b>.` +
+      (ja.n && add ? ` Os enviados entram junto com os ${nf(ja.n)} que ele já tem.` : "");
+  // o destino já tem fundos: adicionar aos de lá ou substituir (como em Grupos)
+  const modoHTML = ja.n ? `<span class="env-modo"><span class="nota">${esc(ja.txt)}:</span><span class="pilulas mini" role="group" aria-label="O que fazer com o que já está lá">` +
+    `<button type="button" data-env-modo="add" aria-pressed="${add}">${ico("mais")}Adicionar</button><button type="button" data-env-modo="sub" aria-pressed="${!add}">Substituir</button></span></span>` : "";
+  $("#envOpcoes").innerHTML = modoHTML + (dest === "rk" ? `<label class="ordem">Tipo de cálculo <select id="envModelo">${Object.entries(modelos()).map(([k, X]) => `<option value="${esc(k)}"${k === env.modelo ? " selected" : ""}>${esc(X.nome)}</option>`).join("")}</select></label>
+      <span class="nota">${esc(M.periodo)} · ${Object.keys(M.pesos).map((k) => `${esc(metricaRank(k)?.nome || k)} ${Math.abs(M.pesos[k])}%`).join(" · ")}</span>` : "");
   // colunas pequenas com largura fixa; o nome ocupa o que sobrar (a tabela nunca passa da largura da janela)
   // [chave, largura, título curto, título completo (ao passar o mouse)]
   const cols = [["sel", 30, ""], ...(rk ? [["pos", 42, "Pos.", "Posição no ranking"]] : []), ["nome", null, "Fundo"], ["classif", 96, "Classificação", "Classificação CVM"],
@@ -3763,17 +3776,20 @@ function renderEnviar() {
     const tds = cols.filter(([k]) => !(foraXP && XPK.has(k))).map(([k]) => cel[k]).join("") + (foraXP ? `<td colspan="5" class="env-fora">não está na XP</td>` : "");
     return `<tr class="linha-f${on ? " marcado" : ""}${ja ? " env-bloq" : ""}" data-env="${x.c}" ${ja ? "" : 'tabindex="0"'}>${tds}</tr>`; }).join("")}</tbody></table>`;
   $("#envIrTxt").textContent = { analise: "Abrir a análise depois de enviar", rk: "Abrir o ranking depois de calcular", cart: "Abrir a carteira depois de enviar" }[dest];
-  $("#envOk").textContent = dest === "rk" ? `Calcular o ranking com ${nf(n)}` : dest === "analise" ? `Calcular ${nf(n)} na análise` : `Enviar ${nf(n)}`;
-  $("#envOk").disabled = n < (dest === "rk" ? 2 : 1);
+  $("#envOk").textContent = dest === "rk" ? `Calcular o ranking com ${nf(nRk)}` : dest === "analise" ? `Calcular ${nf(add ? new Set([...st.sel, ...env.marcados]).size : n)} na análise`
+    : add || !ja.n ? `Enviar ${nf(n)}` : `Substituir por ${nf(n)}`;
+  $("#envOk").disabled = !n || (dest === "rk" && nRk < 2);
 }
 async function enviar() {
   const dest = env.destino, ir = $("#envIr").checked;
   if (dest === "cart") return enviarParaCarteira();
-  const lista = env.lista.map((x) => x.c).filter((c) => env.marcados.has(c));          // na ordem da lista de origem
+  const add = modoEnv(dest) === "add", ja = jaNoDestino(dest);
+  let lista = env.lista.map((x) => x.c).filter((c) => env.marcados.has(c));            // na ordem da lista de origem
+  if (dest === "rk" && add) lista = [...new Set([...ja.cnpjs, ...lista])];               // junta aos que o ranking enviado já tem
   if (lista.length < (dest === "rk" ? 2 : 1)) return;
   $("#dlgEnviar").close();
   if (dest === "analise") {
-    if (!env.juntar) st.sel = [];
+    if (!add) st.sel = [];
     adicionar(lista); atualizarXPSelInfo();
     if (ir) mostrarPagina("analise");
     await calcular();
@@ -3784,6 +3800,7 @@ async function enviar() {
   }
 }
 function enviarParaCarteira() {
+  if (modoEnv("cart") === "sub" && env.lista.some((x) => env.marcados.has(x.c))) st.cart.itens = [];   // substituir: a carteira fica só com os enviados
   const naCart = new Set(st.cart.itens.filter((it) => it.tipo === "f").map((it) => it.v));
   const novos = env.lista.map((x) => x.c).filter((c) => env.marcados.has(c) && !naCart.has(c)); if (!novos.length) return;
   const vazia = !st.cart.itens.length;
@@ -3799,6 +3816,7 @@ document.addEventListener("click", (e) => {
   const t = e.target;
   const b = t.closest?.("[data-enviar]"); if (b) return abrirEnviar(b.dataset.enviar);
   const d = t.closest?.("[data-env-dest]"); if (d) { env.destino = d.dataset.envDest; return renderEnviar(); }
+  const md = t.closest?.("[data-env-modo]"); if (md) { env.modo[env.destino] = md.dataset.envModo; return renderEnviar(); }
   if (t.id === "envOk") return enviar();
   if (t.closest?.("[data-ir-carteira]")) return mostrarPagina("carteira");
   if (t.id === "envTodos" || t.id === "envNenhum") { env.marcados = t.id === "envTodos" ? new Set(env.lista.map((x) => x.c)) : new Set(); return renderEnviar(); }
@@ -3806,8 +3824,7 @@ document.addEventListener("click", (e) => {
   if (tr && !tr.classList.contains("env-bloq") && !arrasto.recente) { const c = tr.dataset.env; env.marcados.has(c) ? env.marcados.delete(c) : env.marcados.add(c); renderEnviar(); }
 });
 document.addEventListener("change", (e) => {
-  if (e.target.id === "envJuntar") { env.juntar = e.target.checked; renderEnviar(); }
-  else if (e.target.id === "envModelo") { env.modelo = e.target.value; renderEnviar(); }
+  if (e.target.id === "envModelo") { env.modelo = e.target.value; renderEnviar(); }
 });
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("#envLista tr[data-env]")) { e.preventDefault(); e.target.click(); }
