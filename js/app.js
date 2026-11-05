@@ -4577,7 +4577,8 @@ document.addEventListener("pointerdown", (e) => {
   xpArrasto.tipo = e.pointerType;
   const b = e.target.closest?.(".xp-barra"); if (!b || e.pointerType !== "mouse" || e.button !== 0) return;
   e.preventDefault();                                                    // não seleciona texto enquanto arrasta
-  const card = b.closest(".xp-card"), barras = [...card.querySelectorAll(".xp-barra")], ini = barras.indexOf(b);
+  // só as barras visíveis: as escondidas pela busca da aba de classificações não entram no intervalo
+  const card = b.closest(".xp-card"), barras = [...card.querySelectorAll(".xp-barra:not([hidden])")], ini = barras.indexOf(b);
   const { titulo } = xpGrupos.get(b.dataset.xpg) || {}; if (!titulo) return;
   const sel = st.xpFiltros.get(titulo) || st.xpFiltros.set(titulo, new Set()).get(titulo);
   Object.assign(xpArrasto, { ativo: true, card, barras, ini, fim: ini, titulo, base: new Set(sel), marcar: b.getAttribute("aria-pressed") !== "true" });
