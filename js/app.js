@@ -73,11 +73,13 @@ const rankingSeguro = (x) => (Array.isArray(x?.cnpjs) ? { modelo: idSeguro(x.mod
 const carteiraSalvaSegura = (x) => (x?.cart ? { cart: cartSegura(x.cart), atualizado: instanteSeguro(x.atualizado) } : null);
 // item salvo na conta da equipe (o Apps Script devolve o que cada um gravou, inclusive os colegas)
 function itemNuvemSeguro(it) {
-  if (!["grupo", "carteira", "ranking", "favoritos"].includes(it?.tipo)) return null;
+  if (!["grupo", "carteira", "ranking", "favoritos", "modelo"].includes(it?.tipo)) return null;
+  if (it.tipo === "modelo" && !modeloSeguro(objSeguro(it.conteudo).modelo)) return null;     // tipo de cálculo sem formato válido não entra
   const c = objSeguro(it.conteudo), def = c.modeloDef ? modeloSeguro(c.modeloDef) : null;
   const conteudo = it.tipo === "grupo" ? { cnpjs: cnpjsSeguros(c.cnpjs) }
     : it.tipo === "carteira" ? { cart: cartSegura(c.cart || c) }
     : it.tipo === "ranking" ? { modelo: idSeguro(c.modelo) || "MM", cnpjs: cnpjsSeguros(c.cnpjs), ...(def ? { modeloDef: def } : {}) }
+    : it.tipo === "modelo" ? { modelo: modeloSeguro(c.modelo) }
     : { chaves: (Array.isArray(c.chaves) ? c.chaves : []).map(String).filter((k) => k.startsWith("id:") && idSeguro(k.slice(3))) };
   return { id: idSeguro(it.id), tipo: it.tipo, nome: txtSeguro(it.nome) || "(sem nome)", autor: txtSeguro(it.autor), meu: !!it.meu, compartilhado: !!it.compartilhado,
     atualizado: instanteSeguro(it.atualizado), conteudo };
@@ -937,8 +939,12 @@ function calcularJM() {
 // ============================== tabelas ==============================
 // cor do número por sinal: variáveis do tema (contraste mínimo de 4,5 no claro e no escuro)
 function corSinal(v) { return typeof v === "number" && !Number.isNaN(v) ? (v > 0 ? "color:var(--pos)" : v < 0 ? "color:var(--neg)" : "") : ""; }
+// 3 a 4 casas (0,001 · 0,0071 · 0,0002): sem perder os valores pequenos; o zero sai sem sinal
+const NF34 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
+const br3 = (v) => (typeof v === "number" && Number.isFinite(v) ? NF34.format(v || 0) : "");
 const FMT = {
   pct: (v) => brPct(v), num: (v) => (typeof v === "number" ? br(v, 4) : v ?? ""), num2: (v) => (typeof v === "number" ? br(v, 2) : v ?? ""),
+  num3: (v) => (typeof v === "number" ? br3(v) : v ?? ""),                          // Índice de Dor: número (0,001), não percentual
   valor: (v) => br(v, 2), int: (v) => (typeof v === "number" ? br(v, 0) : ""), data: (v) => (typeof v === "number" ? fmtData(v) : v ?? ""),
   txt: (v) => v ?? "",
 };
@@ -1045,7 +1051,7 @@ const OPS_FILTRO = { ">": "maior que", ">=": "maior ou igual a", "<": "menor que
 const valorCol = (c, l) => (c.valor ? c.valor(l) : l[c.chave]);
 const semTags = (h) => String(h ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
 const escalaFiltro = (c) => c.escala ?? (c.tipo === "pct" ? 100 : 1);
-const colNumerica = (c) => ["pct", "num", "num2", "int", "valor"].includes(c.tipo);
+const colNumerica = (c) => ["pct", "num", "num2", "num3", "int", "valor"].includes(c.tipo);
 const colFiltravel = (c) => c.ord !== false && c.tipo !== "data" && c.chave !== "_hubId" && !c.semFiltro;
 function textoCel(c, l) {                                   // o texto que aparece na célula (ou o valor cru, quando a célula é só um símbolo)
   const v = valorCol(c, l), raw = l[c.chave];
@@ -1215,7 +1221,8 @@ function colunasResumoMetricas() {
     pct("%CDI", ["% CDI", "(%)"], "Rentabilidade", "Rentabilidade em % do CDI no período", { guOk: true }),
     pct("Volatilidade", ["Vol.", "(%)"], "Risco", "Volatilidade anualizada (%)", { cor: false }),
     { chave: "Sharpe Anualizado", nome: "Sharpe", tipo: "num", g: "Risco", dica: "Índice de Sharpe anualizado", html: (v) => (typeof v === "number" ? br(v, 4) : "") },
-    pct("Índice de Dor", ["Índice de", "Dor (%)"], "Risco", "Índice de Dor (%): média das quedas em relação ao pico anterior", { cor: false }),
+    { chave: "Índice de Dor", nome: "Índice de Dor", linhas: ["Índice de", "Dor"], tipo: "num3", g: "Risco", dica: "Índice de Dor: média das quedas em relação ao pico anterior (0,001 = queda média de 0,1%)",
+      html: (v) => br3(v) },
     pct("% de dias acima do CDI", ["Dias melhores", "que CDI (%)"], "Consistência", "% dos dias do período em que o fundo rendeu mais que o CDI", { cor: false }),
     pct("Queda", ["Maior", "Queda (%)"], "Drawdown", "Maior queda do período (MDD), em %"),
     { chave: "Maior Período em Dias Underwater", nome: "Máx. Dias Underwater", linhas: ["Máx. Dias", "Underwater"], tipo: "int", g: "Drawdown",
@@ -2765,7 +2772,7 @@ const NF8 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 8, maximumFr
 function fmtCel(v, tipo) {
   if (v == null || v === "") return "";
   if (typeof v !== "number") return String(v);
-  return ({ pct: brPct(v), pct0: brPct(v, 0), pct6: brPct(v, 4), data: fmtData(v), int: br(v, 0), num2: br(v, 2), num: br(v, 4), valor: br(v, 2), cota: NF8.format(v) })[tipo] ?? String(v);
+  return ({ pct: brPct(v), pct0: brPct(v, 0), pct6: brPct(v, 4), data: fmtData(v), int: br(v, 0), num2: br(v, 2), num3: br3(v), num: br(v, 4), valor: br(v, 2), cota: NF8.format(v) })[tipo] ?? String(v);
 }
 // a fonte padrão do PDF só tem os caracteres latinos básicos
 const pdfTxt = (s) => String(s ?? "").replace(/−/g, "-").replace(/[–—]/g, "-").replace(/★/g, "*").replace(/⊘/g, "(!)").replace(/▲/g, "+").replace(/▼/g, "-")
@@ -2908,7 +2915,7 @@ async function gerarExcel(partes, prog, comImagens) {
     while (usados.has(n.toLowerCase())) n = `${base.slice(0, 26)} ${k++}`;
     usados.add(n.toLowerCase()); return n;
   };
-  const FMT = { pct: "0.00%", pct0: "0%", pct6: "0.0000%", data: "dd/mm/yyyy", int: "0", num2: "0.00", num: "0.0000", valor: "#,##0.00", cota: "0.00000000" };
+  const FMT = { pct: "0.00%", pct0: "0%", pct6: "0.0000%", data: "dd/mm/yyyy", int: "0", num2: "0.00", num3: "0.000#", num: "0.0000", valor: "#,##0.00", cota: "0.00000000" };
   // capa com o índice das abas
   const capa = wb.addWorksheet(nomeAba("Sobre"));
   capa.addRow(["Análise de Fundos"]).font = { bold: true, size: 16, color: { argb: "FF2B2C78" } };
@@ -4424,7 +4431,7 @@ const EIXOS_ROA = {
   sharpe: { titulo: "Sharpe (sobre o CDI)", curto: "Sharpe", melhor: 1, bom: "Sharpe alto", ruim: "Sharpe baixo", fmt: (v) => br(v, 2), valor: (l) => l["Sharpe Anualizado"] },
   prazo: { titulo: "Prazo de resgate (dias: cotização + liquidação)", curto: "prazo de resgate", melhor: -1, bom: "resgate rápido", ruim: "resgate lento", fmt: (v) => br(v, 0), valor: (l, q) => { const a = prazoDias(q["Cotização"]), b = prazoDias(q["Liquidação"]); return a == null && b == null ? null : Math.floor(a || 0) + Math.floor(b || 0); } },
   risco: { titulo: "Risco XP", curto: "risco XP", melhor: -1, bom: "risco baixo", ruim: "risco alto", fmt: (v) => br(v, 0), valor: (l, q) => q.Risco },
-  dor: { titulo: "Índice de Dor (%)", curto: "índice de dor", melhor: -1, bom: "dor baixa", ruim: "dor alta", fmt: (v) => brPct(v, 2), valor: (l) => l["Índice de Dor"] },
+  dor: { titulo: "Índice de Dor", curto: "índice de dor", melhor: -1, bom: "dor baixa", ruim: "dor alta", fmt: br3, valor: (l) => l["Índice de Dor"] },
   jm: { titulo: "Mediana da janela móvel (diferença a.a. contra o benchmark)", curto: "mediana da janela móvel", melhor: 1, bom: "janela móvel alta", ruim: "janela móvel baixa", fmt: (v) => brPct(v, 1),
     valor: (l) => st.res?.jm?.porFundo.find((x) => x.c === l._c)?.resumo?.med?.dif ?? null },
 };
@@ -4447,7 +4454,7 @@ function eixosRankingXP() {
   };
 }
 function eixosROA() {
-  const fmtT = { pct: (v) => brPct(v, 2), num: (v) => br(v, 2), num2: (v) => br(v, 2), int: (v) => br(v, 0), valor: (v) => (Math.abs(v) >= 1e6 ? `R$ ${br(v / 1e6, 1)} mi` : `R$ ${br(v / 1e3, 0)} mil`) };
+  const fmtT = { pct: (v) => brPct(v, 2), num: (v) => br(v, 2), num2: (v) => br(v, 2), num3: br3, int: (v) => br(v, 0), valor: (v) => (Math.abs(v) >= 1e6 ? `R$ ${br(v / 1e6, 1)} mi` : `R$ ${br(v / 1e3, 0)} mil`) };
   const xp = (titulo, curto, melhor, chave, fmt, div = 1) => ({ titulo, curto, melhor, grupo: "Dados da XP", bom: `${curto} ${melhor > 0 ? "alto" : "baixo"}`, ruim: `${curto} ${melhor > 0 ? "baixo" : "alto"}`,
     fmt, valor: (l, q) => (q[chave] == null ? null : q[chave] / div) });
   const out = {
@@ -4635,6 +4642,7 @@ function atualizarListasSalvos() {
   if ($("#dlgGrupos").open) renderGrupos();
   if ($("#dlgCarteiras")?.open) renderCarteirasSalvas();
   if (!$("#dlgRank").hidden && !rkEd.aberto) renderRkLista();
+  if (!$("#dlgRank").hidden && !$("#rkModelosBox").hidden) renderModelos();      // tipos de cálculo da conta
   resumoLateralRk();
 }
 // selo "onde está": só neste computador · na sua conta (compartilhado ou só você) · de um colega
@@ -4993,7 +5001,9 @@ function lerRankings() {
     if (it.tipo !== "ranking") continue;
     const c = it.conteudo || {}, base = it.meu ? it.nome : `${it.nome} · ${it.autor}`; let k = base, i = 2; while (out[k]) k = `${base} (${i++})`;
     let modelo = c.modelo || "MM";
-    if (c.modeloDef && !(it.meu && modelosSalvos()[c.modelo])) {               // tipo personalizado que não existe neste computador
+    // tipo personalizado que não existe aqui: usa a cópia que veio no ranking. Se é um tipo da conta acessível (meu ou compartilhado),
+    // usa o próprio tipo, que fica sempre atualizado
+    if (c.modeloDef && !(it.meu && modelosSalvos()[c.modelo]) && !modelosConta()[c.modelo]) {
       modelo = `nv:${it.id}`;
       (it.meu ? st.modelosNuvemMeus : st.modelosEquipe)[modelo] = { ...c.modeloDef, _orig: c.modelo, nome: c.modeloDef.nome + (it.meu ? "" : ` (de ${it.autor})`) };
     }
@@ -5004,8 +5014,8 @@ function lerRankings() {
 const gravarRankings = (r) => salvar("rankings", Object.fromEntries(Object.entries(r).filter(([, x]) => !x._origem || x._origem === "local").map(([n, x]) => [n, semInternos(x)])));
 // conteúdo de um ranking para a conta: chave do tipo de cálculo + a definição dele, quando é personalizado
 function conteudoRanking(modelo, cnpjs) {
-  const nv = st.modelosNuvemMeus[modelo] || st.modelosEquipe[modelo];
-  const def = nv ? semInternos(nv) : modelosSalvos()[modelo];
+  const nv = st.modelosNuvemMeus[modelo] || st.modelosEquipe[modelo], conta = modelosConta()[modelo];
+  const def = nv ? semInternos(nv) : conta ? { ...semInternos(conta), nome: conta._nome } : modelosSalvos()[modelo];
   return { modelo: nv ? nv._orig || modelo : modelo, cnpjs: [...cnpjs], ...(def ? { modeloDef: def } : {}) };
 }
 const rkSel = new Set(pref("rankingsSel", []));
@@ -5014,7 +5024,18 @@ const rkEd = { aberto: false, nomeOrig: null, modelo: "MM", cnpjs: [] };
 const TOP_RANK = 10;
 // tipos de cálculo: os 4 padrão (ranking.js) + os editados/criados aqui (o editado de um padrão usa o mesmo id e o substitui)
 const modelosSalvos = () => Object.fromEntries(Object.entries(objSeguro(pref("modelosRank", {}))).map(([id, M]) => [idSeguro(id), modeloSeguro(M)]).filter(([id, M]) => id && M));
-const modelos = () => ({ ...MODELOS_RANK, ...modelosSalvos(), ...st.modelosNuvemMeus });       // os meus da conta aparecem em qualquer computador
+const modelos = () => ({ ...MODELOS_RANK, ...modelosSalvos(), ...modelosConta(), ...st.modelosNuvemMeus });       // os da conta aparecem em qualquer computador
+// Tipos de cálculo na conta da equipe: desligado até o Apps Script aceitar o tipo de item "modelo" (hoje responde "Item inválido").
+// Com false, os tipos continuam só neste navegador, como antes; com true, os novos vão para a conta (compartilhar, autor, copiar).
+const TIPOS_NA_CONTA = false;
+// tipos de cálculo salvos na conta (id "cn:<id do item>"): os meus, que posso alterar, e os compartilhados pelos colegas (só usar ou copiar)
+function modelosConta() {
+  const out = {};
+  for (const it of st.nuvem?.itens || []) if (it.tipo === "modelo" && it.conteudo?.modelo)
+    out[`cn:${it.id}`] = { ...it.conteudo.modelo, nome: it.meu ? it.nome : `${it.nome} (de ${it.autor})`,
+      _origem: it.meu ? "meu" : "equipe", _id: it.id, _autor: it.autor, _comp: it.compartilhado, _nome: it.nome };
+  return out;
+}
 const modeloDe = (id) => modelos()[id] || st.modelosEquipe[id] || MODELOS_RANK.MM;
 
 function resumoLateralRk() {
@@ -5482,21 +5503,31 @@ function renderModelos() {
   $("#rkModLista").innerHTML = `<p id="rkmPropAviso" class="nota rk-dest-aviso" hidden></p><div class="rkm-rola"><table class="tb gr-tab rkm-lista"><thead><tr><th class="t">Tipo de cálculo</th><th class="t">Métricas e janela</th><th class="t">Performance · Consistência · Risco</th>
     <th class="t">Origem</th><th title="Ponderar a consistência da janela móvel pela quantidade de janelas de cada fundo (fundos mais novos ganham menos pontos)">Ponderar<br>consistência</th><th><span class="sr-only">Ações</span></th></tr></thead><tbody>${Object.entries(modelos()).map(([id, M]) => {
       const usaJM = Object.keys(M.pesos).some((k) => METRICAS_JM.includes(k)), uso = (usos[id] || []).join(", ");
-      const g = gruposPesosRk(M), padrao = !!MODELOS_RANK[id], editado = padrao && !!salvos[id];
+      const g = gruposPesosRk(M), padrao = !!MODELOS_RANK[id], editado = padrao && !!salvos[id], conta = id.startsWith("cn:"), equipe = M._origem === "equipe";
+      // onde está: padrão · só neste navegador · na sua conta (compartilhado ou só você) · de um colega (como nas listas de rankings)
+      const origem = padrao ? (editado ? "padrão (editado)" : "padrão") : conta ? seloOrigem(M) : id.startsWith("nv:") ? `<span class="nota">veio de um ranking da conta</span>` : seloOrigem({ _origem: "local" });
+      const k = esc(id);
+      const acoes = equipe ? `<button class="sec mini-btn" data-rkm-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`
+        : `<button class="sec mini-btn" data-rkm-ed="${k}" type="button">Editar</button>
+          <button class="sec mini-btn" data-rkm-dup="${k}" type="button">Duplicar</button>
+          ${editado ? `<button class="sec mini-btn" data-rkm-orig="${k}" type="button" title="Desfaz as edições deste tipo padrão">Voltar ao original</button>` : ""}
+          ${TIPOS_NA_CONTA && !padrao && !conta && !id.startsWith("nv:") && st.nuvem ? `<button class="sec mini-btn" data-rkm-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e os colegas podem usar">${ico("nuvem")}Enviar para a conta</button>` : ""}
+          ${conta ? `<button class="sec mini-btn" data-rkm-comp="${k}" type="button">${M._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>` : ""}
+          ${padrao ? "" : `<button class="cart-rm" data-rkm-del="${k}" type="button" title="Excluir tipo de cálculo" aria-label="Excluir o tipo de cálculo ${esc(M.nome)}">${ico("lixo")}</button>`}`;
       return `<tr><td class="t" title="${esc(uso ? `Usado em: ${uso}` : "Nenhum ranking usa este tipo")}"><b>${esc(M.nome)}</b></td><td class="t quebra">${esc(M.periodo)} · janela ${M.jmMeses}m vs ${esc(nomeIndice(M.bench))} · ${Object.keys(M.pesos).length} métricas${Math.abs(somaPesos(M.pesos) - 100) > 0.01
           ? `<br><span class="neg rkm-soma-aviso" title="O ranking considera os pesos proporcionalmente, como se somassem 100%">pesos somam ${br(somaPesos(M.pesos), 1).replace(",0", "")}% → proporcional a 100%</span>` : ""}</td>
         <td class="t">${g.map((x) => `<span class="rkm-chip" style="border-color:${CORES_GRUPO[x.g]}">${brPct(x.total, 0)}</span>`).join(" ")}</td>
-        <td class="t">${padrao ? (editado ? "padrão (editado)" : "padrão") : "criado por você"}</td><td class="rkm-prop-cel">${usaJM ? `<label class="tog" title="${M.jmProporcional ? "Ligado" : "Desligado"}: consistência da janela móvel × proporção de janelas do fundo"><input type="checkbox" data-rkm-prop="${esc(id)}"${M.jmProporcional ? " checked" : ""} aria-label="Ponderar a consistência da janela móvel pela quantidade de janelas no tipo ${esc(M.nome)}"></label>`
+        <td class="t">${origem}</td><td class="rkm-prop-cel">${usaJM ? `<label class="tog" title="${equipe ? "Só quem criou pode alterar" : M.jmProporcional ? "Ligado" : "Desligado"}: consistência da janela móvel × proporção de janelas do fundo"><input type="checkbox" data-rkm-prop="${esc(id)}"${M.jmProporcional ? " checked" : ""}${equipe ? " disabled" : ""} aria-label="Ponderar a consistência da janela móvel pela quantidade de janelas no tipo ${esc(M.nome)}"></label>`
           : `<span class="nota" title="Este tipo não usa métricas de consistência da janela móvel">–</span>`}</td>
-        <td class="gr-acoes"><button class="sec mini-btn" data-rkm-ed="${id}" type="button">Editar</button>
-          <button class="sec mini-btn" data-rkm-dup="${id}" type="button">Duplicar</button>
-          ${editado ? `<button class="sec mini-btn" data-rkm-orig="${id}" type="button" title="Desfaz as edições deste tipo padrão">Voltar ao original</button>` : ""}
-          ${padrao ? "" : `<button class="cart-rm" data-rkm-del="${id}" type="button" title="Excluir tipo de cálculo">${ico("lixo")}</button>`}</td></tr>`; }).join("")}</tbody></table></div>`;
+        <td class="gr-acoes">${acoes}</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 function abrirEditorModelo(id = null, duplicar = false) {
   const M = id ? modeloDe(id) : null;
   Object.assign(rkMod, { id: duplicar ? null : id, nome: M ? (duplicar ? `${M.nome} (cópia)` : M.nome) : "", periodo: M?.periodo || "36 Meses", jm: M?.jmMeses || 36, bench: M?.bench || "CDI", lin: {} });
   $("#rkmJmProp").checked = !!M?.jmProporcional;
+  // com login, um tipo novo (ou já da conta) é salvo na conta: escolher se compartilha com a equipe
+  $("#rkmCompBox").hidden = !TIPOS_NA_CONTA || !st.nuvem || (rkMod.id && !rkMod.id.startsWith("cn:"));
+  $("#rkmComp").checked = rkMod.id?.startsWith("cn:") ? !!M?._comp : true;
   for (const m of METRICAS_RANK) { const p = M?.pesos[m.k]; rkMod.lin[m.k] = { usar: p != null, peso: p != null ? Math.abs(p) : 0, dir: p ? Math.sign(p) : M?.dirs?.[m.k] || m.dir, g: grupoMetrica(M, m.k) }; }
   $("#rkmNome").value = rkMod.nome; $("#rkmPeriodo").value = parseInt(rkMod.periodo, 10) || 36; equivalenteMeses(); $("#rkmJm").value = rkMod.jm;
   $("#rkmBench").innerHTML = st.idx.disponiveis.map((k) => `<option value="${k}"${k === rkMod.bench ? " selected" : ""}>${esc(nomeIndice(k))}</option>`).join("");
@@ -5535,10 +5566,18 @@ async function salvarModelo() {
   const pesos = {}, grupos = {};
   const dirs = {};
   for (const [k, l] of Object.entries(rkMod.lin)) if (l.usar) { pesos[k] = (Number(l.peso) || 0) * (l.dir < 0 ? -1 : 1); grupos[k] = l.g; if (!(Number(l.peso) > 0)) dirs[k] = l.dir < 0 ? -1 : 1; }
-  const id = rkMod.id || `c${Date.now().toString(36)}`, salvos = modelosSalvos();
   const mesesP = Number($("#rkmPeriodo").value);
   if (!Number.isInteger(mesesP) || mesesP < 1 || mesesP > 360) return aviso("O período das métricas precisa ser um número inteiro de meses, de 1 a 360.");
-  salvos[id] = { nome, periodo: `${mesesP} Meses`, jmMeses: jm, bench: $("#rkmBench").value, pesos, grupos, ...(Object.keys(dirs).length ? { dirs } : {}), ...($("#rkmJmProp").checked ? { jmProporcional: true } : {}) };
+  const def = { nome, periodo: `${mesesP} Meses`, jmMeses: jm, bench: $("#rkmBench").value, pesos, grupos, ...(Object.keys(dirs).length ? { dirs } : {}), ...($("#rkmJmProp").checked ? { jmProporcional: true } : {}) };
+  // com login, um tipo novo ou um que já está na conta vai para a conta; os padrão editados e os deste navegador continuam aqui
+  const daConta = rkMod.id?.startsWith("cn:");
+  if (st.nuvem && (daConta || (TIPOS_NA_CONTA && !rkMod.id))) {
+    const r = await salvarNaNuvem({ id: daConta ? rkMod.id.slice(3) : undefined, tipo: "modelo", nome, compartilhado: $("#rkmComp").checked, conteudo: { modelo: def } });
+    if (r.ok) { mostrarTelaRk("modelos"); return renderModelos(); }
+    if (!(await perguntar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, [{ rot: "Cancelar", v: false }, { rot: "Salvar neste computador", v: true, classe: "prim" }]))) return;
+  }
+  const id = rkMod.id && !daConta ? rkMod.id : `c${Date.now().toString(36)}`, salvos = modelosSalvos();
+  salvos[id] = def;
   salvar("modelosRank", salvos);
   mostrarTelaRk("modelos"); renderModelos();
 }
@@ -5557,10 +5596,37 @@ document.addEventListener("click", async (e) => {
     const s2 = modelosSalvos(); delete s2[t.dataset.rkmOrig]; salvar("modelosRank", s2); return renderModelos();
   }
   if (t.dataset?.rkmDel) {
-    const id = t.dataset.rkmDel, usos = usosModelo()[id] || [];
+    const id = t.dataset.rkmDel, usos = usosModelo()[id] || [], M = modeloDe(id), conta = id.startsWith("cn:");
     if (usos.length) return perguntar("Tipo em uso", `Este tipo é usado nos rankings <b>${usos.map(esc).join(", ")}</b>. Troque o tipo de cálculo deles antes de excluir.`, [{ rot: "OK", v: 1, classe: "prim" }]);
-    if (!(await perguntar("Excluir o tipo de cálculo?", `Excluir <b>${esc(modeloDe(id).nome)}</b>?`, [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
+    if (!(await perguntar("Excluir o tipo de cálculo?", `Excluir <b>${esc(M.nome)}</b>${conta ? " da sua conta (some de todos os computadores" + (M._comp ? " e da equipe; os rankings dos colegas que usam este tipo continuam com uma cópia" : "") + ")" : ""}?`,
+      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
+    if (conta) { const r = await apagarDaNuvem(M._id); if (!r.ok) await perguntar("Não foi possível excluir", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); return renderModelos(); }
     const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2); return renderModelos();
+  }
+  // tipo deste navegador -> conta: os rankings deste computador que usam o tipo passam a usar o da conta
+  if (t.dataset?.rkmUp) {
+    const id = t.dataset.rkmUp, M = modelosSalvos()[id]; if (!M) return;
+    const r = await salvarNaNuvem({ tipo: "modelo", nome: M.nome, compartilhado: true, conteudo: { modelo: M } });
+    if (!r.ok || !r.item) return perguntar("Não foi possível enviar para a conta", esc(r.erro || "Resposta inválida do servidor."), [{ rot: "OK", v: 1, classe: "prim" }]);
+    const novo = `cn:${r.item.id}`, loc = objSeguro(pref("rankings", {}));
+    for (const x of Object.values(loc)) if (x?.modelo === id) x.modelo = novo;
+    salvar("rankings", loc);
+    const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2); return renderModelos();
+  }
+  if (t.dataset?.rkmComp) {
+    const M = modeloDe(t.dataset.rkmComp); if (M._origem !== "meu") return;
+    const r = await salvarNaNuvem({ id: M._id, tipo: "modelo", nome: M._nome, compartilhado: !M._comp, conteudo: { modelo: { ...semInternos(M), nome: M._nome } } });
+    if (!r.ok) await perguntar("Não foi possível alterar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]);
+    return renderModelos();
+  }
+  // tipo de um colega: cópia minha (na conta, só minha; sem login, neste navegador)
+  if (t.dataset?.rkmCopia) {
+    const M = modeloDe(t.dataset.rkmCopia); if (M._origem !== "equipe") return;
+    const meus = Object.values(modelosConta()).filter((x) => x._origem === "meu").map((x) => x._nome.toLowerCase());
+    const nome = meus.includes(M._nome.toLowerCase()) ? `${M._nome} (de ${M._autor})` : M._nome, def = { ...semInternos(M), nome };
+    if (st.nuvem) { const r = await salvarNaNuvem({ tipo: "modelo", nome, compartilhado: false, conteudo: { modelo: def } }); if (!r.ok) await perguntar("Não foi possível copiar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); }
+    else { const s2 = modelosSalvos(); s2[`c${Date.now().toString(36)}`] = def; salvar("modelosRank", s2); }
+    return renderModelos();
   }
 });
 const lerLinhaModelo = (el) => { const tr = el.closest("tr[data-rkm-k]"); return tr ? [tr, rkMod.lin[tr.dataset.rkmK]] : [null, null]; };
@@ -5702,11 +5768,18 @@ function avisoDestaqueRk() {
 }
 
 // interruptor "Ponderar consistência" direto na tabela de tipos de cálculo
-document.addEventListener("change", (e) => {
+document.addEventListener("change", async (e) => {
   const id = e.target.dataset?.rkmProp; if (!id) return;
-  const salvos = modelosSalvos(), base = salvos[id] || semInternos({ ...modeloDe(id) });
-  if (e.target.checked) base.jmProporcional = true; else delete base.jmProporcional;
-  salvos[id] = base; salvar("modelosRank", salvos);
+  const M = modeloDe(id), liga = e.target.checked;
+  if (id.startsWith("cn:")) {                                            // tipo da conta: grava na conta (só o dono chega aqui)
+    const def = { ...semInternos(M), nome: M._nome }; if (liga) def.jmProporcional = true; else delete def.jmProporcional;
+    const r = await salvarNaNuvem({ id: M._id, tipo: "modelo", nome: M._nome, compartilhado: M._comp, conteudo: { modelo: def } });
+    if (!r.ok) { e.target.checked = !liga; return perguntar("Não foi possível alterar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); }
+  } else {
+    const salvos = modelosSalvos(), base = salvos[id] || semInternos({ ...M });
+    if (liga) base.jmProporcional = true; else delete base.jmProporcional;
+    salvos[id] = base; salvar("modelosRank", salvos);
+  }
   const nome = modeloDe(id).nome; renderModelos();
   const av = $("#rkmPropAviso"); av.hidden = false;
   av.innerHTML = `"${esc(nome)}": ponderação da consistência ${e.target.checked ? "<b>ligada</b>" : "<b>desligada</b>"}.` + (st.rk?.lista.some((R) => R.M.nome === nome) ? " Recalcule os rankings para aplicar." : "");

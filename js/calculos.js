@@ -34,7 +34,7 @@ export const COLUNAS = [
   ["Underwater", "Períodos 61d-90d", "int"], ["Underwater", "Períodos 91d-120d", "int"],
   ["Underwater", "Períodos acima de 120d", "int"],
   ["IBOV", "Beta", "num"], ["IBOV", "IBOV +", "pct"], ["IBOV", "% de dias acima do IBOV", "pct"],
-  ["Outras", "Var Diária Ponderada", "pct"], ["Outras", "Sortino", "num"], ["Outras", "Índice de Dor", "pct"],
+  ["Outras", "Var Diária Ponderada", "pct"], ["Outras", "Sortino", "num"], ["Outras", "Índice de Dor", "num3"],
 ];
 
 // ----------------------------------------------------------------------------- datas
