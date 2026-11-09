@@ -1299,3 +1299,15 @@ details.sem-dados > summary { font-weight: 600; }
 .xp-barra.xp-pisca { animation: pisca-barra 1s var(--ease-out); }
 @keyframes pisca-barra { 30% { background: color-mix(in srgb, var(--azul) 22%, var(--card)); } }
 @media (max-width: 700px) { .xp-busca { grid-template-columns: 1fr; } }
+
+/* ações na conta: botão ocupado (girando) e aviso no rodapé enquanto o servidor responde */
+html.salvando-conta, html.salvando-conta * { cursor: progress; }
+.ocupado { opacity: .8; }
+button.ocupado::after, label.ocupado::after { content: ""; display: inline-block; flex: none; width: 11px; height: 11px; margin-left: 6px; vertical-align: -1px;
+  border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: girar .8s linear infinite; }
+.aviso-conta { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 95; display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: var(--r-pill); background: var(--anil); color: #fff; font-weight: 700; font-size: var(--fs-sm); box-shadow: var(--sh-3); }
+.aviso-conta[hidden] { display: none; }
+.aviso-conta .ico { width: 15px; height: 15px; }
+.aviso-conta .gira { width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: girar .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { button.ocupado::after, label.ocupado::after, .aviso-conta .gira { animation-duration: 2.4s; } }

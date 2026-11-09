@@ -4625,16 +4625,43 @@ async function carregarNuvem() {
   if (fv?.conteudo?.chaves) { for (const k of fv.conteudo.chaves) st.favs.add(k); salvar("favoritos", [...st.favs]); }
   atualizarListasSalvos();
 }
+// retorno visual das ações na conta (salvar, compartilhar, enviar, copiar, apagar): o botão clicado fica "ocupado" (girando e
+// desligado) até o servidor responder, e um aviso no rodapé mostra "Salvando na conta…" e depois "Salvo na conta ✓"
+let botaoAcao = null, acoesNaConta = 0, tAvisoConta;
+// a janela de confirmação ("Excluir?", "Substituir?") não conta: quem fica ocupado é o botão que a abriu
+document.addEventListener("click", (e) => { const b = e.target.closest?.("button, label.tog"); if (b && !b.closest("#dlgPergunta")) { botaoAcao = b; b._clique = Date.now(); } }, true);
+function avisoConta(txt, girando) {
+  let el = $("#avisoConta");
+  if (!el) { el = document.createElement("div"); el.id = "avisoConta"; el.className = "aviso-conta"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite"); }
+  (document.querySelector("dialog[open]") || document.body).append(el);       // dentro da janela aberta, para não ficar atrás dela
+  el.innerHTML = (girando ? '<span class="gira" aria-hidden="true"></span>' : ico("ok")) + esc(txt); el.hidden = false;
+  clearTimeout(tAvisoConta); if (!girando) tAvisoConta = setTimeout(() => { el.hidden = true; }, 1800);
+}
+function inicioAcaoConta(texto) {
+  acoesNaConta++; document.documentElement.classList.add("salvando-conta"); avisoConta(texto, true);
+  const b = botaoAcao; if (!b || !b.isConnected || Date.now() - b._clique > 15000 || b.classList.contains("ocupado")) return null;
+  const campo = b.tagName === "LABEL" ? b.querySelector("input") : b;
+  b.classList.add("ocupado"); b.setAttribute("aria-busy", "true"); if (campo) campo.disabled = true;
+  return () => { b.classList.remove("ocupado"); b.removeAttribute("aria-busy"); if (campo) campo.disabled = false; };
+}
+function fimAcaoConta(soltar, ok, texto) {
+  soltar?.();
+  if (--acoesNaConta > 0) return;
+  acoesNaConta = 0; document.documentElement.classList.remove("salvando-conta");
+  if (ok) avisoConta(texto, false); else $("#avisoConta") && ($("#avisoConta").hidden = true);
+}
 async function salvarNaNuvem(item) {
   const token = lerSessaoEquipe(); if (!token || !st.nuvem) return { ok: false, erro: "Entre na área da equipe para salvar na conta." };
-  const r = await apiEquipe("salvar", { token, item });
+  const soltar = inicioAcaoConta("Salvando na conta…");
+  let r; try { r = await apiEquipe("salvar", { token, item }); } finally { fimAcaoConta(soltar, r?.ok, "Salvo na conta"); }
   if (r.ok) { r.item = itemNuvemSeguro(r.item); if (r.item) st.nuvem.itens = [...st.nuvem.itens.filter((x) => x.id !== r.item.id), r.item]; atualizarListasSalvos(); }
   else if (/Ação desconhecida/.test(r.erro || "")) r.erro = "O Apps Script precisa ser atualizado (versão 2026-10-08.9 ou mais nova) para salvar na conta.";
   return r;
 }
 async function apagarDaNuvem(id) {
   const token = lerSessaoEquipe(); if (!token) return { ok: false, erro: "Entre na área da equipe." };
-  const r = await apiEquipe("apagarSalvo", { token, id });
+  const soltar = inicioAcaoConta("Excluindo da conta…");
+  let r; try { r = await apiEquipe("apagarSalvo", { token, id }); } finally { fimAcaoConta(soltar, r?.ok, "Excluído da conta"); }
   if (r.ok && st.nuvem) { st.nuvem.itens = st.nuvem.itens.filter((x) => x.id !== id); atualizarListasSalvos(); }
   return r;
 }
