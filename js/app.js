@@ -5025,9 +5025,9 @@ const TOP_RANK = 10;
 // tipos de cálculo: os 4 padrão (ranking.js) + os editados/criados aqui (o editado de um padrão usa o mesmo id e o substitui)
 const modelosSalvos = () => Object.fromEntries(Object.entries(objSeguro(pref("modelosRank", {}))).map(([id, M]) => [idSeguro(id), modeloSeguro(M)]).filter(([id, M]) => id && M));
 const modelos = () => ({ ...MODELOS_RANK, ...modelosSalvos(), ...modelosConta(), ...st.modelosNuvemMeus });       // os da conta aparecem em qualquer computador
-// Tipos de cálculo na conta da equipe: desligado até o Apps Script aceitar o tipo de item "modelo" (hoje responde "Item inválido").
-// Com false, os tipos continuam só neste navegador, como antes; com true, os novos vão para a conta (compartilhar, autor, copiar).
-const TIPOS_NA_CONTA = false;
+// Tipos de cálculo na conta da equipe (o Apps Script aceita o tipo de item "modelo" desde 2026-11-09).
+// Com false, os tipos ficam só neste navegador; com true, os novos vão para a conta (compartilhar, autor, copiar).
+const TIPOS_NA_CONTA = true;
 // tipos de cálculo salvos na conta (id "cn:<id do item>"): os meus, que posso alterar, e os compartilhados pelos colegas (só usar ou copiar)
 function modelosConta() {
   const out = {};
