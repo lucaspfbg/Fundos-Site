@@ -4993,23 +4993,40 @@ document.addEventListener("click", (e) => {
 // os da conta levam junto o tipo de cálculo personalizado (modeloDef), para calcular igual em qualquer computador
 const lerRankingsLocais = () => mapaSeguro(pref("rankings", {}), rankingSeguro);
 st.modelosNuvemMeus = {}; st.modelosEquipe = {};
+// a "assinatura" de um tipo de cálculo (nome e tudo o que muda o cálculo): dois tipos com a mesma assinatura são o mesmo tipo
+const assinaturaTipo = (M) => JSON.stringify([M._nome || M.nome, M.periodo, M.jmMeses, M.bench, M.pesos, M.grupos || {}, M.dirs || {}, !!M.jmProporcional]);
 function lerRankings() {
   const out = {};
   for (const [n, x] of Object.entries(lerRankingsLocais())) out[n] = { ...x, _origem: "local", _nome: n };
   st.modelosNuvemMeus = {}; st.modelosEquipe = {};
+  // tipos da conta por assinatura (os meus têm preferência): o ranking que guardou uma cópia igual usa o tipo da conta, sem duplicar
+  const conta = modelosConta(), porAssinatura = new Map();
+  for (const [id, M] of Object.entries(conta).sort(([, a], [, b]) => (a._origem === "meu") - (b._origem === "meu"))) porAssinatura.set(assinaturaTipo(M), id);
   for (const it of st.nuvem?.itens || []) {
     if (it.tipo !== "ranking") continue;
     const c = it.conteudo || {}, base = it.meu ? it.nome : `${it.nome} · ${it.autor}`; let k = base, i = 2; while (out[k]) k = `${base} (${i++})`;
     let modelo = c.modelo || "MM";
     // tipo personalizado que não existe aqui: usa a cópia que veio no ranking. Se é um tipo da conta acessível (meu ou compartilhado),
     // usa o próprio tipo, que fica sempre atualizado
-    if (c.modeloDef && !(it.meu && modelosSalvos()[c.modelo]) && !modelosConta()[c.modelo]) {
-      modelo = `nv:${it.id}`;
-      (it.meu ? st.modelosNuvemMeus : st.modelosEquipe)[modelo] = { ...c.modeloDef, _orig: c.modelo, nome: c.modeloDef.nome + (it.meu ? "" : ` (de ${it.autor})`) };
+    if (c.modeloDef && !(it.meu && modelosSalvos()[c.modelo]) && !conta[c.modelo]) {
+      const igual = porAssinatura.get(assinaturaTipo(c.modeloDef));
+      if (igual) modelo = igual;
+      else {
+        modelo = `nv:${it.id}`;
+        (it.meu ? st.modelosNuvemMeus : st.modelosEquipe)[modelo] = { ...c.modeloDef, _orig: c.modelo, nome: c.modeloDef.nome + (it.meu ? "" : ` (de ${it.autor})`),
+          _doRanking: it.nome, _autor: it.autor };
+      }
     }
-    out[k] = { modelo, cnpjs: c.cnpjs || [], atualizado: it.atualizado, _origem: it.meu ? "meu" : "equipe", _id: it.id, _autor: it.autor, _comp: it.compartilhado, _nome: it.nome };
+    out[k] = { modelo, _modeloSalvo: c.modelo, cnpjs: c.cnpjs || [], atualizado: it.atualizado, _origem: it.meu ? "meu" : "equipe", _id: it.id, _autor: it.autor, _comp: it.compartilhado, _nome: it.nome };
   }
   return out;
+}
+// meus rankings da conta que ainda apontam para a cópia antiga de um tipo que está na conta: passam a apontar para o tipo da conta
+// (o conteúdo do ranking não muda; assim ele segue as edições do tipo e não reaparece como cópia)
+async function apontarRankingsParaTipo(idTipo) {
+  for (const x of Object.values(lerRankings()))
+    if (x._origem === "meu" && x.modelo === idTipo && x._modeloSalvo !== idTipo)
+      await salvarNaNuvem({ id: x._id, tipo: "ranking", nome: x._nome, compartilhado: x._comp, conteudo: conteudoRanking(idTipo, x.cnpjs) });
 }
 const gravarRankings = (r) => salvar("rankings", Object.fromEntries(Object.entries(r).filter(([, x]) => !x._origem || x._origem === "local").map(([n, x]) => [n, semInternos(x)])));
 // conteúdo de um ranking para a conta: chave do tipo de cálculo + a definição dele, quando é personalizado
@@ -5024,6 +5041,15 @@ const rkEd = { aberto: false, nomeOrig: null, modelo: "MM", cnpjs: [] };
 const TOP_RANK = 10;
 // tipos de cálculo: os 4 padrão (ranking.js) + os editados/criados aqui (o editado de um padrão usa o mesmo id e o substitui)
 const modelosSalvos = () => Object.fromEntries(Object.entries(objSeguro(pref("modelosRank", {}))).map(([id, M]) => [idSeguro(id), modeloSeguro(M)]).filter(([id, M]) => id && M));
+// nome do tipo nas listas de escolha: com a origem quando há outro tipo com o mesmo nome ("Renda Variável · padrão" e "Renda Variável · na sua conta")
+// sempre: mostra a origem mesmo sem nome repetido (lista de rankings: quem criou cada tipo da conta)
+function rotuloTipo(id, M, sempre = false) {
+  const repetido = Object.values(modelos()).filter((X) => X.nome === M.nome).length > 1;
+  if (!M.nome) return "";
+  if (sempre && id.startsWith("cn:")) return M._origem === "meu" ? `${M.nome} · na sua conta` : `${M._nome} · de ${M._autor}`;
+  if (!repetido) return M.nome;
+  return `${M.nome} · ${MODELOS_RANK[id] ? "padrão" : id.startsWith("cn:") ? (M._origem === "meu" ? "na sua conta" : `de ${M._autor}`) : id.startsWith("nv:") ? "cópia de um ranking" : "neste navegador"}`;
+}
 const modelos = () => ({ ...MODELOS_RANK, ...modelosSalvos(), ...modelosConta(), ...st.modelosNuvemMeus });       // os da conta aparecem em qualquer computador
 // Tipos de cálculo na conta da equipe (o Apps Script aceita o tipo de item "modelo" desde 2026-11-09).
 // Com false, os tipos ficam só neste navegador; com true, os novos vão para a conta (compartilhar, autor, copiar).
@@ -5064,7 +5090,7 @@ function renderRkLista() {
           (x._origem === "meu" ? ` <button class="sec mini-btn" data-rk-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>` : "") +
           ` <button class="cart-rm" data-rk-del="${k}" type="button" title="Excluir ranking" aria-label="Excluir o ranking ${esc(x._nome)}">${ico("lixo")}</button>`;
       return `<tr class="linha-f${rkSel.has(n) ? " marcado" : ""}" data-rk="${esc(n)}" title="Clique para marcar ou desmarcar"><td><label class="tog"><input type="checkbox" data-rk-sel="${esc(n)}" aria-label="Calcular o ranking ${esc(n)}" ${rkSel.has(n) ? "checked" : ""}></label></td>
-        <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b></td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(M.nome || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
+        <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b></td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(rotuloTipo(x.modelo, M, true) || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
 </small></td>
         <td>${x.cnpjs.length}</td><td>${x.atualizado ? new Date(x.atualizado).toLocaleDateString("pt-BR") : ""}</td>
         <td class="gr-acoes">${acoes}</td></tr>`; }).join("")}</tbody></table>`);
@@ -5082,7 +5108,7 @@ function abrirEditorRk(nome = null) {
   Object.assign(rkEd, { aberto: true, nomeOrig: nome, modelo: x?.modelo && modelos()[x.modelo] ? x.modelo : "MM", cnpjs: [...(x?.cnpjs || [])] });
   $("#rkNome").value = x?._nome || nome || "";
   $("#rkEdCompBox").hidden = !st.nuvem || x?._origem === "local"; $("#rkEdComp").checked = x?._origem === "meu" ? !!x._comp : true;
-  $("#rkModelo").innerHTML = Object.entries(modelos()).map(([k, M]) => `<option value="${k}"${k === rkEd.modelo ? " selected" : ""}>${esc(M.nome)}</option>`).join("");
+  $("#rkModelo").innerHTML = Object.entries(modelos()).map(([k, M]) => `<option value="${k}"${k === rkEd.modelo ? " selected" : ""}>${esc(rotuloTipo(k, M))}</option>`).join("");
   const grupos = Object.keys(lerGrupos()).sort((a, b) => a.localeCompare(b, "pt-BR"));
   $("#rkEdGrupo").innerHTML = `<option value="">★ Carregar de um grupo…</option>` + grupos.map((n) => `<option value="${esc(n)}">${esc(n)} (${lerGrupos()[n].cnpjs.length})</option>`).join("");
   $("#rkEdGrupo").hidden = !grupos.length;
@@ -5505,7 +5531,9 @@ function renderModelos() {
       const usaJM = Object.keys(M.pesos).some((k) => METRICAS_JM.includes(k)), uso = (usos[id] || []).join(", ");
       const g = gruposPesosRk(M), padrao = !!MODELOS_RANK[id], editado = padrao && !!salvos[id], conta = id.startsWith("cn:"), equipe = M._origem === "equipe";
       // onde está: padrão · só neste navegador · na sua conta (compartilhado ou só você) · de um colega (como nas listas de rankings)
-      const origem = padrao ? (editado ? "padrão (editado)" : "padrão") : conta ? seloOrigem(M) : id.startsWith("nv:") ? `<span class="nota">veio de um ranking da conta</span>` : seloOrigem({ _origem: "local" });
+      const origem = padrao ? (editado ? "padrão (editado)" : "padrão") : conta ? seloOrigem(M)
+        : id.startsWith("nv:") ? `<span class="nota" title="Cópia guardada no ranking; para editar e compartilhar, use Duplicar">cópia guardada no ranking “${esc(M._doRanking || "")}”${M._autor ? ` · ${esc(M._autor)}` : ""}</span>`
+        : seloOrigem({ _origem: "local" });
       const k = esc(id);
       const acoes = equipe ? `<button class="sec mini-btn" data-rkm-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`
         : `<button class="sec mini-btn" data-rkm-ed="${k}" type="button">Editar</button>
@@ -5571,6 +5599,7 @@ async function salvarModelo() {
   const def = { nome, periodo: `${mesesP} Meses`, jmMeses: jm, bench: $("#rkmBench").value, pesos, grupos, ...(Object.keys(dirs).length ? { dirs } : {}), ...($("#rkmJmProp").checked ? { jmProporcional: true } : {}) };
   // com login, um tipo novo ou um que já está na conta vai para a conta; os padrão editados e os deste navegador continuam aqui
   const daConta = rkMod.id?.startsWith("cn:");
+  if (daConta) await apontarRankingsParaTipo(rkMod.id);                 // antes de mudar o tipo: os rankings que guardaram a cópia igual passam a apontar para ele
   if (st.nuvem && (daConta || (TIPOS_NA_CONTA && !rkMod.id))) {
     const r = await salvarNaNuvem({ id: daConta ? rkMod.id.slice(3) : undefined, tipo: "modelo", nome, compartilhado: $("#rkmComp").checked, conteudo: { modelo: def } });
     if (r.ok) { mostrarTelaRk("modelos"); return renderModelos(); }
@@ -5611,7 +5640,9 @@ document.addEventListener("click", async (e) => {
     const novo = `cn:${r.item.id}`, loc = objSeguro(pref("rankings", {}));
     for (const x of Object.values(loc)) if (x?.modelo === id) x.modelo = novo;
     salvar("rankings", loc);
-    const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2); return renderModelos();
+    const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2);
+    await apontarRankingsParaTipo(novo);                                   // os rankings da conta com a cópia igual passam a usar o tipo da conta
+    return renderModelos();
   }
   if (t.dataset?.rkmComp) {
     const M = modeloDe(t.dataset.rkmComp); if (M._origem !== "meu") return;
@@ -5772,6 +5803,7 @@ document.addEventListener("change", async (e) => {
   const id = e.target.dataset?.rkmProp; if (!id) return;
   const M = modeloDe(id), liga = e.target.checked;
   if (id.startsWith("cn:")) {                                            // tipo da conta: grava na conta (só o dono chega aqui)
+    await apontarRankingsParaTipo(id);                                   // os rankings com a cópia igual acompanham a mudança
     const def = { ...semInternos(M), nome: M._nome }; if (liga) def.jmProporcional = true; else delete def.jmProporcional;
     const r = await salvarNaNuvem({ id: M._id, tipo: "modelo", nome: M._nome, compartilhado: M._comp, conteudo: { modelo: def } });
     if (!r.ok) { e.target.checked = !liga; return perguntar("Não foi possível alterar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); }
