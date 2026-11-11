@@ -239,6 +239,10 @@ function atualizarSidebar() {
 }
 
 // ---------- janela de pergunta com botões (substitui o confirm do navegador)
+// os dois tipos mais comuns de janela, com os mesmos valores de perguntar(): aviso com OK (1, ou null se fechar)
+// e confirmação Cancelar + ação (true, false ou null); perigo = botão vermelho e foco em Cancelar
+const avisar = (titulo, texto) => perguntar(titulo, texto, [{ rot: "OK", v: 1, classe: "prim" }]);
+const confirmar = (titulo, texto, acao, { perigo = false } = {}) => perguntar(titulo, texto, [{ rot: "Cancelar", v: false }, { rot: acao, v: true, classe: perigo ? "perigo" : "prim" }]);
 function perguntar(titulo, texto, botoes) {
   const d = $("#dlgPergunta");
   $("#pergTit").textContent = titulo; $("#pergTexto").innerHTML = texto;
@@ -619,16 +623,14 @@ async function salvarGrupo() {
   // com login: salva na conta (um grupo seu com o mesmo nome é atualizado)
   if (st.nuvem) {
     const ex = Object.values(g).find((x) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase());
-    if (ex && !(await perguntar("Substituir o grupo?", `Você já tem na conta o grupo <b>${esc(ex._nome)}</b> com ${ex.cnpjs.length} fundo${pl(ex.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+    if (ex && !(await confirmar("Substituir o grupo?", `Você já tem na conta o grupo <b>${esc(ex._nome)}</b> com ${ex.cnpjs.length} fundo${pl(ex.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`, "Substituir"))) return;
     const r = await salvarNaNuvem({ id: ex?._id, tipo: "grupo", nome, compartilhado: $("#grComp").checked, conteudo: { cnpjs: [...st.sel] } });
     if (r.ok) { $("#grNome").value = ""; renderGrupos(); avisoSel(`<span class="ok">Grupo "${esc(nome)}" salvo na sua conta${$("#grComp").checked ? " e compartilhado com a equipe" : ""} (${st.sel.length} fundo${pl(st.sel.length)}).</span>`); return; }
-    if (!(await perguntar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, [{ rot: "Cancelar", v: false }, { rot: "Salvar neste computador", v: true, classe: "prim" }]))) return;
+    if (!(await confirmar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, "Salvar neste computador"))) return;
   }
   const loc = g[nome]?._origem === "local" ? g[nome] : null;
   if (loc) {
-    const r = await perguntar("Substituir o grupo?", `Já existe o grupo <b>${esc(nome)}</b> com ${loc.cnpjs.length} fundo${pl(loc.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]);
+    const r = await confirmar("Substituir o grupo?", `Já existe o grupo <b>${esc(nome)}</b> com ${loc.cnpjs.length} fundo${pl(loc.cnpjs.length)}. Substituir pelos ${st.sel.length} fundos selecionados agora?`, "Substituir");
     if (!r) return;
   }
   g[nome] = { cnpjs: [...st.sel], atualizado: new Date().toISOString() };
@@ -650,7 +652,7 @@ function exportarGrupos() {
 }
 async function importarGrupos(arquivo) {
   let dados;
-  try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar grupos.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  try { dados = JSON.parse(await arquivo.text()); } catch { await avisar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar grupos."); return; }
   const novos = dados?.grupos || {}, g = lerGrupos();
   const validos = Object.entries(novos).filter(([n, x]) => n && Array.isArray(x?.cnpjs));
   const repetidos = validos.filter(([n]) => g[n]).map(([n]) => n);
@@ -685,7 +687,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "dlgTirarVis") { const vis = new Set(dlg.visiveis || []); dlg.sel = dlg.sel.filter((c) => !vis.has(c)); renderSeletor(); renderSelDialogo(); return; }
   const xt = t.closest?.("[data-xp-todos]");
   if (xt) { dlg.xpTodos = xt.dataset.xpTodos === "1"; renderSeletor(); return; }
-  if (t.id === "dlgLimparSel") { if (dlg.sel.length && !(await perguntar("Limpar a seleção?", `Tirar os ${dlg.sel.length} fundos marcados?`, [{ rot: "Cancelar", v: false }, { rot: "Limpar", v: true, classe: "perigo" }]))) return;
+  if (t.id === "dlgLimparSel") { if (dlg.sel.length && !(await confirmar("Limpar a seleção?", `Tirar os ${dlg.sel.length} fundos marcados?`, "Limpar", { perigo: true }))) return;
     dlg.sel = []; renderSeletor(); renderSelDialogo(); return; }
   if (t.id === "dlgLimparFiltros") { dlg.f = {}; dlg.limite = LIMITE_LISTA; fecharPopLista(); $("#dlgBusca").value = ""; $("#dlgSoSel").checked = false; delete st.ord.sel; renderSeletor(); return; }
   if (t.id === "dlgAplicar") {
@@ -715,14 +717,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.grAdd) return carregarGrupo(t.dataset.grAdd, false);
   if (t.dataset?.grSub) {
     const n = t.dataset.grSub;
-    if (st.sel.length && !(await perguntar("Substituir a seleção?", `Os ${st.sel.length} fundos selecionados agora saem e entram os ${lerGrupos()[n]?.cnpjs.length || 0} do grupo <b>${esc(n)}</b>.`,
-      [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+    if (st.sel.length && !(await confirmar("Substituir a seleção?", `Os ${st.sel.length} fundos selecionados agora saem e entram os ${lerGrupos()[n]?.cnpjs.length || 0} do grupo <b>${esc(n)}</b>.`, "Substituir"))) return;
     return carregarGrupo(n, true);
   }
   if (t.dataset?.grDel) {
     const n = t.dataset.grDel, g = lerGrupos(), x = g[n]; if (!x) return;
-    if (!(await perguntar("Excluir o grupo?", `Excluir o grupo <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? Os fundos selecionados agora não mudam.`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
+    if (!(await confirmar("Excluir o grupo?", `Excluir o grupo <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? Os fundos selecionados agora não mudam.`, "Excluir", { perigo: true }))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return renderGrupos(); }
     delete g[n]; gravarGrupos(g); return renderGrupos();
   }
@@ -3031,10 +3031,8 @@ async function baixarRelatorioBase(seletorBotao) {
     const celulas = tabs.filter((b) => !b.bruto || b.linhas.length * b.colunas.length <= 3e6).reduce((s, b) => s + b.linhas.length * b.colunas.length, 0);
     const celPdf = tabs.filter((b) => !b.soExcel).reduce((s, b) => s + b.linhas.length * b.colunas.length, 0);
     if (rel.fmt === "xlsx" && celulas > 12e6) throw new Error(`o Excel teria ${br(celulas / 1e6, 1)} milhões de células, mais do que o navegador consegue montar. Escolha menos partes ou um período mais curto.`);
-    if (rel.fmt === "xlsx" && celulas > 2.5e6 && !(await perguntar("Arquivo grande", `O Excel terá cerca de <b>${br(celulas / 1e6, 1)} milhões</b> de células. Pode levar alguns minutos e usar bastante memória. Continuar?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Continuar", v: true, classe: "prim" }]))) { prog(""); return; }
-    if (rel.fmt === "pdf" && celPdf > 150000 && !(await perguntar("PDF grande", `As tabelas somam cerca de ${br(celPdf / 1000, 0)} mil células (centenas de páginas). Continuar?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Continuar", v: true, classe: "prim" }]))) { prog(""); return; }
+    if (rel.fmt === "xlsx" && celulas > 2.5e6 && !(await confirmar("Arquivo grande", `O Excel terá cerca de <b>${br(celulas / 1e6, 1)} milhões</b> de células. Pode levar alguns minutos e usar bastante memória. Continuar?`, "Continuar"))) { prog(""); return; }
+    if (rel.fmt === "pdf" && celPdf > 150000 && !(await confirmar("PDF grande", `As tabelas somam cerca de ${br(celPdf / 1000, 0)} mil células (centenas de páginas). Continuar?`, "Continuar"))) { prog(""); return; }
     let blob, ext = rel.fmt;
     if (rel.fmt === "xlsx") {
       // dados usados nos cálculos: se não couberem bem no Excel, vão em CSV dentro de um .zip junto com o Excel
@@ -3043,10 +3041,9 @@ async function baixarRelatorioBase(seletorBotao) {
       const grandes = brutos.filter((b) => b.linhas.length > 1e6 || b.linhas.length * b.colunas.length > 3e6);
       if (grandes.length) {
         const nLin = grandes.reduce((s2, b) => s2 + b.linhas.length, 0), passa = grandes.some((b) => b.linhas.length > 1048575);
-        if (!(await perguntar("Dados grandes demais para o Excel", `Os dados de <b>${grandes.map((b) => esc(b.nome.replace("Dados - ", ""))).join(", ")}</b> têm ${br(nLin, 0)} linhas` +
+        if (!(await confirmar("Dados grandes demais para o Excel", `Os dados de <b>${grandes.map((b) => esc(b.nome.replace("Dados - ", ""))).join(", ")}</b> têm ${br(nLin, 0)} linhas` +
             (passa ? " (o Excel aceita até 1.048.576 por aba)" : ", volume que o navegador demoraria muito para montar como Excel") +
-            `. Vou gerar um <b>.zip</b> com o Excel do relatório e esses dados em <b>CSV</b> (ponto e vírgula, vírgula decimal), que também abre no Excel.`,
-          [{ rot: "Cancelar", v: false }, { rot: "Gerar .zip", v: true, classe: "prim" }]))) { prog(""); return; }
+            `. Vou gerar um <b>.zip</b> com o Excel do relatório e esses dados em <b>CSV</b> (ponto e vírgula, vírgula decimal), que também abre no Excel.`, "Gerar .zip"))) { prog(""); return; }
         await carregarLib("zip");
         for (const p of partes) p.blocos = p.blocos.map((b) => (grandes.includes(b) ? { ...b, foraDoExcel: true } : b));
         const zip = new window.JSZip(), restantes = partes.map((p) => ({ ...p, blocos: p.blocos.filter((b) => !b.foraDoExcel) })).filter((p) => p.blocos.length);
@@ -3350,14 +3347,13 @@ async function restaurarBackup(arquivo) {
   let b;
   try { b = JSON.parse(await arquivo.text()); } catch { b = null; }
   if (b?.tipo !== "backup-analise-de-fundos" || !b.dados) {
-    await perguntar("Arquivo inválido", "Este arquivo não é um backup da Análise de Fundos. Para grupos ou rankings soltos, use os botões de importar de cada janela.", [{ rot: "OK", v: 1, classe: "prim" }]);
+    await avisar("Arquivo inválido", "Este arquivo não é um backup da Análise de Fundos. Para grupos ou rankings soltos, use os botões de importar de cada janela.");
     return;
   }
   const d = b.dados, n = (x) => (x && typeof x === "object" ? Object.keys(x).length : 0);
-  const ok = await perguntar("Restaurar o backup?", `Backup de ${new Date(b.criado).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` +
+  const ok = await confirmar("Restaurar o backup?", `Backup de ${new Date(b.criado).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` +
     `${b.origem ? ` (feito em ${esc(b.origem.replace(/^https?:\/\//, ""))})` : ""}: ${n(d.grupos)} grupo${pl(n(d.grupos))}, ${n(d.rankings)} ranking${pl(n(d.rankings))}, ${n(d.modelosRank)} tipo${pl(n(d.modelosRank))} de cálculo` +
-    `${d.carteira?.itens?.length ? ` e uma carteira com ${d.carteira.itens.length} ativo${pl(d.carteira.itens.length)}` : ""}.<br><b>As configurações deste navegador serão substituídas</b> e a página vai recarregar.`,
-    [{ rot: "Cancelar", v: false }, { rot: "Restaurar", v: true, classe: "prim" }]);
+    `${d.carteira?.itens?.length ? ` e uma carteira com ${d.carteira.itens.length} ativo${pl(d.carteira.itens.length)}` : ""}.<br><b>As configurações deste navegador serão substituídas</b> e a página vai recarregar.`, "Restaurar");
   if (!ok) return;
   for (const k of CHAVES_BACKUP) { if (k in d) localStorage.setItem("fundos." + k, JSON.stringify(d[k])); else localStorage.removeItem("fundos." + k); }
   location.reload();
@@ -3744,7 +3740,7 @@ async function abrirEnviar(origem) {
     env.lista = !st.res ? [] : st.res.sel.filter((c) => st.res.fundos.get(c)).map((c) => { const l = porC.get(c), cad = st.porCnpj.get(c) || {};
       return { c, nome: cad.NOME || cnpjFmt(c), classif: cad.CLASSIFICACAO_CVM, rentAA: l?.["% Anualizado"], vol: l?.Volatilidade }; });
   }
-  if (!env.lista.length) { await perguntar("Nenhum fundo para enviar", origem === "cart" ? "A carteira ainda não tem fundos." : "Calcule os fundos primeiro.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  if (!env.lista.length) { await avisar("Nenhum fundo para enviar", origem === "cart" ? "A carteira ainda não tem fundos." : "Calcule os fundos primeiro."); return; }
   if (!env.destino || env.destino === origem) env.destino = Object.keys(DESTINOS_ENV).find((d) => d !== origem);
   env.marcados = new Set(env.lista.map((x) => x.c));          // começa com todos: o caso comum é trocar de tipo de análise com os mesmos fundos
   if (!modelos()[env.modelo]) env.modelo = modelos()[st.rkXPModelo] ? st.rkXPModelo : "MM";
@@ -4385,11 +4381,11 @@ function calculaveisXP(lista) {
 // confirmação do cálculo da página XP: métricas e/ou um ranking (temporário) com os fundos escolhidos
 async function selecionarECalcular(lista, rotulo) {
   const { ok, fora } = calculaveisXP(lista);
-  if (!ok.length) { await perguntar("Nenhum fundo para calcular", `${esc(rotulo)}: nenhum desses fundos tem cotas recentes na CVM.`, [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  if (!ok.length) { await avisar("Nenhum fundo para calcular", `${esc(rotulo)}: nenhum desses fundos tem cotas recentes na CVM.`); return; }
   // fundos da seleção que não estão no filtro (por exemplo, os juntados pela busca "Encontrar um fundo"): podem entrar no cálculo
   const extras = st.sel.filter((c) => !ok.includes(c)), juntarPadrao = extras.some((c) => st.xpAdicionados.has(c));
   const opModelos = Object.entries(modelos()).map(([k, M]) => `<option value="${esc(k)}"${k === (st.rkXPModelo || "MM") ? " selected" : ""}>${esc(M.nome)}</option>`).join("");
-  const r = await perguntar(`Calcular ${ok.length} fundo${pl(ok.length)}?`, `<b>${esc(rotulo)}</b>: ${ok.length} fundo${pl(ok.length)} com cotas recentes na CVM` +
+  const r = await confirmar(`Calcular ${ok.length} fundo${pl(ok.length)}?`, `<b>${esc(rotulo)}</b>: ${ok.length} fundo${pl(ok.length)} com cotas recentes na CVM` +
     (fora ? ` (${fora} ficam de fora: sem dados na CVM ou sem cota nos últimos 30 dias)` : "") + "." +
     `<div class="xp-calc-op">
       <label class="tog"><input type="checkbox" id="xpOpMet" checked> <span><b>Calcular as métricas</b> — tabela, gráficos e gráfico de quadrantes${extras.length ? "" : ` (substitui a seleção atual de ${st.sel.length} fundo${pl(st.sel.length)})`}</span></label>
@@ -4397,8 +4393,7 @@ async function selecionarECalcular(lista, rotulo) {
         <small class="nota">(${esc(extras.slice(0, 3).map((c) => curto(nomeXPde(c), 40)).join("; "))}${extras.length > 3 ? "…" : ""}); desmarcado, a seleção é substituída</small></span></label>` : ""}
       <label class="tog"><input type="checkbox" id="xpOpRk"${st.rkXPMarcado ? " checked" : ""}> <span><b>Calcular um ranking</b> com estes fundos (as pontuações entram no gráfico de quadrantes)</span></label>
       <label class="xp-calc-mod" id="xpOpModBox"${st.rkXPMarcado ? "" : " hidden"}>Tipo de cálculo do ranking <select id="xpOpModelo">${opModelos}</select></label>
-    </div>` + (ok.length > 150 ? `<p class="nota">Com muitos fundos o cálculo pode levar alguns minutos na primeira vez (depois fica guardado neste computador).</p>` : ""),
-    [{ rot: "Cancelar", v: false }, { rot: "Calcular", v: true, classe: "prim" }]);
+    </div>` + (ok.length > 150 ? `<p class="nota">Com muitos fundos o cálculo pode levar alguns minutos na primeira vez (depois fica guardado neste computador).</p>` : ""), "Calcular");
   if (!r) return;
   const met = $("#xpOpMet").checked, rk = $("#xpOpRk").checked, modelo = $("#xpOpModelo").value;
   if (!met && !rk) return;
@@ -4777,21 +4772,19 @@ async function salvarCarteiraAtual() {
   const g = lerCarteiras(), cart = copiaCart();
   if (st.nuvem) {
     const ex = Object.values(g).find((x) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase());
-    if (ex && !(await perguntar("Substituir a carteira?", `Você já tem na conta a carteira <b>${esc(ex._nome)}</b>. Substituir pela carteira montada agora?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+    if (ex && !(await confirmar("Substituir a carteira?", `Você já tem na conta a carteira <b>${esc(ex._nome)}</b>. Substituir pela carteira montada agora?`, "Substituir"))) return;
     const r = await salvarNaNuvem({ id: ex?._id, tipo: "carteira", nome, compartilhado: $("#ctComp").checked, conteudo: { cart } });
     if (r.ok) { $("#ctNome").value = ""; renderCarteirasSalvas(); $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(nome)}" salva na sua conta${$("#ctComp").checked ? " e compartilhada com a equipe" : ""}.</span>`; return; }
-    if (!(await perguntar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, [{ rot: "Cancelar", v: false }, { rot: "Salvar neste computador", v: true, classe: "prim" }]))) return;
+    if (!(await confirmar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, "Salvar neste computador"))) return;
   }
   const loc = lerCarteirasLocais();
-  if (loc[nome] && !(await perguntar("Substituir a carteira?", `Já existe a carteira <b>${esc(nome)}</b> neste computador. Substituir?`, [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+  if (loc[nome] && !(await confirmar("Substituir a carteira?", `Já existe a carteira <b>${esc(nome)}</b> neste computador. Substituir?`, "Substituir"))) return;
   loc[nome] = { cart, atualizado: new Date().toISOString() }; salvar("carteirasSalvas", loc);
   $("#ctNome").value = ""; renderCarteirasSalvas(); $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(nome)}" salva neste computador.</span>`;
 }
 async function carregarCarteiraSalva(n) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return;
-  if (st.cart.itens.length && !(await perguntar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`,
-    [{ rot: "Cancelar", v: false }, { rot: "Carregar", v: true, classe: "prim" }]))) return;
+  if (st.cart.itens.length && !(await confirmar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`, "Carregar"))) return;
   Object.assign(st.cart, JSON.parse(JSON.stringify(x.cart)));
   salvarCart(); $("#dlgCarteiras").close(); mostrarPagina("carteira"); renderCarteira();
   const faltam = st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v)).length;
@@ -4808,8 +4801,7 @@ document.addEventListener("click", async (e) => {
   if (ds.ctCar) return carregarCarteiraSalva(ds.ctCar);
   if (ds.ctDel) {
     const x = g[ds.ctDel]; if (!x) return;
-    if (!(await perguntar("Excluir a carteira?", `Excluir a carteira <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? A carteira montada agora não muda.`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
+    if (!(await confirmar("Excluir a carteira?", `Excluir a carteira <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}? A carteira montada agora não muda.`, "Excluir", { perigo: true }))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) $("#cartAviso").innerHTML = `<span class="neg">${esc(r.erro)}</span>`; return renderCarteirasSalvas(); }
     const loc = lerCarteirasLocais(); delete loc[ds.ctDel]; salvar("carteirasSalvas", loc); return renderCarteirasSalvas();
   }
@@ -5195,19 +5187,18 @@ async function juntarNoEditor(cnpjs, substituir) {
 async function salvarEditorRk() {
   const nome = $("#rkNome").value.trim(), g = lerRankings();
   if (!nome) { $("#rkNome").focus(); return; }
-  if (rkEd.cnpjs.length < 2) { await perguntar("Poucos fundos", "Um ranking precisa de pelo menos 2 fundos.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  if (rkEd.cnpjs.length < 2) { await avisar("Poucos fundos", "Um ranking precisa de pelo menos 2 fundos."); return; }
   // com login (ranking novo ou já da conta): salva na conta; um ranking deste computador continua no computador
   const orig = rkEd.nomeOrig ? g[rkEd.nomeOrig] : null;
   if (st.nuvem && (!orig || orig._origem === "meu")) {
     const outro = Object.entries(g).find(([k, x]) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase() && k !== rkEd.nomeOrig);
-    if (outro && !(await perguntar("Substituir o ranking?", `Você já tem na conta o ranking <b>${esc(nome)}</b>. Substituir?`, [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+    if (outro && !(await confirmar("Substituir o ranking?", `Você já tem na conta o ranking <b>${esc(nome)}</b>. Substituir?`, "Substituir"))) return;
     const r = await salvarNaNuvem({ id: orig?._id || outro?.[1]._id, tipo: "ranking", nome, compartilhado: $("#rkEdComp").checked, conteudo: conteudoRanking(rkEd.modelo, rkEd.cnpjs) });
-    if (!r.ok) { await perguntar("Não foi possível salvar na conta", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+    if (!r.ok) { await avisar("Não foi possível salvar na conta", esc(r.erro)); return; }
     if (rkEd.nomeOrig) rkSel.delete(rkEd.nomeOrig);
     rkSel.add(nome); rkEd.aberto = false; $("#rkEditor").hidden = true; $("#rkListaBox").hidden = false; renderRkLista(); return;
   }
-  if (g[nome] && nome !== rkEd.nomeOrig && !(await perguntar("Substituir o ranking?", `Já existe o ranking <b>${esc(nome)}</b> com ${g[nome].cnpjs.length} fundo${pl(g[nome].cnpjs.length)}. Substituir?`,
-    [{ rot: "Cancelar", v: false }, { rot: "Substituir", v: true, classe: "prim" }]))) return;
+  if (g[nome] && nome !== rkEd.nomeOrig && !(await confirmar("Substituir o ranking?", `Já existe o ranking <b>${esc(nome)}</b> com ${g[nome].cnpjs.length} fundo${pl(g[nome].cnpjs.length)}. Substituir?`, "Substituir"))) return;
   if (rkEd.nomeOrig && rkEd.nomeOrig !== nome) { delete g[rkEd.nomeOrig]; if (rkSel.delete(rkEd.nomeOrig)) rkSel.add(nome); }
   g[nome] = { modelo: rkEd.modelo, cnpjs: [...rkEd.cnpjs], atualizado: new Date().toISOString() };
   gravarRankings(g); rkSel.add(nome);
@@ -5636,7 +5627,7 @@ function somaModelo() {
 }
 async function salvarModelo() {
   const nome = $("#rkmNome").value.trim(), { ok, n } = somaModelo();
-  const aviso = (t) => perguntar("Não foi possível salvar o tipo de cálculo", t, [{ rot: "OK", v: 1, classe: "prim" }]);
+  const aviso = (t) => avisar("Não foi possível salvar o tipo de cálculo", t);
   if (!nome) { $("#rkmNome").focus(); return; }
   if (!n) return aviso("Ligue pelo menos uma métrica.");
   if (!(somaModelo().total > 0)) return aviso("Coloque peso maior que zero em pelo menos uma métrica.");
@@ -5653,7 +5644,7 @@ async function salvarModelo() {
   if (st.nuvem && (daConta || (TIPOS_NA_CONTA && !rkMod.id))) {
     const r = await salvarNaNuvem({ id: daConta ? rkMod.id.slice(3) : undefined, tipo: "modelo", nome, compartilhado: $("#rkmComp").checked, conteudo: { modelo: def } });
     if (r.ok) { mostrarTelaRk("modelos"); return renderModelos(); }
-    if (!(await perguntar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, [{ rot: "Cancelar", v: false }, { rot: "Salvar neste computador", v: true, classe: "prim" }]))) return;
+    if (!(await confirmar("Não foi possível salvar na conta", `${esc(r.erro)}<br>Salvar só neste computador?`, "Salvar neste computador"))) return;
   }
   const id = rkMod.id && !daConta ? rkMod.id : `c${Date.now().toString(36)}`, salvos = modelosSalvos();
   salvos[id] = def;
@@ -5670,23 +5661,21 @@ document.addEventListener("click", async (e) => {
   if (t.id === "rkmCancelar") { mostrarTelaRk("modelos"); return renderModelos(); }
   if (t.id === "rkmSalvar") return salvarModelo();
   if (t.dataset?.rkmOrig) {
-    if (!(await perguntar("Voltar ao original?", `Desfazer as edições do tipo <b>${esc(modeloDe(t.dataset.rkmOrig).nome)}</b> e voltar aos pesos padrão?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Voltar ao original", v: true, classe: "prim" }]))) return;
+    if (!(await confirmar("Voltar ao original?", `Desfazer as edições do tipo <b>${esc(modeloDe(t.dataset.rkmOrig).nome)}</b> e voltar aos pesos padrão?`, "Voltar ao original"))) return;
     const s2 = modelosSalvos(); delete s2[t.dataset.rkmOrig]; salvar("modelosRank", s2); return renderModelos();
   }
   if (t.dataset?.rkmDel) {
     const id = t.dataset.rkmDel, usos = usosModelo()[id] || [], M = modeloDe(id), conta = id.startsWith("cn:");
-    if (usos.length) return perguntar("Tipo em uso", `Este tipo é usado nos rankings <b>${usos.map(esc).join(", ")}</b>. Troque o tipo de cálculo deles antes de excluir.`, [{ rot: "OK", v: 1, classe: "prim" }]);
-    if (!(await perguntar("Excluir o tipo de cálculo?", `Excluir <b>${esc(M.nome)}</b>${conta ? " da sua conta (some de todos os computadores" + (M._comp ? " e da equipe; os rankings dos colegas que usam este tipo continuam com uma cópia" : "") + ")" : ""}?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
-    if (conta) { const r = await apagarDaNuvem(M._id); if (!r.ok) await perguntar("Não foi possível excluir", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); return renderModelos(); }
+    if (usos.length) return avisar("Tipo em uso", `Este tipo é usado nos rankings <b>${usos.map(esc).join(", ")}</b>. Troque o tipo de cálculo deles antes de excluir.`);
+    if (!(await confirmar("Excluir o tipo de cálculo?", `Excluir <b>${esc(M.nome)}</b>${conta ? " da sua conta (some de todos os computadores" + (M._comp ? " e da equipe; os rankings dos colegas que usam este tipo continuam com uma cópia" : "") + ")" : ""}?`, "Excluir", { perigo: true }))) return;
+    if (conta) { const r = await apagarDaNuvem(M._id); if (!r.ok) await avisar("Não foi possível excluir", esc(r.erro)); return renderModelos(); }
     const s2 = modelosSalvos(); delete s2[id]; salvar("modelosRank", s2); return renderModelos();
   }
   // tipo deste navegador -> conta: os rankings deste computador que usam o tipo passam a usar o da conta
   if (t.dataset?.rkmUp) {
     const id = t.dataset.rkmUp, M = modelosSalvos()[id]; if (!M) return;
     const r = await salvarNaNuvem({ tipo: "modelo", nome: M.nome, compartilhado: true, conteudo: { modelo: M } });
-    if (!r.ok || !r.item) return perguntar("Não foi possível enviar para a conta", esc(r.erro || "Resposta inválida do servidor."), [{ rot: "OK", v: 1, classe: "prim" }]);
+    if (!r.ok || !r.item) return avisar("Não foi possível enviar para a conta", esc(r.erro || "Resposta inválida do servidor."));
     const novo = `cn:${r.item.id}`, loc = objSeguro(pref("rankings", {}));
     for (const x of Object.values(loc)) if (x?.modelo === id) x.modelo = novo;
     salvar("rankings", loc);
@@ -5697,7 +5686,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.rkmComp) {
     const M = modeloDe(t.dataset.rkmComp); if (M._origem !== "meu") return;
     const r = await salvarNaNuvem({ id: M._id, tipo: "modelo", nome: M._nome, compartilhado: !M._comp, conteudo: { modelo: { ...semInternos(M), nome: M._nome } } });
-    if (!r.ok) await perguntar("Não foi possível alterar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]);
+    if (!r.ok) await avisar("Não foi possível alterar", esc(r.erro));
     return renderModelos();
   }
   // tipo de um colega: cópia minha (na conta, só minha; sem login, neste navegador)
@@ -5705,7 +5694,7 @@ document.addEventListener("click", async (e) => {
     const M = modeloDe(t.dataset.rkmCopia); if (M._origem !== "equipe") return;
     const meus = Object.values(modelosConta()).filter((x) => x._origem === "meu").map((x) => x._nome.toLowerCase());
     const nome = meus.includes(M._nome.toLowerCase()) ? `${M._nome} (de ${M._autor})` : M._nome, def = { ...semInternos(M), nome };
-    if (st.nuvem) { const r = await salvarNaNuvem({ tipo: "modelo", nome, compartilhado: false, conteudo: { modelo: def } }); if (!r.ok) await perguntar("Não foi possível copiar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); }
+    if (st.nuvem) { const r = await salvarNaNuvem({ tipo: "modelo", nome, compartilhado: false, conteudo: { modelo: def } }); if (!r.ok) await avisar("Não foi possível copiar", esc(r.erro)); }
     else { const s2 = modelosSalvos(); s2[`c${Date.now().toString(36)}`] = def; salvar("modelosRank", s2); }
     return renderModelos();
   }
@@ -5733,7 +5722,7 @@ function exportarRankings() {
   a.download = `rankings_de_fundos_${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 async function importarRankings(arquivo) {
-  let dados; try { dados = JSON.parse(await arquivo.text()); } catch { await perguntar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar rankings.", [{ rot: "OK", v: 1, classe: "prim" }]); return; }
+  let dados; try { dados = JSON.parse(await arquivo.text()); } catch { await avisar("Arquivo inválido", "Não foi possível ler o arquivo. Use um .json gerado por Exportar rankings."); return; }
   // tipos de cálculo do arquivo: entram com o mesmo id; se já existir um diferente com esse id, entram com id novo
   const salvos = modelosSalvos(), troca = {};
   for (const [id, M0] of Object.entries(objSeguro(dados?.modelos))) {
@@ -5761,8 +5750,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.rkEd) return abrirEditorRk(t.dataset.rkEd);
   if (t.dataset?.rkDel) {
     const n = t.dataset.rkDel, g = lerRankings(), x = g[n]; if (!x) return;
-    if (!(await perguntar("Excluir o ranking?", `Excluir o ranking <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}?`,
-      [{ rot: "Cancelar", v: false }, { rot: "Excluir", v: true, classe: "perigo" }]))) return;
+    if (!(await confirmar("Excluir o ranking?", `Excluir o ranking <b>${esc(x._nome)}</b>${x._origem === "meu" ? " da sua conta (some de todos os computadores" + (x._comp ? " e da equipe" : "") + ")" : ""}?`, "Excluir", { perigo: true }))) return;
     if (x._origem === "meu") { const r = await apagarDaNuvem(x._id); if (!r.ok) { avisoSel(`<span class="neg">${esc(r.erro)}</span>`); return; } rkSel.delete(n); return renderRkLista(); }
     delete g[n]; gravarRankings(g); rkSel.delete(n); return renderRkLista();
   }
@@ -5856,7 +5844,7 @@ document.addEventListener("change", async (e) => {
     await apontarRankingsParaTipo(id);                                   // os rankings com a cópia igual acompanham a mudança
     const def = { ...semInternos(M), nome: M._nome }; if (liga) def.jmProporcional = true; else delete def.jmProporcional;
     const r = await salvarNaNuvem({ id: M._id, tipo: "modelo", nome: M._nome, compartilhado: M._comp, conteudo: { modelo: def } });
-    if (!r.ok) { e.target.checked = !liga; return perguntar("Não foi possível alterar", esc(r.erro), [{ rot: "OK", v: 1, classe: "prim" }]); }
+    if (!r.ok) { e.target.checked = !liga; return avisar("Não foi possível alterar", esc(r.erro)); }
   } else {
     const salvos = modelosSalvos(), base = salvos[id] || semInternos({ ...M });
     if (liga) base.jmProporcional = true; else delete base.jmProporcional;
