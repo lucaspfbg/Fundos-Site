@@ -1318,7 +1318,8 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
    Transição (não animação): a visão geral é redesenhada a cada clique e uma animação repetiria em todas as linhas marcadas. */
 :root { --linha-hover: color-mix(in srgb, var(--azul) 10%, var(--card)); --tick-borda-hover: var(--azul); --tick-brilho: color-mix(in srgb, var(--azul) 28%, transparent); }
 :root[data-theme="dark"] { --linha-hover: color-mix(in srgb, var(--info-txt) 17%, var(--card)); --tick-borda-hover: var(--info-txt); --tick-brilho: color-mix(in srgb, var(--info-txt) 38%, transparent); }
-.xp-barra { grid-template-columns: 16px minmax(0, 1.15fr) minmax(0, 1fr) 7.4em; gap: 10px; padding: 5px 8px; cursor: pointer; }
+.xp-barra { grid-template-columns: 16px minmax(7.5em, 1.15fr) minmax(36px, 1fr) 7.4em; gap: 10px; padding: 5px 8px; cursor: pointer; }
+.xb-rot { overflow-wrap: break-word; }          /* quebra entre palavras; só corta uma palavra se ela sozinha não couber */
 .xp-barra::before { content: ""; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--borda-forte); background: var(--card) center / 12px no-repeat;
   transition: box-shadow .18s var(--ease-out), border-color .18s, background-color .18s; }
 .xp-barra[aria-pressed=true]::before { border-color: var(--ouro); background-color: var(--ouro); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ouro) 32%, transparent);
