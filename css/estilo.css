@@ -1352,3 +1352,17 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 #xpClassBusca { margin-left: 0; width: 100%; min-height: 34px; border: 1.5px solid var(--borda-forte); padding-left: 34px; }   /* a regra antiga (por id) tirava o espaço da lupa */
 #xpClassBusca:hover { border-color: var(--tick-borda-hover); }
 @media (max-width: 700px) { .xp-busca { grid-template-columns: 1fr; } }     /* celular: rótulo em cima, campo embaixo (repete a regra antiga, que a de cima sobrescrevia) */
+
+/* listas de fundos (Lista de fundos da Análise, da Carteira e do ranking; destaques do relatório): o mesmo tick dos quadros da XP,
+   antes do nome. A seleção vem da classe "marcado", que o arrastar também muda, então o tick acende durante o arrasto. */
+.tab-fundos tr.linha-f > td:first-child::before { content: ""; display: inline-block; width: 15px; height: 15px; margin-right: 9px; vertical-align: -3px;
+  border-radius: 5px; border: 1.5px solid var(--borda-forte); background: var(--card) center / 11px no-repeat;
+  transition: box-shadow .18s var(--ease-out), border-color .18s, background-color .18s; }
+.tab-fundos tr.linha-f.marcado > td:first-child::before { border-color: var(--ouro); background-color: var(--ouro); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ouro) 32%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6l4.6-5' fill='none' stroke='%2317193a' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+@media (hover: hover) {
+  .tab-fundos tr.linha-f:not(.marcado):hover td { background: var(--linha-hover); }
+  .tab-fundos tr.linha-f:not(.marcado):hover > td:first-child::before { border-color: var(--tick-borda-hover); box-shadow: 0 0 0 4px var(--tick-brilho), 0 0 8px var(--tick-brilho); }
+}
+.tab-fundos tr.linha-f:not(.marcado):focus-visible > td:first-child::before { border-color: var(--tick-borda-hover); box-shadow: 0 0 0 4px var(--tick-brilho); }
+@media (prefers-reduced-motion: reduce) { .tab-fundos tr.linha-f > td:first-child::before { transition: none; } }
