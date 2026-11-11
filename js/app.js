@@ -2424,7 +2424,7 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("click", (e) => {
   const t = e.target, c = st.cart;
-  if (t.matches(".cart-rm")) { c.itens.splice(Number(t.dataset.i), 1); salvarCart(); renderCarteira(); }
+  if (t.matches(".cart-rm[data-i]")) { c.itens.splice(Number(t.dataset.i), 1); salvarCart(); renderCarteira(); }   // só o × da carteira (os outros × e lixeiras usam a mesma classe)
   else if (t.id === "cartIguais" || t.id === "cartNormalizar") {
     const n = c.itens.length, s = c.itens.reduce((a, it) => a + (Number(it.peso) || 0), 0);
     if (!n) return;
@@ -4490,7 +4490,7 @@ const EIXOS_ROA = {
   sharpe: { titulo: "Sharpe (sobre o CDI)", curto: "Sharpe", melhor: 1, bom: "Sharpe alto", ruim: "Sharpe baixo", fmt: (v) => br(v, 2), valor: (l) => l["Sharpe Anualizado"] },
   prazo: { titulo: "Prazo de resgate (dias: cotização + liquidação)", curto: "prazo de resgate", melhor: -1, bom: "resgate rápido", ruim: "resgate lento", fmt: (v) => br(v, 0), valor: (l, q) => { const a = prazoDias(q["Cotização"]), b = prazoDias(q["Liquidação"]); return a == null && b == null ? null : Math.floor(a || 0) + Math.floor(b || 0); } },
   risco: { titulo: "Risco XP", curto: "risco XP", melhor: -1, bom: "risco baixo", ruim: "risco alto", fmt: (v) => br(v, 0), valor: (l, q) => q.Risco },
-  dor: { titulo: "Índice de Dor", curto: "índice de dor", melhor: -1, bom: "dor baixa", ruim: "dor alta", fmt: br3, valor: (l) => l["Índice de Dor"] },
+  dor: { titulo: "Índice de Dor", curto: "índice de dor", melhor: -1, bom: "dor baixa", ruim: "dor alta", fmt: br3, casasEixo: 3, valor: (l) => l["Índice de Dor"] },
   jm: { titulo: "Mediana da janela móvel (diferença a.a. contra o benchmark)", curto: "mediana da janela móvel", melhor: 1, bom: "janela móvel alta", ruim: "janela móvel baixa", fmt: (v) => brPct(v, 1),
     valor: (l) => st.res?.jm?.porFundo.find((x) => x.c === l._c)?.resumo?.med?.dif ?? null },
 };
@@ -4619,9 +4619,12 @@ function renderROA() {
     esc((semCli ? ` · ${semCli} sem clientes (ocultos)` : "") + (semY ? ` · ${semY} sem ${EY.curto}` : "") + (semX ? ` · ${semX} sem ${EX.curto}` : "") +
       ([st.roaEixo, st.eixoY].includes("jm") && !st.res?.jm ? " · calcule a janela móvel na seção abaixo para ver a mediana" : "") + ". Arraste ou use a lupa para dar zoom.") +
     (rankingXP() ? ` <span class="nota">${esc(st.rkXPAviso || "")}</span>` : "");
-  // marcas dos eixos: percentuais com casas conforme o espaçamento (não repete rótulos com valores pequenos ou com zoom)
-  const tick = (E) => (E.pct ? (v, i, ticks) => { const passo = ticks?.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) * 100 : 0.01;
-    return brPct(v, Math.min(4, Math.max(E.zeroMin ? 2 : 1, Math.ceil(-Math.log10(passo || 0.01))))); } : E.fmt);
+  // marcas dos eixos: percentuais (e números pequenos, como o Índice de Dor) com casas conforme o espaçamento —
+  // não repete rótulos com valores pequenos ou com zoom
+  const casasPasso = (ticks, escala, padrao, min, max) => { const passo = ticks?.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) * escala : padrao;
+    return Math.min(max, Math.max(min, Math.ceil(-Math.log10(passo || padrao)))); };
+  const tick = (E) => (E.pct ? (v, i, ticks) => brPct(v, casasPasso(ticks, 100, 0.01, E.zeroMin ? 2 : 1, 4))
+    : E.casasEixo ? (v, i, ticks) => br(v, casasPasso(ticks, 1, 0.001, E.casasEixo, 6)) : E.fmt);
   graficoRR("gROA", pts, { fmtX: tick(EX), tituloX: EX.titulo, refX: null, fmtY: tick(EY), tituloY: EY.titulo, yMin: EY.zeroMin ? 0 : null, quad, xLog: !!EX.log, yLog: !!EY.log,
     rotulo: (it) => { const p = pts.find((x) => x.nome === it.raw.nome) || {};
       return `${it.raw.nome}: ${EY.curto} ${EY.fmt(it.parsed.y)} · ${EX.curto} ${EX.fmt(it.parsed.x)}` + (ET && Number.isFinite(p.t) ? ` · ${ET.curto} ${ET.fmt(p.t)}` : "") +
