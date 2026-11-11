@@ -1311,3 +1311,36 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .aviso-conta .ico { width: 15px; height: 15px; }
 .aviso-conta .gira { width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: girar .8s linear infinite; }
 @media (prefers-reduced-motion: reduce) { button.ocupado::after, label.ocupado::after, .aviso-conta .gira { animation-duration: 2.4s; } }
+
+/* ============ Fundos XP: linhas dos quadros com cara de "dá para clicar" ============
+   Cada linha ganha um tick à esquerda: apagado (contorno) → brilha ao passar o mouse ou com o foco do teclado → aceso (dourado,
+   com ✓) quando marcada. O estado vem do aria-pressed, que o arrasto também muda, então o tick acende durante o arrasto.
+   Transição (não animação): a visão geral é redesenhada a cada clique e uma animação repetiria em todas as linhas marcadas. */
+:root { --linha-hover: color-mix(in srgb, var(--azul) 10%, var(--card)); --tick-borda-hover: var(--azul); --tick-brilho: color-mix(in srgb, var(--azul) 28%, transparent); }
+:root[data-theme="dark"] { --linha-hover: color-mix(in srgb, var(--info-txt) 17%, var(--card)); --tick-borda-hover: var(--info-txt); --tick-brilho: color-mix(in srgb, var(--info-txt) 38%, transparent); }
+.xp-barra { grid-template-columns: 16px minmax(0, 1.15fr) minmax(0, 1fr) 7.4em; gap: 10px; padding: 5px 8px; cursor: pointer; }
+.xp-barra::before { content: ""; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--borda-forte); background: var(--card) center / 12px no-repeat;
+  transition: box-shadow .18s var(--ease-out), border-color .18s, background-color .18s; }
+.xp-barra[aria-pressed=true]::before { border-color: var(--ouro); background-color: var(--ouro); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ouro) 32%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6l4.6-5' fill='none' stroke='%2317193a' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.xp-barra[aria-pressed=true] .xb-rot::before { content: none; }            /* o ✓ agora está no tick */
+@media (hover: hover) {
+  .xp-barra:not([aria-pressed=true]):hover { background: var(--linha-hover); }
+  .xp-barra[aria-pressed=true]:hover { background: color-mix(in srgb, var(--ouro) 30%, var(--card)); }
+  .xp-barra:not([aria-pressed=true]):hover::before { border-color: var(--tick-borda-hover); box-shadow: 0 0 0 4px var(--tick-brilho), 0 0 10px var(--tick-brilho); }
+}
+.xp-barra:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; }
+.xp-barra:not([aria-pressed=true]):focus-visible::before { border-color: var(--tick-borda-hover); box-shadow: 0 0 0 4px var(--tick-brilho); }
+@media (prefers-reduced-motion: reduce) { .xp-barra::before { transition: none; } }
+.xp-busca-op:hover, .xp-busca-op:focus-visible { background: var(--linha-hover); }
+
+/* campos de busca da página XP: lupa dentro do campo, mais alto e com borda visível */
+.campo-lupa { position: relative; display: block; }
+.campo-lupa > .ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--sub); pointer-events: none; }
+.campo-lupa > input { padding-left: 36px; }
+.xp-busca { grid-template-columns: auto minmax(260px, 660px); justify-content: start; border-color: color-mix(in srgb, var(--azul) 35%, var(--borda)); }
+.xp-busca-campo input { min-height: 42px; border: 1.5px solid var(--borda-forte); border-radius: var(--r-md); font-size: var(--fs-md); background: var(--campo); }
+.xp-busca-campo input:hover { border-color: var(--tick-borda-hover); }
+.xp-classif-cab .campo-lupa { margin-left: auto; width: 250px; max-width: 100%; }
+#xpClassBusca { margin-left: 0; width: 100%; min-height: 34px; border: 1.5px solid var(--borda-forte); }
+#xpClassBusca:hover { border-color: var(--tick-borda-hover); }

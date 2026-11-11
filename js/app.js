@@ -4245,7 +4245,7 @@ function montarBuscaXP() {
   if (!xpBuscaEl) {
     xpBuscaEl = document.createElement("section"); xpBuscaEl.className = "xp-busca"; xpBuscaEl.setAttribute("aria-label", "Encontrar um fundo");
     xpBuscaEl.innerHTML = `<label class="xp-busca-rot" for="xpBuscaIn">Encontrar um fundo</label>
-      <div class="xp-busca-campo"><input id="xpBuscaIn" type="search" placeholder="Nome comercial, nome na CVM ou CNPJ (mín. 3 letras)" autocomplete="off" spellcheck="false" aria-controls="xpBuscaRes">
+      <div class="xp-busca-campo campo-lupa">${ico("busca")}<input id="xpBuscaIn" type="search" placeholder="Digite o nome do fundo (comercial ou CVM) ou o CNPJ" autocomplete="off" spellcheck="false" aria-controls="xpBuscaRes">
         <div id="xpBuscaRes" class="xp-busca-res" role="listbox" aria-label="Fundos da XP encontrados" hidden></div></div>
       <div id="xpFicha"></div>`;
   }
@@ -6177,7 +6177,7 @@ function quadroClassificacoes(listas, n) {
     <div class="xp-classif-cab"><h3>Classificações</h3>
       <div class="xp-abas" role="tablist" aria-label="Classificações">${abas.map(([t, m]) => { const k = marcados(t), on = t === st.xpAba;
         return `<button type="button" role="tab" class="xp-aba" id="xpAba-${slug(t)}" aria-controls="xpPainel-${slug(t)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-xpaba="${esc(t)}">${esc(t)} <small>${m.size}</small>${k ? ` <b class="xp-aba-n" title="${k} filtro${pl(k)} marcado${pl(k)}">${k}</b>` : ""}</button>`; }).join("")}</div>
-      <input type="search" id="xpClassBusca" placeholder="procurar nesta aba…" aria-label="Procurar na aba de classificação" autocomplete="off" value="${esc(st.xpClassBusca || "")}">
+      <span class="campo-lupa">${ico("busca")}<input type="search" id="xpClassBusca" placeholder="Procurar nesta aba…" aria-label="Procurar na aba de classificação" autocomplete="off" value="${esc(st.xpClassBusca || "")}"></span>
     </div>
     ${abas.map(([t, m]) => `<div role="tabpanel" id="xpPainel-${slug(t)}" aria-labelledby="xpAba-${slug(t)}"${t === st.xpAba ? "" : " hidden"}>
       ${cartaoBarras(t, m, n, { bloco: true, todos: true, colunas: 4, tituloOculto: true })}</div>`).join("")}
