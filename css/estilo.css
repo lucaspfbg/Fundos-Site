@@ -1318,8 +1318,14 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
    Transição (não animação): a visão geral é redesenhada a cada clique e uma animação repetiria em todas as linhas marcadas. */
 :root { --linha-hover: color-mix(in srgb, var(--azul) 10%, var(--card)); --tick-borda-hover: var(--azul); --tick-brilho: color-mix(in srgb, var(--azul) 28%, transparent); }
 :root[data-theme="dark"] { --linha-hover: color-mix(in srgb, var(--info-txt) 17%, var(--card)); --tick-borda-hover: var(--info-txt); --tick-brilho: color-mix(in srgb, var(--info-txt) 38%, transparent); }
-.xp-barra { grid-template-columns: 16px minmax(7.5em, 1.15fr) minmax(36px, 1fr) 7.4em; gap: 10px; padding: 5px 8px; cursor: pointer; }
-.xb-rot { overflow-wrap: break-word; }          /* quebra entre palavras; só corta uma palavra se ela sozinha não couber */
+/* sem mínimos fixos nas colunas (as listas em várias colunas, como ROA e Classificações, chegam a 200px): a linha nunca estoura;
+   o rótulo fica com o dobro do espaço da barra e só quebra uma palavra se ela não couber, na sílaba, com hífen.
+   A coluna do número tem largura fixa para as barras ficarem alinhadas entre as linhas do quadro. */
+.xp-barra { grid-template-columns: 16px minmax(0, 1.7fr) minmax(0, 1fr) 7.4em; gap: 10px; padding: 5px 8px; cursor: pointer; }
+.xp-cols .xp-barra { grid-template-columns: 16px minmax(0, 2fr) minmax(0, 1fr) 6.2em; gap: 8px; padding: 4px 6px; }   /* contagens com até 3 dígitos */
+.xb-rot { overflow-wrap: break-word; hyphens: auto; }   /* quebra entre palavras; palavra longa demais quebra na sílaba, com hífen (página em pt-BR) */
+/* telas estreitas: mínimos menores (a linha toda cabe em ~235px: coluna do número mais curta e menos espaço entre as partes) */
+@media (max-width: 600px) { .xp-barra, .xp-cols .xp-barra { grid-template-columns: 16px minmax(0, 2.6fr) minmax(0, 1fr) 5.9em; gap: 8px; padding: 5px 6px; } }
 .xp-barra::before { content: ""; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--borda-forte); background: var(--card) center / 12px no-repeat;
   transition: box-shadow .18s var(--ease-out), border-color .18s, background-color .18s; }
 .xp-barra[aria-pressed=true]::before { border-color: var(--ouro); background-color: var(--ouro); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ouro) 32%, transparent);
@@ -1343,5 +1349,6 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .xp-busca-campo input { min-height: 42px; border: 1.5px solid var(--borda-forte); border-radius: var(--r-md); font-size: var(--fs-md); background: var(--campo); }
 .xp-busca-campo input:hover { border-color: var(--tick-borda-hover); }
 .xp-classif-cab .campo-lupa { margin-left: auto; width: 250px; max-width: 100%; }
-#xpClassBusca { margin-left: 0; width: 100%; min-height: 34px; border: 1.5px solid var(--borda-forte); }
+#xpClassBusca { margin-left: 0; width: 100%; min-height: 34px; border: 1.5px solid var(--borda-forte); padding-left: 34px; }   /* a regra antiga (por id) tirava o espaço da lupa */
 #xpClassBusca:hover { border-color: var(--tick-borda-hover); }
+@media (max-width: 700px) { .xp-busca { grid-template-columns: 1fr; } }     /* celular: rótulo em cima, campo embaixo (repete a regra antiga, que a de cima sobrescrevia) */
