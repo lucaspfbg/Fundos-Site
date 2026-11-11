@@ -942,12 +942,34 @@ function corSinal(v) { return typeof v === "number" && !Number.isNaN(v) ? (v > 0
 // 3 a 4 casas (0,001 · 0,0071 · 0,0002): sem perder os valores pequenos; o zero sai sem sinal
 const NF34 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
 const br3 = (v) => (typeof v === "number" && Number.isFinite(v) ? NF34.format(v || 0) : "");
-const FMT = {
-  pct: (v) => brPct(v), num: (v) => (typeof v === "number" ? br(v, 4) : v ?? ""), num2: (v) => (typeof v === "number" ? br(v, 2) : v ?? ""),
-  num3: (v) => (typeof v === "number" ? br3(v) : v ?? ""),                          // Índice de Dor: número (0,001), não percentual
-  valor: (v) => br(v, 2), int: (v) => (typeof v === "number" ? br(v, 0) : ""), data: (v) => (typeof v === "number" ? fmtData(v) : v ?? ""),
-  txt: (v) => v ?? "",
+// ===== formatos (início) — cada tipo de valor num lugar só: como sai nas tabelas da tela, no relatório (PDF/PNG), no Excel e
+// no gráfico de quadrantes. Um tipo novo entra aqui uma vez (antes eram cinco tabelas separadas).
+const NF8 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8, useGrouping: false });
+const numOu = (f) => (v) => (typeof v === "number" ? f(v) : v ?? "");             // número formatado; texto passa como veio
+const TIPOS_VALOR = {
+  pct: { tela: (v) => brPct(v), rel: (v) => brPct(v), excel: "0.00%", quad: (v) => brPct(v, 2) },
+  pct0: { rel: (v) => brPct(v, 0), excel: "0%" },
+  pct6: { rel: (v) => brPct(v, 4), excel: "0.0000%" },
+  num: { tela: numOu((v) => br(v, 4)), rel: (v) => br(v, 4), excel: "0.0000", quad: (v) => br(v, 2) },
+  num2: { tela: numOu((v) => br(v, 2)), rel: (v) => br(v, 2), excel: "0.00", quad: (v) => br(v, 2) },
+  num3: { tela: numOu(br3), rel: br3, excel: "0.000#", quad: br3 },                 // Índice de Dor: número (0,001), não percentual
+  int: { tela: (v) => (typeof v === "number" ? br(v, 0) : ""), rel: (v) => br(v, 0), excel: "0", quad: (v) => br(v, 0) },
+  valor: { tela: (v) => br(v, 2), rel: (v) => br(v, 2), excel: "#,##0.00", quad: (v) => (Math.abs(v) >= 1e6 ? `R$ ${br(v / 1e6, 1)} mi` : `R$ ${br(v / 1e3, 0)} mil`) },
+  data: { tela: numOu(fmtData), rel: fmtData, excel: "dd/mm/yyyy" },
+  cota: { rel: (v) => NF8.format(v), excel: "0.00000000" },
+  txt: { tela: (v) => v ?? "" },
 };
+const formatosDe = (lado) => Object.fromEntries(Object.entries(TIPOS_VALOR).filter(([, t]) => t[lado]).map(([k, t]) => [k, t[lado]]));
+const FMT = formatosDe("tela");                     // tabelas, painel do fundo e listas
+const FORMATO_EXCEL = formatosDe("excel");          // formato numérico das colunas no Excel
+const FORMATO_QUAD = formatosDe("quad");            // eixos e tabela do gráfico de quadrantes
+// célula do relatório (PDF/PNG): vazio → ""; texto passa como veio; número no formato do tipo
+function fmtCel(v, tipo) {
+  if (v == null || v === "") return "";
+  if (typeof v !== "number") return String(v);
+  return TIPOS_VALOR[tipo]?.rel?.(v) ?? String(v);
+}
+// ===== formatos (fim)
 // destaque: o texto digitado no topo ou, durante a geração de um relatório, a lista de fundos escolhida na janela de download
 const casa = (termo, ...textos) => {
   if (st.destExtra && textos.some((x) => st.destExtra.has(String(x ?? "")))) return true;
@@ -2768,12 +2790,7 @@ function blocosRel(k) {
 
 // ---------- formatação de texto (PDF e PNG)
 const dataJs = (dia) => new Date(dia * 86400000);
-const NF8 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8, useGrouping: false });
-function fmtCel(v, tipo) {
-  if (v == null || v === "") return "";
-  if (typeof v !== "number") return String(v);
-  return ({ pct: brPct(v), pct0: brPct(v, 0), pct6: brPct(v, 4), data: fmtData(v), int: br(v, 0), num2: br(v, 2), num3: br3(v), num: br(v, 4), valor: br(v, 2), cota: NF8.format(v) })[tipo] ?? String(v);
-}
+
 // a fonte padrão do PDF só tem os caracteres latinos básicos
 const pdfTxt = (s) => String(s ?? "").replace(/−/g, "-").replace(/[–—]/g, "-").replace(/★/g, "*").replace(/⊘/g, "(!)").replace(/▲/g, "+").replace(/▼/g, "-")
   .replace(/…/g, "...").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/≈/g, "~").replace(/[^\x00-\xFF]/g, "");
@@ -2915,7 +2932,7 @@ async function gerarExcel(partes, prog, comImagens) {
     while (usados.has(n.toLowerCase())) n = `${base.slice(0, 26)} ${k++}`;
     usados.add(n.toLowerCase()); return n;
   };
-  const FMT = { pct: "0.00%", pct0: "0%", pct6: "0.0000%", data: "dd/mm/yyyy", int: "0", num2: "0.00", num3: "0.000#", num: "0.0000", valor: "#,##0.00", cota: "0.00000000" };
+  const FMT = FORMATO_EXCEL;
   // capa com o índice das abas
   const capa = wb.addWorksheet(nomeAba("Sobre"));
   capa.addRow(["Análise de Fundos"]).font = { bold: true, size: 16, color: { argb: "FF2B2C78" } };
@@ -4454,12 +4471,12 @@ function eixosRankingXP() {
   };
 }
 function eixosROA() {
-  const fmtT = { pct: (v) => brPct(v, 2), num: (v) => br(v, 2), num2: (v) => br(v, 2), num3: br3, int: (v) => br(v, 0), valor: (v) => (Math.abs(v) >= 1e6 ? `R$ ${br(v / 1e6, 1)} mi` : `R$ ${br(v / 1e3, 0)} mil`) };
+  const fmtT = FORMATO_QUAD;
   const xp = (titulo, curto, melhor, chave, fmt, div = 1) => ({ titulo, curto, melhor, grupo: "Dados da XP", bom: `${curto} ${melhor > 0 ? "alto" : "baixo"}`, ruim: `${curto} ${melhor > 0 ? "baixo" : "alto"}`,
     fmt, valor: (l, q) => (q[chave] == null ? null : q[chave] / div) });
   const out = {
     roa: { titulo: "ROA (% a.a.)", curto: "ROA", melhor: 1, grupo: "Principais", zeroMin: true, pct: true, fmt: (v) => brPct(v, 2), valor: (l, q) => (q.ROA == null ? null : q.ROA / 100) },
-    sharpe: { ...EIXOS_ROA.sharpe, grupo: "Principais" }, dor: { ...EIXOS_ROA.dor, grupo: "Principais", pct: true },
+    sharpe: { ...EIXOS_ROA.sharpe, grupo: "Principais" }, dor: { ...EIXOS_ROA.dor, grupo: "Principais" },     // Índice de Dor é número (0,001), não %
     prazo: { ...EIXOS_ROA.prazo, grupo: "Dados da XP" }, risco: { ...EIXOS_ROA.risco, grupo: "Dados da XP" },
     taxaAdm: xp("Taxa de administração (% a.a.)", "taxa de adm.", -1, "Taxa adm.", (v) => brPct(v, 2), 100),
     taxaPerf: xp("Taxa de performance (%)", "taxa de perf.", -1, "Taxa perf.", (v) => brPct(v, 0), 100),
