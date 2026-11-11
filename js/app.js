@@ -18,6 +18,7 @@ const MINIGRAFICOS = true;                 // minigráfico ao passar o mouse sob
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const semAcento = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();   // base de todas as buscas
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const nf = (c) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: c, maximumFractionDigits: c });
 const NF = [0, 1, 2, 4, 6].reduce((o, c) => ((o[c] = nf(c)), o), {});
@@ -185,13 +186,18 @@ function avisoSel(html) {
   avisoSel.t = setTimeout(() => { el.innerHTML = ""; el.dataset.aberto = ""; recolhivel(el); }, el.textContent.length > 160 ? 30000 : 9000);   // aviso longo fica mais tempo
 }
 
+// ---------- busca de texto: uma regra para o site todo — sem diferença de acento nem de maiúsculas ("credito" acha "CRÉDITO").
+// Cada busca mantém as próprias regras (quantos dígitos do CNPJ, termos "-exclui", limite de resultados).
+// chave de busca do fundo, sem acento: nome + gestor (+ nome comercial da XP); refeita quando os dados da XP mudam
+const chaveNome = (f) => (f._buscaSA ??= semAcento(f._busca));
+const contemTexto = (texto, termo) => semAcento(texto).includes(termo);           // termo já sem acento (semAcento)
 function buscar(texto, limite, filtroExtra) {
-  const q = texto.trim().toUpperCase();
+  const q = semAcento(texto).trim();
   if (q.length < 3) return [];
   const dig = q.replace(/\D/g, "");
   const out = [];
   for (const f of st.lista) {                    // a lista já vem ordenada por patrimônio (maiores primeiro)
-    if ((f._busca.includes(q) || (dig.length >= 3 && f.CNPJ.includes(dig))) && (!filtroExtra || filtroExtra(f))) {
+    if ((chaveNome(f).includes(q) || (dig.length >= 3 && f.CNPJ.includes(dig))) && (!filtroExtra || filtroExtra(f))) {
       out.push(f);
       if (out.length >= limite) break;
     }
@@ -973,9 +979,9 @@ function fmtCel(v, tipo) {
 // destaque: o texto digitado no topo ou, durante a geração de um relatório, a lista de fundos escolhida na janela de download
 const casa = (termo, ...textos) => {
   if (st.destExtra && textos.some((x) => st.destExtra.has(String(x ?? "")))) return true;
-  const t = termo.trim().toLowerCase(); if (!t) return false;
+  const t = semAcento(termo).trim(); if (!t) return false;
   const dig = t.replace(/\D/g, "");
-  return textos.some((x) => { x = String(x ?? ""); return x.toLowerCase().includes(t) || (dig.length >= 4 && x.replace(/\D/g, "").includes(dig)); });
+  return textos.some((x) => { x = String(x ?? ""); return contemTexto(x, t) || (dig.length >= 4 && x.replace(/\D/g, "").includes(dig)); });
 };
 
 // ---------- ordenação por clique no título: 1º clique ordena (maior primeiro; A→Z em textos), 2º inverte, 3º volta ao padrão
@@ -1964,7 +1970,6 @@ document.addEventListener("click", (e) => {
 // ============================== caixa de escolha com busca (combo) ==============================
 // Usada em "Relativa a", no benchmark da janela móvel e na carteira. Digite para filtrar; ↑ ↓ Enter escolhem; Esc fecha.
 const combos = {};
-const semAcento = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const LIMITE_COMBO = 80;
 function criarCombo(id, { opcoes, aoEscolher, placeholder = "Digite para buscar…", limpar = false }) {
   const el = $("#" + id); if (!el) return;
@@ -3692,7 +3697,8 @@ document.addEventListener("change", (e) => { if (e.target.id === "grossUp") { st
 // ao entrar ou sair: aplica as cotas, mostra/esconde as colunas e avisa se é preciso recalcular
 function aplicarDadosEquipe() {
   st._xpMemo = null;
-  for (const f of st.lista) { f._buscaBase ??= f._busca; const n = st.xp && ofertaXP(f.CNPJ)?.NAME; f._busca = n ? `${f._buscaBase} ${String(n).toUpperCase()}` : f._buscaBase; }
+  for (const f of st.lista) { f._buscaBase ??= f._busca; const n = st.xp && ofertaXP(f.CNPJ)?.NAME; f._busca = n ? `${f._buscaBase} ${String(n).toUpperCase()}` : f._buscaBase;
+    delete f._buscaSA; delete f._buscaN; }                    // as chaves de busca sem acento são refeitas com o nome da XP
   D.definirCotasExtras(st.xp ? cotasXP() : null);
   $("#guBox").hidden = !st.xp; if (!st.xp) { st.grossUp = false; $("#grossUp").checked = false; }
   if (st.ctx) renderMetricas();
