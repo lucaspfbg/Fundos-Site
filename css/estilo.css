@@ -1383,3 +1383,7 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .xf-extras li .lk-fundo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xf-extras li small { grid-column: 1; color: var(--sub); }
 .xf-extras li button { grid-column: 2; grid-row: 1 / span 2; }
+
+/* carteira: período que o cálculo usou de fato (e o motivo quando difere das datas escolhidas) */
+.cart-periodo { margin: 8px 0 4px; font-size: 13px; }
+.cart-periodo-aviso { padding: 6px 10px; border-left: 3px solid var(--ouro); border-radius: var(--r-sm); background: color-mix(in srgb, var(--ouro) 10%, var(--card)); color: var(--txt); }

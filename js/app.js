@@ -53,7 +53,8 @@ function cartSegura(c) {
   const r = c.ref?.tipo === "n" ? { tipo: "n", v: "" } : ativoSeguro(c.ref);
   return { itens: (Array.isArray(c.itens) ? c.itens : []).map(ativoSeguro).filter(Boolean),
     ref: r ? { tipo: r.tipo, v: r.v, rot: txtSeguro(c.ref.rot) || (r.tipo === "i" ? nomeIndice(r.v) : cnpjFmt(r.v)) } : { tipo: "i", v: "CDI", rot: "CDI" },
-    rebal: [0, 1, 3, 6, 12].includes(Number(c.rebal)) ? Number(c.rebal) : 0, valor: Math.max(0, numSeguro(c.valor, 10000)), ini: dataSegura(c.ini), fim: dataSegura(c.fim) };
+    rebal: [0, 1, 3, 6, 12].includes(Number(c.rebal)) ? Number(c.rebal) : 0, valor: Math.max(0, numSeguro(c.valor, 10000)), ini: dataSegura(c.ini), fim: dataSegura(c.fim),
+    perMeses: [12, 24, 36, 60].includes(Number(c.perMeses)) ? Number(c.perMeses) : 0 };
 }
 // tipo de cálculo: só métricas que existem, pesos numéricos, grupos conhecidos, índice conhecido e período em meses
 function modeloSeguro(M) {
@@ -2124,6 +2125,8 @@ function renderCarteira() {
   if (!st.idx) return;
   $("#secCart").hidden = false;
   const c = st.cart;
+  // período escolhido numa pílula ("12 meses"…): as datas andam junto com a base (últimos N meses até a cota mais recente)
+  if (c.perMeses) { const f = fimBase(), ini = isoDe(somarMeses(f, -c.perMeses)), fim = isoDe(f); if (c.ini !== ini || c.fim !== fim) { c.ini = ini; c.fim = fim; salvarCart(); } }
   if (!c.ini || !c.fim) usarPeriodoAtivo(false);
   $("#cartRebal").value = String(c.rebal); $("#cartValor").value = c.valor; $("#cartIni").value = c.ini; $("#cartFim").value = c.fim; marcarPeriodoCart();
   $("#cartJmMeses").value = st.cartUI.jmMeses;
@@ -2158,7 +2161,7 @@ function marcarPeriodoCart() {
 function usarPeriodoAtivo(recalcular = true) {
   const c = st.cart, ctx = st.ctx;
   const fim = ctx ? ctx.dFim : fimBase(), ini = ctx ? ctx.dIni : somarMeses(fim, -36);
-  c.ini = isoDe(ini); c.fim = isoDe(fim); salvarCart();
+  c.ini = isoDe(ini); c.fim = isoDe(fim); c.perMeses = 0; salvarCart();
   if (recalcular) renderCarteira();
 }
 
@@ -2195,6 +2198,19 @@ function calcularCarteira() {
   calcularCartJM(); renderCartJM();
 }
 
+// período calculado: a simulação só começa quando todos os ativos têm cotas e termina na última cota comum,
+// então pode começar depois do "De" (ativo mais novo) ou terminar antes do "Até" (ativo com cota mais antiga)
+function periodoCartHTML() {
+  const R = st.cartRes, c = st.cart; if (!R) return "";
+  const ini = diaDe(new Date(c.ini)), fim = diaDe(new Date(c.fim)), nome = (k) => `<b>${esc(R.nomes[k])}</b>`;
+  const prim = R.ativos.map((a) => a.s.d[0]), ult = R.ativos.map((a) => a.s.d[a.s.d.length - 1]);
+  const kIni = prim.indexOf(Math.max(...prim)), kFim = ult.indexOf(Math.min(...ult));
+  const motivos = [];
+  if (prim[kIni] > ini) motivos.push(`começa depois de ${fmtData(ini)} porque ${nome(kIni)} só tem cotas desde ${fmtData(prim[kIni])}`);
+  if (fim - ult[kFim] > 7) motivos.push(`termina antes de ${fmtData(fim)} porque a última cota de ${nome(kFim)} é de ${fmtData(ult[kFim])}`);
+  return `<p class="nota cart-periodo${motivos.length ? " cart-periodo-aviso" : ""}">Período calculado: <b>${fmtData(R.d0)} a ${fmtData(R.dN)}</b> (${br(R.sim.dias.length, 0)} dias úteis)` +
+    (motivos.length ? ` · ${motivos.join("; ")}.` : "") + `</p>`;
+}
 // ---------- resumo: indicadores e a tabela de ativos (ordenável pelo título; as linhas de totais ficam no fim)
 function renderCartResumo() {
   const R = st.cartRes; if (!R) return;
@@ -2210,7 +2226,7 @@ function renderCartResumo() {
     kpi("Volatilidade (ao ano)", brPct(eT.vol)) + kpi("Índice de Sharpe", eT.sharpe == null ? "–" : br(eT.sharpe, 2), corSinal(eT.sharpe)) +
     kpi("Máxima queda", brPct(eT.mdd), corSinal(eT.mdd)) +
     kpi("Meses positivos", eT.mesesPos == null ? "–" : `${br(eT.mesesPos * 100, 0)}% de ${eT.nMeses}`) +
-    kpi("Melhor / pior mês", `${brPct(eT.melhorMes)} / ${brPct(eT.piorMes)}`) + `</div>`;
+    kpi("Melhor / pior mês", `${brPct(eT.melhorMes)} / ${brPct(eT.piorMes)}`) + `</div>` + periodoCartHTML();
   const maxC = Math.max(1e-9, ...sim.contrib.map(Math.abs));
   const celP = (v) => `<td style="${corSinal(v)}">${brPct(v)}</td>`;
   const nomeFx = (txt) => `<td class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px" title="${esc(txt.replace(/<[^>]+>/g, ""))}">${txt}</td>`;
@@ -2238,12 +2254,9 @@ function renderCartResumo() {
     (eBH ? linhaE("cart-ref", "Mesma carteira sem rebalancear", eBH, "100%") +
       `<tr class="cart-ref ef">${nomeFx(`Efeito do rebalanceamento ${REBAL[rebal]}`)}<td></td><td style="${corSinal(eT.total - eBH.total)}">${pp(eT.total - eBH.total)}</td><td colspan="5"></td></tr>` : "") +
     `</tbody></table></div>`;
-  const avisos = [];
-  if (sim.cortadoIni) avisos.push(`começa em ${fmtData(d0)} porque algum ativo não tem dado antes disso`);
-  if (sim.cortadoFim) avisos.push(`termina em ${fmtData(dN)}, último dia com dado de ${esc(sim.limitante)}`);
-  if (simRef && simRef.dias[simRef.dias.length - 1] < dN) avisos.push(`a referência só tem dado até ${fmtData(simRef.dias[simRef.dias.length - 1])}`);
-  h += `<p class="nota">Período: ${fmtData(d0)} a ${fmtData(dN)} (${sim.dias.length} dias úteis)${avisos.length ? "; " + avisos.join("; ") : ""}.
-    Contribuição = quanto cada ativo gerou de resultado sobre o valor inicial, considerando o peso que ele tinha a cada dia; a soma é o retorno da carteira.
+  // o período calculado (e por que difere das datas escolhidas) fica na linha logo abaixo dos indicadores
+  const refCurta = simRef && simRef.dias[simRef.dias.length - 1] < dN ? `A referência só tem dado até ${fmtData(simRef.dias[simRef.dias.length - 1])}. ` : "";
+  h += `<p class="nota">${refCurta}Contribuição = quanto cada ativo gerou de resultado sobre o valor inicial, considerando o peso que ele tinha a cada dia; a soma é o retorno da carteira.
     Sharpe sobre o CDI do mesmo período. Não considera impostos, taxas de saída nem prazos de resgate.</p>`;
   res.innerHTML = h;
 }
@@ -2421,7 +2434,7 @@ document.addEventListener("change", (e) => {
   const t = e.target, c = st.cart;
   if (t.id === "cartRebal") { c.rebal = Number(t.value); salvarCart(); calcularCarteira(); }
   else if (t.id === "cartValor") { c.valor = Math.max(0, Number(t.value) || 0); salvarCart(); calcularCarteira(); }
-  else if (t.id === "cartIni" || t.id === "cartFim") { c[t.id === "cartIni" ? "ini" : "fim"] = t.value; salvarCart(); marcarPeriodoCart(); if (c.ini && c.fim) calcularCarteira(); }
+  else if (t.id === "cartIni" || t.id === "cartFim") { c[t.id === "cartIni" ? "ini" : "fim"] = t.value; c.perMeses = 0; salvarCart(); marcarPeriodoCart(); if (c.ini && c.fim) calcularCarteira(); }
   else if (t.id === "cartRelOn") { st.cartUI.rel.on = t.checked; semZoom("gCartEvol"); renderCartAcum(); }
   else if (t.id === "cartJmMeses") st.cartUI.jmMeses = Math.max(1, Math.min(240, Number(t.value) || 12));
   else if (t.id === "cartJmIni" || t.id === "cartJmFim") st.cartUI[t.id === "cartJmIni" ? "jmIni" : "jmFim"] = t.value;
@@ -2443,7 +2456,7 @@ document.addEventListener("click", (e) => {
   }
   else if (t.id === "cartLimpar") { if (c.itens.length && !confirm("Tirar todos os ativos da carteira?")) return; c.itens = []; salvarCart(); renderCarteira(); }
   else if (t.id === "cartPeriodo") usarPeriodoAtivo(true);
-  else if (t.closest?.("#cartPers [data-cm]")) { const fim = fimBase(); c.fim = isoDe(fim); c.ini = isoDe(somarMeses(fim, -Number(t.closest("[data-cm]").dataset.cm))); salvarCart(); renderCarteira(); }
+  else if (t.closest?.("#cartPers [data-cm]")) { c.perMeses = Number(t.closest("[data-cm]").dataset.cm); renderCarteira(); }     // renderCarteira acerta as datas e salva
   else if (t.closest?.("#cartRelModo button")) { st.cartUI.rel.modo = t.closest("button").dataset.m; semZoom("gCartEvol"); renderCartAcum(); }
   else if (t.closest?.("#cartRiscoEixo button")) { st.cartUI.eixo = t.closest("button").dataset.e; delete st.ord.cartRisco; semZoom("gCartRR"); renderCartRisco(); }
   else if (t.id === "cartJmAtualizar") {
