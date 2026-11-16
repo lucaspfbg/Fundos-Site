@@ -2230,22 +2230,13 @@ function renderCartResumo() {
   const maxC = Math.max(1e-9, ...sim.contrib.map(Math.abs));
   const celP = (v) => `<td style="${corSinal(v)}">${brPct(v)}</td>`;
   const nomeFx = (txt) => `<td class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px" title="${esc(txt.replace(/<[^>]+>/g, ""))}">${txt}</td>`;
-  const o = st.ord.cartAtivos;
-  const linhasO = validos.map((it, k) => ({ k, nome: nomeItem(it), peso: pesos[k], total: eA[k].total, anual: eA[k].anual, vol: eA[k].vol, sharpe: eA[k].sharpe, mdd: eA[k].mdd, contrib: sim.contrib[k] }));
-  const colsO = ["nome", "peso", "total", "anual", "vol", "sharpe", "mdd", "contrib"].map((ch) => ({ chave: ch, tipo: ch === "nome" ? "txt" : "pct" }));
-  const ordemA = ordenar(linhasO, "cartAtivos", colsO).map((r) => r.k);
-  const thO = (col, rot, extra = "") => { const at = o && o.col === col;
-    return `<th${extra}${at ? ` aria-sort="${o.dir > 0 ? "ascending" : "descending"}"` : ""}><button class="ord" type="button" data-ord="cartAtivos" data-col="${col}" data-txt="${col === "nome" ? 1 : 0}" title="Ordenar">${rot}${at ? (o.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`; };
-  const linhasA = ordemA.map((k) => { const it = validos[k]; return `<tr>${nomeFx(`<span class="sw${it.tipo === "i" ? " losango" : ""}" style="background:${corItem(it)}"></span>` +
-      (it.tipo === "f" ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(it.v)}">${esc(nomeItem(it))}</span>` : esc(nomeItem(it))))}
-    <td>${br(pesos[k] * 100, 1)}%</td>${celP(eA[k].total)}${celP(eA[k].anual)}<td>${brPct(eA[k].vol)}</td><td style="${corSinal(eA[k].sharpe)}">${eA[k].sharpe == null ? "–" : br(eA[k].sharpe, 2)}</td>
-    ${celP(eA[k].mdd)}<td class="contrib"><b style="${corSinal(sim.contrib[k])}">${brPct(sim.contrib[k])}</b>
-    <span class="minibar"><i class="${sim.contrib[k] >= 0 ? "up" : "down"}" style="width:${(Math.abs(sim.contrib[k]) / maxC * 50).toFixed(1)}%"></i></span></td></tr>`; }).join("");
+  // 1) a carteira inteira (e a referência / o efeito do rebalanceamento): sempre à vista, numa tabela curta
   const linhaE = (cls, rot, e, extra = "") => `<tr class="${cls}">${nomeFx(rot)}<td>${extra}</td>${celP(e.total)}${celP(e.anual)}<td>${brPct(e.vol)}</td>
     <td style="${corSinal(e.sharpe)}">${e.sharpe == null ? "–" : br(e.sharpe, 2)}</td>${celP(e.mdd)}<td></td></tr>`;
   const somaC = sim.contrib.reduce((a, b) => a + b, 0);
-  h += `<div class="tb-wrap"><table class="tb cart-tab"><thead><tr>${thO("nome", "Ativo", ' class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px"')}${thO("peso", "Peso")}${thO("total", "Retorno")}${thO("anual", "Ao ano")}
-    ${thO("vol", "Volatilidade")}${thO("sharpe", "Sharpe")}${thO("mdd", "Máx. queda")}${thO("contrib", "Contribuição para o retorno")}</tr></thead><tbody>${linhasA}
+  const th = (rot, extra = "") => `<th${extra}><span class="th-txt">${rot}</span></th>`;
+  h += `<div class="tb-wrap"><table class="tb cart-tab"><thead><tr>${th("Carteira", ' class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px"')}${th("Peso")}${th("Retorno")}${th("Ao ano")}
+    ${th("Volatilidade")}${th("Sharpe")}${th("Máx. queda")}${th("Contribuição para o retorno")}</tr></thead><tbody>
     <tr class="cart-total">${nomeFx(`Carteira${rebal ? ` (rebalanceamento ${REBAL[rebal]})` : " (comprar e manter)"}`)}<td>100%</td>${celP(eT.total)}${celP(eT.anual)}
       <td>${brPct(eT.vol)}</td><td style="${corSinal(eT.sharpe)}">${eT.sharpe == null ? "–" : br(eT.sharpe, 2)}</td>${celP(eT.mdd)}<td style="${corSinal(somaC)}"><b>${brPct(somaC)}</b></td></tr>` +
     (eRef ? linhaE("cart-ref", `Referência: ${esc(c.ref.rot)}`, eRef) +
@@ -2254,6 +2245,21 @@ function renderCartResumo() {
     (eBH ? linhaE("cart-ref", "Mesma carteira sem rebalancear", eBH, "100%") +
       `<tr class="cart-ref ef">${nomeFx(`Efeito do rebalanceamento ${REBAL[rebal]}`)}<td></td><td style="${corSinal(eT.total - eBH.total)}">${pp(eT.total - eBH.total)}</td><td colspan="5"></td></tr>` : "") +
     `</tbody></table></div>`;
+  // 2) cada ativo: a mesma tabela das métricas (ordena pelo título, filtra no topo, rola com poucas linhas à vista)
+  const linhasO = validos.map((it, k) => ({ k, Fundo: nomeItem(it), peso: pesos[k], total: eA[k].total, anual: eA[k].anual, vol: eA[k].vol, sharpe: eA[k].sharpe, mdd: eA[k].mdd, contrib: sim.contrib[k] }));
+  const colsO = [
+    { chave: "Fundo", nome: "Ativo", tipo: "txt", html: (v, l) => { const it = validos[l.k];
+      return `<span class="sw${it.tipo === "i" ? " losango" : ""}" style="background:${corItem(it)}"></span>` +
+        (it.tipo === "f" ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(it.v)}">${esc(v)}</span>` : esc(v)); } },
+    { chave: "peso", nome: "Peso", tipo: "pct", html: (v) => `${br(v * 100, 1)}%` },
+    { chave: "total", nome: "Retorno", tipo: "pct", cor: true }, { chave: "anual", nome: "Ao ano", tipo: "pct", cor: true },
+    { chave: "vol", nome: "Volatilidade", tipo: "pct" }, { chave: "sharpe", nome: "Sharpe", tipo: "num2", cor: true },
+    { chave: "mdd", nome: "Máx. queda", tipo: "pct", cor: true },
+    { chave: "contrib", nome: "Contribuição para o retorno", tipo: "pct", html: (v) => `<b style="${corSinal(v)}">${brPct(v)}</b>` +
+      `<span class="minibar"><i class="${v >= 0 ? "up" : "down"}" style="width:${(Math.abs(v) / maxC * 50).toFixed(1)}%"></i></span>` },
+  ];
+  h += `<h4 class="cart-ativos-tit">Ativos <small class="nota">(${validos.length})</small></h4><div class="cart-ativos">` +
+    tabelaHTML({ colunas: colsO, linhas: ordenar(linhasO, "cartAtivos", colsO), fixas: 1, larguras: [240], ordenavel: "cartAtivos", altura: 330 }) + `</div>`;
   // o período calculado (e por que difere das datas escolhidas) fica na linha logo abaixo dos indicadores
   const refCurta = simRef && simRef.dias[simRef.dias.length - 1] < dN ? `A referência só tem dado até ${fmtData(simRef.dias[simRef.dias.length - 1])}. ` : "";
   h += `<p class="nota">${refCurta}Contribuição = quanto cada ativo gerou de resultado sobre o valor inicial, considerando o peso que ele tinha a cada dia; a soma é o retorno da carteira.

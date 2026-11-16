@@ -1387,3 +1387,7 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 /* carteira: período que o cálculo usou de fato (e o motivo quando difere das datas escolhidas) */
 .cart-periodo { margin: 8px 0 4px; font-size: 13px; }
 .cart-periodo-aviso { padding: 6px 10px; border-left: 3px solid var(--ouro); border-radius: var(--r-sm); background: color-mix(in srgb, var(--ouro) 10%, var(--card)); color: var(--txt); }
+
+/* carteira: tabela dos ativos (a mesma das métricas: ordena, filtra e rola) logo abaixo da tabela curta da carteira */
+.cart-ativos-tit { margin: 14px 0 6px; font-size: 14px; }
+.cart-ativos td:last-child { min-width: 150px; }
