@@ -1426,6 +1426,8 @@ const rotulos = { id: "rotulos", afterDatasetsDraw(ch) {
   ctx.restore(); } };
 
 // linhas no tempo. s.bench = tracejada; s.fraca = fina e clara (ativos da carteira); s.forte = grossa (carteira)
+// faixa vazia no alto de cada gráfico com zoom: a lupa e os botões "Voltar"/"Ver tudo" ficam nela, sem cobrir linhas, pontos ou rótulos
+const FAIXA_ZOOM = 30;
 function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax, tituloX = fmtData } = {}) {
   const algum = series.some((s) => !s.bench && !s.forte && casa(st.destaque, s.nome, ...(s.busca || [])));
   const datasets = series.map((s) => {
@@ -1452,7 +1454,7 @@ function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax
   st.graficos[id] = new Chart($("#" + id), {
     type: "line", data: { datasets },
     options: {
-      parsing: false, normalized: true, animation: false, responsive: true, maintainAspectRatio: false,
+      parsing: false, normalized: true, animation: false, responsive: true, maintainAspectRatio: false, layout: { padding: { top: FAIXA_ZOOM } },
       interaction: { mode: "nearest", intersect: false, axis: "xy" },
       plugins: {
         legend: { display: false }, linhaRef: { y: ref },
@@ -1516,6 +1518,7 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
     type: "scatter",
     data: { datasets },
     options: {
+      layout: { padding: { top: FAIXA_ZOOM } },
       // clique numa bolha de fundo abre o painel dele (como clicar no nome); não vale logo depois de um zoom nem com a lupa ligada
       onClick: (ev, els, ch) => {
         const cv = ch.canvas, d = cv._apertou, n = ev.native;
