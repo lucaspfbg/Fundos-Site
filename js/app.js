@@ -2861,7 +2861,21 @@ function blocosRel(k) {
 const dataJs = (dia) => new Date(dia * 86400000);
 
 // a fonte padrão do PDF só tem os caracteres latinos básicos
-const pdfTxt = (s) => String(s ?? "").replace(/−/g, "-").replace(/[–—]/g, "-").replace(/★/g, "*").replace(/⊘/g, "(!)").replace(/▲/g, "+").replace(/▼/g, "-")
+// símbolos da tela nos relatórios: a coluna diz o tipo (sim) e a célula ganha a mesma cor do site; selo = fundo colorido
+function estiloCel(b, r, j) {
+  const c = b.colunas[j], v = b.linhas[r]?.[j]; if (!c?.sim || v == null || v === "") return null;
+  switch (c.sim) {
+    case "inv": return { IG: { fundo: "#087040", cor: "#ffffff" }, IQ: { fundo: "#f0b400", cor: "#2a1f00" }, IP: { fundo: "#b35000", cor: "#ffffff" } }[v] || null;
+    case "capt": return v === "Aberto" ? { cor: "#087040" } : v === "Fechado" ? { cor: "#c4222a" } : null;
+    case "simNao": return /^Sim/.test(v) ? { cor: "#087040" } : null;
+    case "var": return /^▲/.test(v) ? { cor: "#087040" } : /^▼/.test(v) ? { cor: "#b81f25" } : v === "novo" ? { cor: "#0b6a9a" } : { cor: "#6b7280" };
+    case "risco": { const f = faixaRisco(b.xpQ?.[r]?._riscoDesc);
+      return f === "rb" ? { fundo: "#087040", cor: "#ffffff" } : f === "rm" ? { fundo: "#f2c200", cor: "#2a2200" } : f === "ra" ? { fundo: "#c4222a", cor: "#ffffff" } : null; }
+  }
+  return null;
+}
+const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const pdfTxt = (s) => String(s ?? "").replace(/−/g, "-").replace(/▬/g, "=").replace(/[–—]/g, "-").replace(/★/g, "*").replace(/⊘/g, "(!)").replace(/▲/g, "+").replace(/▼/g, "-")
   .replace(/…/g, "...").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/≈/g, "~").replace(/[^\x00-\xFF]/g, "");
 const cabecalhoRel = () => {
   const m = st.meta, n = st.res?.sel.length || 0;
@@ -2926,7 +2940,9 @@ async function gerarPDF(partes, prog) {
             if (cl) { d.cell.styles.fillColor = [parseInt(cl.slice(1, 3), 16), parseInt(cl.slice(3, 5), 16), parseInt(cl.slice(5, 7), 16)]; d.cell.styles.fontStyle = "bold"; }
             if (d.section === "body" && b._dest?.[d.row.index]) { d.cell.styles.fillColor = [255, 236, 179]; d.cell.styles.fontStyle = "bold"; }
             const v = b.linhas[d.row.index]?.[d.column.index];
-            if (d.section === "body" && b.colunas[d.column.index]?.tipo === "pct" && typeof v === "number") d.cell.styles.textColor = v > 0 ? [12, 138, 78] : v < 0 ? [208, 38, 44] : [40, 40, 40]; } });
+            if (d.section === "body" && b.colunas[d.column.index]?.tipo === "pct" && typeof v === "number") d.cell.styles.textColor = v > 0 ? [12, 138, 78] : v < 0 ? [208, 38, 44] : [40, 40, 40];
+            const es = d.section === "body" && estiloCel(b, d.row.index, d.column.index);
+            if (es) { d.cell.styles.fontStyle = "bold"; if (es.cor) d.cell.styles.textColor = hexRgb(es.cor); if (es.fundo) { d.cell.styles.fillColor = hexRgb(es.fundo); d.cell.styles.halign = "center"; } } } });
         y = doc.lastAutoTable.finalY + 6;
         if (lado) {
           const lw = Math.min(W - 2 * M - largTab - 10, 75), lh = Math.min(lw * lado.h / lado.w, 58), lw2 = lh * lado.w / lado.h;
@@ -2961,6 +2977,10 @@ function htmlParte(p) {
       const lin = b.linhas.slice(0, LIMITE_LINHAS_PNG);
       h += `<h3>${esc(b.nome)}</h3><table><thead><tr>${b.colunas.map((c, j) => `<th class="${j === 0 || c.tipo === "txt" ? "t" : ""}"><div class="rc rc-cab">${esc(cab3(c.nome, 15))}</div></th>`).join("")}</tr></thead><tbody>${lin.map((l, li) => `<tr${linhaDestacada(l) ? ' class="dest"' : ""}${b.corLinha?.[li] ? ` style="--fundo-linha:${b.corLinha[li]}" data-cor-linha="1"` : ""}>${l.map((v, j) => {
         const t = b.colunas[j].tipo, cor = t === "pct" && typeof v === "number" ? (v > 0 ? "color:#087040" : v < 0 ? "color:#b81f25" : "") : "";
+        const es = estiloCel(b, li, j);
+        if (es) { const txt = esc(cab3(fmtCel(v, t), 22));        // símbolo da tela: selo colorido (investidor, risco) ou texto colorido
+          return `<td class="${t === "txt" ? "t" : ""}" style="font-weight:800;${es.fundo ? "text-align:center" : `color:${es.cor}`}">${es.fundo
+            ? `<span style="display:inline-block;min-width:22px;padding:1px 6px;border-radius:5px;background:${es.fundo};color:${es.cor}">${txt}</span>` : txt}</td>`; }
         // textos: caixa com largura máxima (o navegador ignora max-width direto na célula) e no máximo 3 linhas
         return t === "txt" ? `<td class="t"><div class="rc${j === 0 ? " rc-nome" : ""}">${esc(cab3(fmtCel(v, t), j === 0 ? 30 : 22))}</div></td>`
           : `<td style="${cor}">${esc(fmtCel(v, t))}</td>`; }).join("")}</tr>`).join("")}</tbody></table>` +
@@ -3022,6 +3042,11 @@ async function gerarExcel(partes, prog, comImagens) {
         const cl = b.corLinha?.[r];
         if (cl) { row.font = { bold: true }; row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + cl.slice(1).toUpperCase() } }; }); }
         if (marcar && linhaDestacada(b.linhas[r])) { row.font = { bold: true }; row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFECB3" } }; }); }
+        if (!b.bruto) for (let j = 0; j < b.colunas.length; j++) {     // símbolos da tela: a mesma cor do site
+          const es = b.colunas[j].sim && estiloCel(b, r, j); if (!es) continue;
+          const cel = row.getCell(j + 1); cel.font = { bold: true, color: { argb: "FF" + es.cor.slice(1).toUpperCase() } };
+          if (es.fundo) { cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + es.fundo.slice(1).toUpperCase() } }; cel.alignment = { horizontal: "center" }; }
+        }
         if (r % 4000 === 3999) await pausa();
       }
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: b.colunas.length } };
@@ -3934,13 +3959,14 @@ function colunasXPRel() {
   if (!st.xp) return [];
   const pct = (v) => (typeof v === "number" ? v / 100 : null);
   return [
-    { nome: "Nome comercial (XP)", tipo: "txt", v: (q) => q["XP Nome"] ?? "" }, { nome: "Investidor", tipo: "txt", v: (q) => q.Investidor ?? "" },
-    { nome: "Captação", tipo: "txt", v: (q) => q["Captação"] ?? "" }, { nome: "Dinheiro novo", tipo: "txt", v: (q) => (q._dinheiroNovo == null ? "" : q._dinheiroNovo || "Sim") },
-    { nome: "Isento de IR (PF)", tipo: "txt", v: (q) => q.Isento ?? "" },
+    { nome: "Nome comercial (XP)", tipo: "txt", v: (q) => q["XP Nome"] ?? "" }, { nome: "Investidor", tipo: "txt", sim: "inv", v: (q) => q.Investidor ?? "" },
+    { nome: "Captação", tipo: "txt", sim: "capt", v: (q) => q["Captação"] ?? "" },
+    { nome: "Dinheiro novo", tipo: "txt", sim: "simNao", v: (q) => (q._dinheiroNovo == null ? "Não" : q._dinheiroNovo ? `Sim: ${q._dinheiroNovo}` : "Sim") },
+    { nome: "Isento de IR (PF)", tipo: "txt", sim: "simNao", v: (q) => (q.Isento ? "Sim" : "Não") },
     { nome: "Cotização do resgate", tipo: "txt", v: (q) => q["Cotização"] ?? "" }, { nome: "Liquidação do resgate", tipo: "txt", v: (q) => q["Liquidação"] ?? "" },
     { nome: "Classificação XP", tipo: "txt", v: (q) => q["Classificação XP"] ?? "" }, { nome: "Taxa de adm.", tipo: "pct", v: (q) => pct(q["Taxa adm."]) },
     { nome: "Taxa de perf.", tipo: "pct", v: (q) => pct(q["Taxa perf."]) }, { nome: "ROA", tipo: "pct", v: (q) => pct(q.ROA) },
-    { nome: "Risco XP", tipo: "int", v: (q) => q.Risco ?? null }, { nome: "Aplicação mínima", tipo: "valor", v: (q) => q["Aplicação mín."] ?? null },
+    { nome: "Risco XP", tipo: "int", sim: "risco", v: (q) => q.Risco ?? null }, { nome: "Aplicação mínima", tipo: "valor", v: (q) => q["Aplicação mín."] ?? null },
     { nome: "Tipo (XP)", tipo: "txt", v: (q) => q["Tipo XP"] ?? "" }, { nome: "Seguradora (previdência)", tipo: "txt", v: (q) => q.Seguradora ?? "" },
     { nome: "SUSEP PGBL", tipo: "txt", v: (q) => q["SUSEP PGBL"] ?? "" }, { nome: "SUSEP VGBL", tipo: "txt", v: (q) => q["SUSEP VGBL"] ?? "" },
     { nome: "Categoria XP", tipo: "txt", v: (q) => q.Categoria ?? "" }, { nome: "Gestora (XP)", tipo: "txt", v: (q) => q.Gestora ?? "" },
@@ -3958,8 +3984,9 @@ function colunasXPRel() {
 // acrescenta as colunas da XP a uma tabela do relatório; cnpjDe(i) dá o CNPJ da linha i (ou null para linhas sem fundo, como a carteira)
 function anexarXPRel(t, cnpjDe) {
   const cols = colunasXPRel(); if (!cols.length) return t;
-  return { ...t, colunas: [...t.colunas, ...cols.map(({ nome, tipo, soExcel }) => ({ nome, tipo, soExcel }))],
-    linhas: t.linhas.map((l, i) => { const c = cnpjDe(i), q = c ? camposXP(c) : {}; return [...l, ...cols.map((k) => (q._naXP ? k.v(q) : ""))]; }) };
+  const qs = t.linhas.map((_, i) => { const c = cnpjDe(i); return c ? camposXP(c) : {}; });
+  return { ...t, colunas: [...t.colunas, ...cols.map(({ nome, tipo, soExcel, sim }) => ({ nome, tipo, soExcel, sim }))], xpQ: qs,
+    linhas: t.linhas.map((l, i) => [...l, ...cols.map((k) => (qs[i]._naXP ? k.v(qs[i]) : ""))]) };
 }
 // PDF e PNG não levam colunas marcadas como "só Excel" (ex.: o link do Hub, longo demais para a página)
 function semColunasSoExcel(partes) {
@@ -5568,14 +5595,23 @@ function graficoPesosRk(M) {
 // ---------- partes do relatório (PDF, PNG e Excel)
 // enxuto (top 10 em PDF/PNG): com os dados da XP, segue o relatório de referência — classificação XP no lugar da CVM/ANBIMA,
 // público, captação, prazo de liquidação e aplicação mínima; o resto da XP fica na tela e no Excel completo
-const FORA_ENXUTO_XP = new Set(["cvm", "anbima", "XP Nome", "Taxa adm.", "Taxa perf.", "Risco"]);
+const FORA_ENXUTO_XP = new Set(["cvm", "anbima", "XP Nome", "Taxa adm.", "Taxa perf."]);
 function linhasRelRk(R, lista, enxuto = false) {
   const cols = colunasRk(R).filter((c) => !["perf", "cons", "risco"].includes(c.chave)       // com login, tudo vai junto (inclusive o ROA)
     && !(enxuto && st.xp && FORA_ENXUTO_XP.has(c.chave)));
   const PCT_XP = new Set(["Taxa adm.", "Taxa perf.", "ROA"]);       // na planilha da XP 0,4 = 0,4%: nos relatórios vira percentual de verdade
-  return { chaves: cols.map((c) => c.chave), colunas: cols.map((c) => ({ nome: c.nome, tipo: c.chave === "pl" || c.chave === "capt" ? "valor" : c.chave === "var" ? "txt" : PCT_XP.has(c.chave) ? "pct" : c.tipo })),
-    linhas: lista.map((x) => { const l = linhaRk(R, x);
+  // dinheiro novo: na tela é um ícone junto do cadeado; no relatório, coluna própria logo depois da captação
+  const iCapt = cols.findIndex((c) => c.chave === "Captação");
+  if (iCapt >= 0) cols.splice(iCapt + 1, 0, { chave: "_dn", nome: "Dinheiro novo", tipo: "txt" });
+  const SIM_RK = { var: "var", Investidor: "inv", "Captação": "capt", Isento: "simNao", _dn: "simNao", Risco: "risco" };
+  const ls = lista.map((x) => linhaRk(R, x));
+  return { chaves: cols.map((c) => c.chave), xpQ: st.xp ? ls : null,
+    colunas: cols.map((c) => ({ nome: c.chave === "Risco" ? "Risco XP" : c.nome, sim: SIM_RK[c.chave],
+      tipo: c.chave === "pl" || c.chave === "capt" ? "valor" : c.chave === "var" ? "txt" : PCT_XP.has(c.chave) ? "pct" : c.tipo })),
+    linhas: ls.map((l) => {
       return cols.map((c) => c.chave === "var" ? (l.var == null ? "novo" : l.var > 0 ? `▲ ${l.var}` : l.var < 0 ? `▼ ${-l.var}` : "▬ 0")
+        : c.chave === "Isento" ? (l._naXP ? (l.Isento ? "Sim" : "Não") : "")
+        : c.chave === "_dn" ? (l._naXP ? (l._dinheiroNovo != null ? "Sim" : "Não") : "")
         : c.chave === "pl" || c.chave === "capt" ? (typeof l[c.chave] === "number" ? l[c.chave] / 1e6 : null) : c.chave === "Fundo" ? (l.curto ? `${l.Fundo} (*)` : l.Fundo)
         : PCT_XP.has(c.chave) ? (typeof l[c.chave] === "number" ? l[c.chave] / 100 : null) : l[c.chave]); }) };
 }
@@ -5583,7 +5619,7 @@ function blocosRanking(k) {
   const L = st.rk.lista, B = [];
   const cab = (R) => `${R.nome} · ${R.M.nome} · ${R.ordem.length} fundos analisados · métricas de ${R.M.periodo.toLowerCase()} até ${fmtData(R.fim)}`;
   if (k === "rkTop") {
-    const LARG = { pos: 7, var: 10, Fundo: 52, total: 13, cvm: 17, anbima: 30, "Classificação XP": 24, Investidor: 11, "Captação": 13, "Isento": 10, "Resgate": 22, "ROA": 11, "Aplicação mín.": 14 };
+    const LARG = { pos: 7, var: 10, Fundo: 50, total: 13, cvm: 17, anbima: 30, "Classificação XP": 24, Investidor: 9, "Captação": 12, _dn: 11, "Isento": 9, Risco: 9, "Resgate": 20, "ROA": 11, "Aplicação mín.": 14 };
     for (const R of L) { const { chaves, ...t } = linhasRelRk(R, topRk(R), true);
       const larguras = Object.fromEntries(chaves.map((k, i) => [i, LARG[k]]).filter(([, w]) => w));
       B.push({ tipo: "tabela", nome: cab(R), aba: `${R.nome} - top ${TOP_RANK}`, pdfCompacto: larguras,
@@ -5594,7 +5630,7 @@ function blocosRanking(k) {
     for (const R of L) {
       const ks = GRUPOS_RANK.flatMap((g) => Object.keys(R.M.pesos).filter((x) => grupoMetrica(R.M, x) === g));
       const { chaves: _k, ...t } = linhasRelRk(R, R.ordem);
-      B.push({ tipo: "tabela", soExcel: true, nome: `${R.nome} - completo`, colunas: [...t.colunas, { nome: "Performance (pontos)", tipo: "num2" }, { nome: "Consistência (pontos)", tipo: "num2" },
+      B.push({ tipo: "tabela", soExcel: true, nome: `${R.nome} - completo`, xpQ: t.xpQ, colunas: [...t.colunas, { nome: "Performance (pontos)", tipo: "num2" }, { nome: "Consistência (pontos)", tipo: "num2" },
           { nome: "Risco (pontos)", tipo: "num2" }, ...ks.flatMap((x) => [{ nome: `${metricaRank(x).nome}: valor`, tipo: metricaRank(x).tipo },
             { nome: `${metricaRank(x).nome}: nota (0 a 1)`, tipo: "num" }, { nome: `${metricaRank(x).nome}: pontos (peso ${Math.abs(R.M.pesos[x])})`, tipo: "num2" }]),
           ...(st.xp ? [{ nome: "Link Hub", tipo: "txt", soExcel: true }] : [])],
