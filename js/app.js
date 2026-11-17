@@ -1300,6 +1300,17 @@ function colunasResumoMetricas() {
       dica: "Maior período, em dias, abaixo do pico anterior (underwater)", html: (v) => (typeof v === "number" ? br(v, 0) : "") });
   return cols;
 }
+// linhas da tabela de métricas como aparecem na tela (dados da XP, classificação, PL, gross up) e na ordem escolhida
+function linhasTelaMetricas(dados, colunas = colunasResumoMetricas()) {
+  const linhas = dados.linhas.map((l) => {
+    const x = st.xp ? { ...l, ...camposXP(l._c) } : { ...l };
+    x._classif = x["Classificação XP"] || l["Classificação ANBIMA"] || l["Classificação CVM"] || "";
+    x._pl = st.porCnpj.get(l._c)?.VL_PATRIM_LIQ ?? null; x._capt = l["Captação Líquida no Período"];
+    if (x["XP Nome"]) { x._nomeCVM = l.Fundo; x.Fundo = String(x["XP Nome"]).toLocaleUpperCase("pt-BR"); }   // nome da XP primeiro; o da CVM na dica
+    return st.xp ? aplicarGrossUp(x) : x;
+  });
+  return ordenar(linhas, "met", colunas);
+}
 function tabelaMetricas(dados) {
   const colunas = colunasResumoMetricas();
   const grupos = colunas.map((c) => c.g);
@@ -1311,14 +1322,7 @@ function tabelaMetricas(dados) {
     mx._selo = `<span class="selo up" title="Maior retorno no período">▲</span>`;
     mn._selo = `<span class="selo down" title="Menor retorno no período">▼</span>`;
   }
-  let linhas = dados.linhas.map((l) => {
-    const x = st.xp ? { ...l, ...camposXP(l._c) } : { ...l };
-    x._classif = x["Classificação XP"] || l["Classificação ANBIMA"] || l["Classificação CVM"] || "";
-    x._pl = st.porCnpj.get(l._c)?.VL_PATRIM_LIQ ?? null; x._capt = l["Captação Líquida no Período"];
-    if (x["XP Nome"]) { x._nomeCVM = l.Fundo; x.Fundo = String(x["XP Nome"]).toLocaleUpperCase("pt-BR"); }   // nome da XP primeiro; o da CVM na dica
-    return st.xp ? aplicarGrossUp(x) : x;
-  });
-  linhas = ordenar(linhas, "met", colunas);
+  let linhas = linhasTelaMetricas(dados, colunas);
   if (st.agrupar && CAMPOS_GRUPO[st.agrupar]) {
     linhas = agruparLinhas(linhas, "met", CAMPOS_GRUPO[st.agrupar], (m) => {
       const v = m.map((l) => l["% Acumulado"]).filter((x) => typeof x === "number");
@@ -2307,7 +2311,7 @@ function renderCartMetricas() {
     return x;
   });
   const ord = [...vis.filter((l) => l._cart), ...ordenar(vis.filter((l) => !l._cart), "cartMet", colunas)];
-  R.metricas = { colunas: colunasRel, linhas: ord };
+  R.metricas = { colunas: colunasRel, colunasTela: colunas, linhas: ord };
   $("#cartMetricas").innerHTML = tabelaHTML({ colunas, linhas: ord, fixas: st.xp ? 5 : 2, larguras: st.xp ? [80, 72, 48, 56, 240] : [240, 136],
     grupos: colunas.map((c) => c.g), ordenavel: "cartMet", destacar: ord.map((l) => !l._cart && casa(st.destaque, l.Fundo, l._nomeCVM)),
     classes: ord.map((l) => (l._cart ? "cart-total" : "")), altura: 420,
@@ -2627,6 +2631,35 @@ const linhaDestacada = (l) => !!st.destExtra && l.some((v) => typeof v === "stri
 // ---------- blocos de cada parte: títulos, imagens dos gráficos e tabelas completas (valores brutos + tipo)
 // tabela: { nome, colunas: [{ nome, tipo }], linhas: [[...]], soExcel?, nota? }
 const tipoCol = (t) => (t === "valor" ? "valor" : t);
+// ---------- relatório com as mesmas colunas da tabela da tela: mesma ordem, sem as escondidas em "Colunas";
+// símbolos (cadeado, selos de investidor e risco, isento, variação) viram texto com a cor do site
+const PCT_PLANILHA_XP = new Set(["Taxa adm.", "Taxa perf.", "ROA"]);      // na planilha da XP 0,4 = 0,4%: no relatório vira percentual
+const NOMES_REL = { _hubId: "Link Hub", "Captação": "Captação", Investidor: "Investidor", Risco: "Risco XP", pos: "Posição" };
+function colunaRel(c) {
+  const sim = { "Captação": "capt", Investidor: "inv", Risco: "risco", Isento: "simNao", var: "var" }[c.chave] || (c.cor && c.tipo !== "pct" ? "sinal" : undefined);
+  const tipo = PCT_PLANILHA_XP.has(c.chave) ? "pct" : c.chave === "var" || c.chave === "_hubId" ? "txt" : c.escala && c.tipo === "valor" ? "num2" : c.tipo;
+  return { nome: NOMES_REL[c.chave] || c.nome || c.nomeOculto || c.chave, tipo, sim, cor: !!c.cor, soExcel: c.chave === "_hubId" };
+}
+function valorRel(c, l) {
+  switch (c.chave) {
+    case "_hubId": return l._hubId ? URL_HUB(l._hubId) : "";
+    case "Captação": return l["Captação"] ? l["Captação"] + (l._dinheiroNovo != null ? " · dinheiro novo" : "") : "";
+    case "Isento": return l._naXP ? (l.Isento ? "Sim" : "Não") : "";
+    case "var": return l.var == null ? "novo" : l.var > 0 ? `▲ ${l.var}` : l.var < 0 ? `▼ ${-l.var}` : "▬ 0";
+    case "Fundo": return `${l.Fundo ?? ""}${l.curto ? " (*)" : ""}${l._parado ? ` (${String(l._parado.rot || "parado").toLowerCase()})` : ""}`;
+  }
+  if (PCT_PLANILHA_XP.has(c.chave)) return typeof l[c.chave] === "number" ? l[c.chave] / 100 : null;
+  const v = valorCol(c, l);
+  if (c.tipo === "txt") return c.html ? semTags(c.html(v, l)) : v == null ? "" : String(v);
+  if (typeof v !== "number") return v ?? null;
+  return c.escala && c.tipo === "valor" ? v * c.escala : v;
+}
+function tabelaDaTela(nome, tab, colunas, linhas) {
+  const oc = new Set(st.colsOcultas[tab] || []), cols = colunas.filter((c) => COLS_SEMPRE.has(c.chave) || !oc.has(c.chave));
+  const dados = linhas.filter((l) => l && !l._cab);
+  return { nome, chaves: cols.map((c) => c.chave), colunas: cols.map(colunaRel), linhas: dados.map((l) => cols.map((c) => valorRel(c, l))), xpQ: dados,
+    nomeCol: Math.max(0, cols.findIndex((c) => c.chave === "Fundo")) };
+}
 function imagemGrafico(id) {
   const g = st.graficos[id]; if (!g) return null;
   const c = g.canvas, out = document.createElement("canvas");
@@ -2649,9 +2682,10 @@ function tabelaDoGrafico(id, nome, tipo = "pct", rotuloX = "Data") {
 }
 function tabelaFinal(id, nome, extra) {      // valor no último dia de cada série (a legenda do gráfico, completa)
   const g = st.graficos[id]; if (!g) return null;
+  // mesmas colunas da legenda da tela: posição pelo valor final, fundo, final (e máxima queda no drawdown)
   const linhas = g.data.datasets.filter((d) => d.label !== "Zero").map((d) => [d.label, d.data.length ? d.data[d.data.length - 1].y : null, ...(extra ? [extra(d)] : [])])
-    .sort((a, b) => (b[1] ?? -Infinity) - (a[1] ?? -Infinity));
-  return { nome, colunas: [{ nome: "Fundo / série", tipo: "txt" }, { nome: "No fim do período", tipo: "pct" }, ...(extra ? [{ nome: "Máxima queda", tipo: "pct" }] : [])], linhas };
+    .sort((a, b) => (b[1] ?? -Infinity) - (a[1] ?? -Infinity)).map((l, i) => [i + 1, ...l]);
+  return { nome, nomeCol: 1, colunas: [{ nome: "#", tipo: "int" }, { nome: "Fundo", tipo: "txt" }, { nome: "Final", tipo: "pct" }, ...(extra ? [{ nome: "Máx. queda", tipo: "pct" }] : [])], linhas };
 }
 const minimoSerie = (d) => d.data.reduce((m, p) => Math.min(m, p.y), 0);
 function tabelaMatriz(nome, itens, m) {
@@ -2805,8 +2839,10 @@ function blocosRel(k) {
     case "met": {
       const cols = COLUNAS.map(([, n, t]) => ({ chave: n, nome: n, tipo: t }));
       for (const p of Object.keys(res.periodos)) { const L = res.periodos[p].linhas;
-        B.push({ tipo: "tabela", ...anexarXPRel(tabelaMetricasRel(`Métricas ${p}`, L, cols), (k) => L[k]._c) }); }
-      return { titulo: "Métricas", blocos: B, nota: "Uma tabela por período calculado." };
+        const { chaves: _k, ...t } = tabelaDaTela(`Métricas ${p}`, "met", colunasResumoMetricas(), linhasTelaMetricas(res.periodos[p]));
+        B.push({ tipo: "tabela", ...t },
+          { tipo: "tabela", soExcel: true, aba: `Métricas ${p} - todas`, ...anexarXPRel(tabelaMetricasRel(`Métricas ${p} - todas as métricas`, L, cols), (k) => L[k]._c) }); }
+      return { titulo: "Métricas", blocos: B, nota: "Uma tabela por período calculado, com as colunas da tabela da tela. No Excel, uma aba a mais com todas as métricas." };
     }
     case "acum": img("gAcum", "Rentabilidade acumulada"); B.push({ tipo: "tabela", ...tabelaFinal("gAcum", "Rentab. acumulada - final") }, { tipo: "tabela", ...tabelaDoGrafico("gAcum", "Rentab. acumulada - diária") });
       return { titulo: `Rentabilidade acumulada · ${per}${st.rel.on ? ` · relativa a ${st.rel.alvo} (${st.rel.modo === "dif" ? "diferença" : "% do alvo"})` : ""}`, blocos: B };
@@ -2837,7 +2873,9 @@ function blocosRel(k) {
         { nome: "Volatilidade", tipo: "pct" }, { nome: "Sharpe", tipo: "num2" }, { nome: "Máx. queda", tipo: "pct" }, { nome: "Contribuição", tipo: "pct" }], linhas: lin });
       return { titulo: "Carteira · resumo", blocos: B };
     }
-    case "cartMet": B.push({ tipo: "tabela", ...anexarXPRel(tabelaMetricasRel("Carteira - métricas", R.metricas.linhas.map((l) => ({ ...l, Fundo: String(st.xp ? l.Fundo : l._nomeCVM || l.Fundo) })), R.metricas.colunas), (k) => R.metricas.linhas[k]._c || null) });
+    case "cartMet": { const { chaves: _k, ...t } = tabelaDaTela("Carteira - métricas", "cartMet", R.metricas.colunasTela, R.metricas.linhas);
+      B.push({ tipo: "tabela", ...t }, { tipo: "tabela", soExcel: true, aba: "Carteira - todas as métricas",
+        ...anexarXPRel(tabelaMetricasRel("Carteira - todas as métricas", R.metricas.linhas.map((l) => ({ ...l, Fundo: String(st.xp ? l.Fundo : l._nomeCVM || l.Fundo) })), R.metricas.colunas), (k) => R.metricas.linhas[k]._c || null) }); }
       return { titulo: "Carteira · métricas", blocos: B };
     case "cartAcum": img("gCartEvol", "Carteira - rentabilidade"); B.push({ tipo: "tabela", ...tabelaFinal("gCartEvol", "Carteira - rentab. final") }, { tipo: "tabela", ...tabelaDoGrafico("gCartEvol", "Carteira - rentab. diária") });
       return { titulo: `Carteira · rentabilidade acumulada${st.cartUI.rel.on ? ` · relativa a ${st.cartUI.rel.alvo}` : ""}`, blocos: B };
@@ -2866,7 +2904,8 @@ function estiloCel(b, r, j) {
   const c = b.colunas[j], v = b.linhas[r]?.[j]; if (!c?.sim || v == null || v === "") return null;
   switch (c.sim) {
     case "inv": return { IG: { fundo: "#087040", cor: "#ffffff" }, IQ: { fundo: "#f0b400", cor: "#2a1f00" }, IP: { fundo: "#b35000", cor: "#ffffff" } }[v] || null;
-    case "capt": return v === "Aberto" ? { cor: "#087040" } : v === "Fechado" ? { cor: "#c4222a" } : null;
+    case "capt": return /^Aberto/.test(v) ? { cor: "#087040" } : /^Fechado/.test(v) ? { cor: "#c4222a" } : null;
+    case "sinal": return typeof v !== "number" ? null : v > 0 ? { cor: "#087040", leve: true } : v < 0 ? { cor: "#b81f25", leve: true } : null;
     case "simNao": return /^Sim/.test(v) ? { cor: "#087040" } : null;
     case "var": return /^▲/.test(v) ? { cor: "#087040" } : /^▼/.test(v) ? { cor: "#b81f25" } : v === "novo" ? { cor: "#0b6a9a" } : { cor: "#6b7280" };
     case "risco": { const f = faixaRisco(b.xpQ?.[r]?._riscoDesc);
@@ -2932,7 +2971,7 @@ async function gerarPDF(partes, prog) {
             : { fontSize: 6.5, cellPadding: 1.2, overflow: "linebreak", minCellWidth: 15, lineColor: [221, 226, 239], lineWidth: 0.1 },
           headStyles: { fillColor: [43, 44, 120], textColor: 255, fontStyle: "bold", fontSize: b.pdfCompacto ? 5.6 : 6.5, overflow: "linebreak" },
           alternateRowStyles: { fillColor: [246, 248, 253] },
-          columnStyles: b.pdfCompacto ? Object.fromEntries(Object.entries(b.pdfCompacto).map(([i, w]) => [i, { cellWidth: w }])) : { 0: { cellWidth: 44, fontStyle: "bold" } },
+          columnStyles: b.pdfCompacto ? Object.fromEntries(Object.entries(b.pdfCompacto).map(([i, w]) => [i, { cellWidth: w }])) : { [b.nomeCol ?? 0]: { cellWidth: 44, fontStyle: "bold" } },
           horizontalPageBreak: !b.pdfCompacto, horizontalPageBreakRepeat: 0,
           ...(lado ? { tableWidth: largTab, margin: { left: M, right: W - M - largTab, top: 12, bottom: 12 } } : {}),
           didParseCell: (d) => { if (d.section === "body" && d.column.index > 0 && b.colunas[d.column.index]?.tipo !== "txt") d.cell.styles.halign = "right";
@@ -2940,9 +2979,9 @@ async function gerarPDF(partes, prog) {
             if (cl) { d.cell.styles.fillColor = [parseInt(cl.slice(1, 3), 16), parseInt(cl.slice(3, 5), 16), parseInt(cl.slice(5, 7), 16)]; d.cell.styles.fontStyle = "bold"; }
             if (d.section === "body" && b._dest?.[d.row.index]) { d.cell.styles.fillColor = [255, 236, 179]; d.cell.styles.fontStyle = "bold"; }
             const v = b.linhas[d.row.index]?.[d.column.index];
-            if (d.section === "body" && b.colunas[d.column.index]?.tipo === "pct" && typeof v === "number") d.cell.styles.textColor = v > 0 ? [12, 138, 78] : v < 0 ? [208, 38, 44] : [40, 40, 40];
+            if (d.section === "body" && b.colunas[d.column.index]?.tipo === "pct" && b.colunas[d.column.index]?.cor !== false && typeof v === "number") d.cell.styles.textColor = v > 0 ? [12, 138, 78] : v < 0 ? [208, 38, 44] : [40, 40, 40];
             const es = d.section === "body" && estiloCel(b, d.row.index, d.column.index);
-            if (es) { d.cell.styles.fontStyle = "bold"; if (es.cor) d.cell.styles.textColor = hexRgb(es.cor); if (es.fundo) { d.cell.styles.fillColor = hexRgb(es.fundo); d.cell.styles.halign = "center"; } } } });
+            if (es) { if (!es.leve) d.cell.styles.fontStyle = "bold"; if (es.cor) d.cell.styles.textColor = hexRgb(es.cor); if (es.fundo) { d.cell.styles.fillColor = hexRgb(es.fundo); d.cell.styles.halign = "center"; } } } });
         y = doc.lastAutoTable.finalY + 6;
         if (lado) {
           const lw = Math.min(W - 2 * M - largTab - 10, 75), lh = Math.min(lw * lado.h / lado.w, 58), lw2 = lh * lado.w / lado.h;
@@ -2975,14 +3014,15 @@ function htmlParte(p) {
     if (b.tipo === "img") h += (b.mostrarTitulo ? `<h3>${esc(b.titulo)}</h3>` : "") + `<img src="${b.url}" style="width:${Math.min(b.meia ? 640 : 1300, b.w)}px;height:auto" alt="">`;
     else if (b.tipo === "tabela" && !b.soExcel) {
       const lin = b.linhas.slice(0, LIMITE_LINHAS_PNG);
-      h += `<h3>${esc(b.nome)}</h3><table><thead><tr>${b.colunas.map((c, j) => `<th class="${j === 0 || c.tipo === "txt" ? "t" : ""}"><div class="rc rc-cab">${esc(cab3(c.nome, 15))}</div></th>`).join("")}</tr></thead><tbody>${lin.map((l, li) => `<tr${linhaDestacada(l) ? ' class="dest"' : ""}${b.corLinha?.[li] ? ` style="--fundo-linha:${b.corLinha[li]}" data-cor-linha="1"` : ""}>${l.map((v, j) => {
-        const t = b.colunas[j].tipo, cor = t === "pct" && typeof v === "number" ? (v > 0 ? "color:#087040" : v < 0 ? "color:#b81f25" : "") : "";
+      h += `<h3>${esc(b.nome)}</h3><table><thead><tr>${b.colunas.map((c, j) => `<th class="${j === (b.nomeCol ?? 0) || c.tipo === "txt" ? "t" : ""}"><div class="rc rc-cab">${esc(cab3(c.nome, 15))}</div></th>`).join("")}</tr></thead><tbody>${lin.map((l, li) => `<tr${linhaDestacada(l) ? ' class="dest"' : ""}${b.corLinha?.[li] ? ` style="--fundo-linha:${b.corLinha[li]}" data-cor-linha="1"` : ""}>${l.map((v, j) => {
+        const t = b.colunas[j].tipo, cor = t === "pct" && b.colunas[j].cor !== false && typeof v === "number" ? (v > 0 ? "color:#087040" : v < 0 ? "color:#b81f25" : "") : "";
         const es = estiloCel(b, li, j);
         if (es) { const txt = esc(cab3(fmtCel(v, t), 22));        // símbolo da tela: selo colorido (investidor, risco) ou texto colorido
-          return `<td class="${t === "txt" ? "t" : ""}" style="font-weight:800;${es.fundo ? "text-align:center" : `color:${es.cor}`}">${es.fundo
+          return `<td class="${t === "txt" ? "t" : ""}" style="${es.leve ? "" : "font-weight:800;"}${es.fundo ? "text-align:center" : `color:${es.cor}`}">${es.fundo
             ? `<span style="display:inline-block;min-width:22px;padding:1px 6px;border-radius:5px;background:${es.fundo};color:${es.cor}">${txt}</span>` : txt}</td>`; }
         // textos: caixa com largura máxima (o navegador ignora max-width direto na célula) e no máximo 3 linhas
-        return t === "txt" ? `<td class="t"><div class="rc${j === 0 ? " rc-nome" : ""}">${esc(cab3(fmtCel(v, t), j === 0 ? 30 : 22))}</div></td>`
+        const nm = j === (b.nomeCol ?? 0);
+        return t === "txt" ? `<td class="t"><div class="rc${nm ? " rc-nome" : ""}">${esc(cab3(fmtCel(v, t), nm ? 30 : 22))}</div></td>`
           : `<td style="${cor}">${esc(fmtCel(v, t))}</td>`; }).join("")}</tr>`).join("")}</tbody></table>` +
         (b.linhas.length > LIMITE_LINHAS_PNG ? `<p class="rel-sub">Mostrando ${LIMITE_LINHAS_PNG} de ${b.linhas.length} linhas; a tabela completa sai no Excel.</p>` : "");
     }
@@ -3031,9 +3071,9 @@ async function gerarExcel(partes, prog, comImagens) {
   for (let i = 0; i < partes.length; i++) {
     const p = partes[i]; prog(`montando o Excel: ${p.titulo} (${i + 1} de ${partes.length})…`); await pausa();
     for (const b of p.blocos.filter((x) => x.tipo === "tabela")) {
-      const ws = wb.addWorksheet(nomeAba(b.aba || b.nome), { views: [{ state: "frozen", xSplit: 1, ySplit: 1 }] });
+      const ws = wb.addWorksheet(nomeAba(b.aba || b.nome), { views: [{ state: "frozen", xSplit: (b.nomeCol ?? 0) + 1, ySplit: 1 }] });
       capa.addRow([ws.name, p.titulo + (b.nota ? " · " + b.nota : "")]);
-      ws.columns = b.colunas.map((c, j) => ({ header: c.nome, width: j === 0 ? 44 : Math.min(24, Math.max(12, c.nome.length + 2)), style: FMT[c.tipo] ? { numFmt: FMT[c.tipo] } : {} }));
+      ws.columns = b.colunas.map((c, j) => ({ header: c.nome, width: j === (b.nomeCol ?? 0) ? 44 : Math.min(24, Math.max(12, c.nome.length + 2)), style: FMT[c.tipo] ? { numFmt: FMT[c.tipo] } : {} }));
       const cab = ws.getRow(1); cab.font = { bold: true, color: { argb: "FFFFFFFF" } }; cab.alignment = { vertical: "middle", wrapText: true }; cab.height = 32;
       cab.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2B2C78" } }; });
       const marcar = st.destExtra && !b.bruto;
@@ -3044,7 +3084,7 @@ async function gerarExcel(partes, prog, comImagens) {
         if (marcar && linhaDestacada(b.linhas[r])) { row.font = { bold: true }; row.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFECB3" } }; }); }
         if (!b.bruto) for (let j = 0; j < b.colunas.length; j++) {     // símbolos da tela: a mesma cor do site
           const es = b.colunas[j].sim && estiloCel(b, r, j); if (!es) continue;
-          const cel = row.getCell(j + 1); cel.font = { bold: true, color: { argb: "FF" + es.cor.slice(1).toUpperCase() } };
+          const cel = row.getCell(j + 1); cel.font = { bold: !es.leve, color: { argb: "FF" + es.cor.slice(1).toUpperCase() } };
           if (es.fundo) { cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + es.fundo.slice(1).toUpperCase() } }; cel.alignment = { horizontal: "center" }; }
         }
         if (r % 4000 === 3999) await pausa();
@@ -3993,7 +4033,8 @@ function semColunasSoExcel(partes) {
   return partes.map((p) => ({ ...p, blocos: p.blocos.map((b) => {
     if (b.tipo !== "tabela" || !b.colunas.some((c) => c.soExcel)) return b;
     const manter = b.colunas.map((c, j) => (c.soExcel ? -1 : j)).filter((j) => j >= 0);
-    return { ...b, colunas: manter.map((j) => b.colunas[j]), linhas: b.linhas.map((l) => manter.map((j) => l[j])) };
+    return { ...b, colunas: manter.map((j) => b.colunas[j]), linhas: b.linhas.map((l) => manter.map((j) => l[j])), nomeCol: Math.max(0, manter.indexOf(b.nomeCol ?? 0)),
+      pdfCompacto: b.pdfCompacto && Object.fromEntries(Object.entries(b.pdfCompacto).map(([i, w]) => [manter.indexOf(Number(i)), w]).filter(([i]) => i >= 0)) };
   }) }));
 }
 
@@ -5593,34 +5634,13 @@ function graficoPesosRk(M) {
 }
 
 // ---------- partes do relatório (PDF, PNG e Excel)
-// enxuto (top 10 em PDF/PNG): com os dados da XP, segue o relatório de referência — classificação XP no lugar da CVM/ANBIMA,
-// público, captação, prazo de liquidação e aplicação mínima; o resto da XP fica na tela e no Excel completo
-const FORA_ENXUTO_XP = new Set(["cvm", "anbima", "XP Nome", "Taxa adm.", "Taxa perf."]);
-function linhasRelRk(R, lista, enxuto = false) {
-  const cols = colunasRk(R).filter((c) => !["perf", "cons", "risco"].includes(c.chave)       // com login, tudo vai junto (inclusive o ROA)
-    && !(enxuto && st.xp && FORA_ENXUTO_XP.has(c.chave)));
-  const PCT_XP = new Set(["Taxa adm.", "Taxa perf.", "ROA"]);       // na planilha da XP 0,4 = 0,4%: nos relatórios vira percentual de verdade
-  // dinheiro novo: na tela é um ícone junto do cadeado; no relatório, coluna própria logo depois da captação
-  const iCapt = cols.findIndex((c) => c.chave === "Captação");
-  if (iCapt >= 0) cols.splice(iCapt + 1, 0, { chave: "_dn", nome: "Dinheiro novo", tipo: "txt" });
-  const SIM_RK = { var: "var", Investidor: "inv", "Captação": "capt", Isento: "simNao", _dn: "simNao", Risco: "risco" };
-  const ls = lista.map((x) => linhaRk(R, x));
-  return { chaves: cols.map((c) => c.chave), xpQ: st.xp ? ls : null,
-    colunas: cols.map((c) => ({ nome: c.chave === "Risco" ? "Risco XP" : c.nome, sim: SIM_RK[c.chave],
-      tipo: c.chave === "pl" || c.chave === "capt" ? "valor" : c.chave === "var" ? "txt" : PCT_XP.has(c.chave) ? "pct" : c.tipo })),
-    linhas: ls.map((l) => {
-      return cols.map((c) => c.chave === "var" ? (l.var == null ? "novo" : l.var > 0 ? `▲ ${l.var}` : l.var < 0 ? `▼ ${-l.var}` : "▬ 0")
-        : c.chave === "Isento" ? (l._naXP ? (l.Isento ? "Sim" : "Não") : "")
-        : c.chave === "_dn" ? (l._naXP ? (l._dinheiroNovo != null ? "Sim" : "Não") : "")
-        : c.chave === "pl" || c.chave === "capt" ? (typeof l[c.chave] === "number" ? l[c.chave] / 1e6 : null) : c.chave === "Fundo" ? (l.curto ? `${l.Fundo} (*)` : l.Fundo)
-        : PCT_XP.has(c.chave) ? (typeof l[c.chave] === "number" ? l[c.chave] / 100 : null) : l[c.chave]); }) };
-}
+// rankings: as tabelas saem com as colunas da tabela do ranking na tela (tabelaDaTela), na mesma ordem
 function blocosRanking(k) {
   const L = st.rk.lista, B = [];
   const cab = (R) => `${R.nome} · ${R.M.nome} · ${R.ordem.length} fundos analisados · métricas de ${R.M.periodo.toLowerCase()} até ${fmtData(R.fim)}`;
   if (k === "rkTop") {
-    const LARG = { pos: 7, var: 10, Fundo: 50, total: 13, cvm: 17, anbima: 30, "Classificação XP": 24, Investidor: 9, "Captação": 12, _dn: 11, "Isento": 9, Risco: 9, "Resgate": 20, "ROA": 11, "Aplicação mín.": 14 };
-    for (const R of L) { const { chaves, ...t } = linhasRelRk(R, topRk(R), true);
+    const LARG = { pos: 9, var: 9, "Captação": 14, Investidor: 10, Risco: 9, Fundo: 46, total: 13, CNPJ: 22, _classif: 22, _tipo: 15, _pl: 15, Isento: 9, Resgate: 17 };
+    for (const R of L) { const { chaves, ...t } = tabelaDaTela(cab(R), "rk", colunasRkTela(R), topRk(R).map((x) => linhaRkTela(R, x)));
       const larguras = Object.fromEntries(chaves.map((k, i) => [i, LARG[k]]).filter(([, w]) => w));
       B.push({ tipo: "tabela", nome: cab(R), aba: `${R.nome} - top ${TOP_RANK}`, pdfCompacto: larguras,
         corLinha: topRk(R).map((x) => medalha(x.pos)?.fundo || null), ...t }); }
@@ -5629,8 +5649,8 @@ function blocosRanking(k) {
   if (k === "rkCompleto") {
     for (const R of L) {
       const ks = GRUPOS_RANK.flatMap((g) => Object.keys(R.M.pesos).filter((x) => grupoMetrica(R.M, x) === g));
-      const { chaves: _k, ...t } = linhasRelRk(R, R.ordem);
-      B.push({ tipo: "tabela", soExcel: true, nome: `${R.nome} - completo`, xpQ: t.xpQ, colunas: [...t.colunas, { nome: "Performance (pontos)", tipo: "num2" }, { nome: "Consistência (pontos)", tipo: "num2" },
+      const { chaves: _k, ...t } = tabelaDaTela(`${R.nome} - completo`, "rk", colunasRkTela(R), R.ordem.map((x) => linhaRkTela(R, x)));
+      B.push({ tipo: "tabela", soExcel: true, nome: `${R.nome} - completo`, xpQ: t.xpQ, nomeCol: t.nomeCol, colunas: [...t.colunas, { nome: "Performance (pontos)", tipo: "num2" }, { nome: "Consistência (pontos)", tipo: "num2" },
           { nome: "Risco (pontos)", tipo: "num2" }, ...ks.flatMap((x) => [{ nome: `${metricaRank(x).nome}: valor`, tipo: metricaRank(x).tipo },
             { nome: `${metricaRank(x).nome}: nota (0 a 1)`, tipo: "num" }, { nome: `${metricaRank(x).nome}: pontos (peso ${Math.abs(R.M.pesos[x])})`, tipo: "num2" }]),
           ...(st.xp ? [{ nome: "Link Hub", tipo: "txt", soExcel: true }] : [])],
@@ -5647,15 +5667,9 @@ function blocosRanking(k) {
       const im = imagemGrafico("gRkJM"); if (im) B.push({ tipo: "img", titulo: `${R.nome} · janela de ${R.M.jmMeses} meses contra o ${nomeIndice(R.M.bench)}`, mostrarTitulo: true, ...im });
       const top = topRk(R).filter((x) => x.l.rs);
       const bn = nomeIndice(R.M.bench);
-      // resumo enxuto (como no relatório de referência) no PDF; a tabela completa da janela móvel vai só para o Excel
-      if (top.length) B.push({ tipo: "tabela", aba: `${R.nome} - janela`, pdfCompacto: { 0: 7, 1: 95 }, nome: `${R.nome} · janela de ${R.M.jmMeses} meses contra o ${bn}`,
-        colunas: [{ nome: "Pos.", tipo: "int" }, { nome: "Fundo", tipo: "txt" }, { nome: `Mínimo (${bn}+ a.a.)`, tipo: "pct" }, { nome: `Mediana (${bn}+ a.a.)`, tipo: "pct" },
-          { nome: `Máximo (${bn}+ a.a.)`, tipo: "pct" }, { nome: "Prazo (meses)", tipo: "int" }, { nome: "Janelas", tipo: "int" },
-          { nome: `Consistência (acima do ${bn})`, tipo: "pct" }, { nome: "Consistência (retorno positivo)", tipo: "pct" }],
-        linhas: top.map((x) => [x.pos, x.l.cad.NOME, x.l.rs.min.dif, x.l.rs.med.dif, x.l.rs.max.dif, R.M.jmMeses, x.l.rs.total, x.l.rs.pAcima, x.l.rs.pPositivas]),
-        corLinha: top.map((x) => medalha(x.pos)?.fundo || null) });
-      if (top.length) B.push({ tipo: "tabela", soExcel: true, aba: `${R.nome} - janela compl`, ...tabelaResumoJM(`${R.nome} · janela completa`,
-        top.map((x) => ({ nome: `${x.pos}. ${x.l.cad.NOME}`, cnpj: cnpjFmt(x.id), resumo: x.l.rs })), bn) });
+      // a mesma tabela da janela móvel da tela (top 10), com as cores de medalha
+      if (top.length) B.push({ tipo: "tabela", aba: `${R.nome} - janela`, corLinha: top.map((x) => medalha(x.pos)?.fundo || null),
+        ...tabelaResumoJM(`${R.nome} · janela de ${R.M.jmMeses} meses contra o ${bn}`, top.map((x) => ({ nome: `${x.pos}. ${x.l.cad.NOME}`, cnpj: cnpjFmt(x.id), resumo: x.l.rs })), bn) });
     }
     st.rk.ativo = antes; renderRankings();
     return { titulo: `Janela móvel do top ${TOP_RANK}`, nota: `Diferença ao ano para o benchmark em cada data de aplicação (últimos ${JM_ANOS} anos).`, blocos: B };
