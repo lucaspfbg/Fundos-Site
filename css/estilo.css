@@ -1391,3 +1391,10 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 /* carteira: tabela dos ativos (a mesma das métricas: ordena, filtra e rola) logo abaixo da tabela curta da carteira */
 .cart-ativos-tit { margin: 14px 0 6px; font-size: 14px; }
 .cart-ativos td:last-child { min-width: 150px; }
+
+/* linha das medianas: fixa no cabeçalho, logo abaixo dos títulos e filtros, com uma cor própria */
+.tb thead tr.mediana th { background: color-mix(in srgb, var(--ouro) 18%, var(--card)); color: var(--txt); font-weight: 700; font-size: 12px; text-align: right;
+  padding: 4px 10px; border-bottom: 2px solid var(--ouro); white-space: nowrap; vertical-align: middle; z-index: 2; }
+.tb thead tr.mediana th.fx { z-index: 3; text-align: left; color: var(--ouro-txt); font-weight: 800; }
+.tb thead tr.mediana th * { color: inherit !important; background: none !important; border: 0 !important; box-shadow: none !important; font-weight: inherit; }
+.tb thead tr.mediana th small { font-weight: 600; opacity: .8; }

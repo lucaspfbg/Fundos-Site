@@ -844,7 +844,7 @@ document.addEventListener("click", (e) => {
 function ajustarFiltrosFixos(raiz = document) {
   for (const tb of raiz.querySelectorAll("table")) {
     const linhas = [...tb.querySelectorAll(":scope > thead > tr")];
-    if (!linhas.some((r) => r.classList.contains("filtros"))) continue;
+    if (!linhas.some((r) => r.classList.contains("filtros") || r.classList.contains("mediana"))) continue;
     const alturas = linhas.map((r) => r.getBoundingClientRect().height);
     if (alturas.some((h) => !h)) continue;                                   // tabela escondida: mede quando aparecer
     let acc = 0;
@@ -853,7 +853,7 @@ function ajustarFiltrosFixos(raiz = document) {
 }
 let filtrosPend = false;
 const agendarFiltrosFixos = () => { if (filtrosPend) return; filtrosPend = true; requestAnimationFrame(() => { filtrosPend = false; ajustarFiltrosFixos(); }); };
-new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.("table, .tb-wrap") || n.querySelector?.("tr.filtros"))))) agendarFiltrosFixos(); })
+new MutationObserver((ms) => { if (ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.("table, .tb-wrap") || n.querySelector?.("tr.filtros, tr.mediana"))))) agendarFiltrosFixos(); })
   .observe(document.body, { childList: true, subtree: true });
 addEventListener("resize", agendarFiltrosFixos);
 // ============================== cálculo ==============================
@@ -1164,12 +1164,25 @@ function linhaFiltros(tab, colunas, linhas, fx) {
     return `<th${fx(j)}><select class="fsel${f ? " ativo" : ""}" ${dados_} aria-label="Filtrar ${rot}"><option value="">Todos</option>${valores.map((v) => `<option${f?.v === v ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></th>`;
   }).join("")}</tr>`;
 }
+// linha das medianas: fica fixa no cabeçalho (reaproveita os títulos), com a mediana de cada coluna numérica entre todos os fundos
+const SEM_MEDIANA = new Set(["pos", "var", "_hubId"]);
+function linhaMediana(colunas, linhas, fx) {
+  const dados = linhas.filter((l) => l && !l._cab), iNome = colunas.findIndex((c) => c.chave === "Fundo");
+  return `<tr class="mediana" title="Mediana de cada coluna entre os ${dados.length} fundos">${colunas.map((c, j) => {
+    let txt = "";
+    if (j === iNome) txt = `Mediana <small>(${dados.length} fundo${pl(dados.length)})</small>`;
+    else if (colNumerica(c) && !SEM_MEDIANA.has(c.chave)) {
+      const m = mediana(dados.map((l) => valorCol(c, l)));
+      if (m != null) { try { txt = c.html ? c.html(m, { [c.chave]: m }) : esc((FMT[c.tipo] || FMT.txt)(m)); } catch { txt = esc(FMT[c.tipo]?.(m) ?? ""); } }
+    }
+    return `<th${fx(j)}>${txt}</th>`; }).join("")}</tr>`;
+}
 // colunas escondidas por tabela (escolha da pessoa, guardada neste computador); o nome do fundo sempre aparece
 st.colsOcultas = pref("colsOcultas", {});
 const tabColunas = new Map();                          // tabela -> todas as colunas (para a lista do botão "Colunas")
 const COLS_SEMPRE = new Set(["Fundo"]);
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
-  altura = 460, ordenavel = null, classes = [] }) {
+  altura = 460, ordenavel = null, classes = [], mediana = null }) {
   let ferr = "";
   if (ordenavel) {
     tabColunas.set(ordenavel, colunas);
@@ -1219,6 +1232,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
   }
   const passa = linhas.map((l) => !comFiltro || l._cab || passaFiltros(ordenavel, colunas, l));
   const gruposVivos = new Set(linhas.filter((l, i) => passa[i] && !l._cab && l._g).map((l) => l._g));
+  if (mediana?.length) h += linhaMediana(colunas, mediana, (j) => fx(j, ""));
   h += "</thead><tbody>";
   linhas.forEach((l, i) => {
     if (!passa[i] || (l._cab && comFiltro && filtrosAtivos(ordenavel) && !gruposVivos.has(l.chave))) return;
@@ -1739,11 +1753,12 @@ function renderTabJM() {
   if (st.pagina === "xp" && st.roaEixo === "jm") renderROA();
 }
 // tabela-resumo da janela móvel. lista: [{ Fundo, CNPJ, _c?, resumo }]
-function htmlResumoJM(lista, nomeB, tab, classeFn = null) {
+function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null) {
   const B = curto(nomeB || "Benchmark", 24);
-  const linhas = lista.map(({ resumo: r, ...x }) => ({ ...x, prim: r.primeira, ult: r.ultima,
+  const linhaJM = ({ resumo: r, ...x }) => ({ ...x, prim: r.primeira, ult: r.ultima,
     ...Object.fromEntries(["min", "med", "max"].flatMap((f) => Object.entries(r[f]).map(([k, v]) => [`${f}.${k}`, v]))),
-    total: r.total, abaixo: r.abaixo, acima: r.acima, negativas: r.negativas, positivas: r.positivas, pAcima: r.pAcima, pPositivas: r.pPositivas }));
+    total: r.total, abaixo: r.abaixo, acima: r.acima, negativas: r.negativas, positivas: r.positivas, pAcima: r.pAcima, pPositivas: r.pPositivas });
+  const linhas = lista.map(linhaJM);
   const faixa = (f, rot, comData) => [
     ...(comData ? [{ chave: `${f}.data`, nome: "Data de início", tipo: "data", g: rot }] : []),
     { chave: `${f}.ret`, nome: "Rentabilidade", tipo: "pct", cor: true, g: rot }, { chave: `${f}.retAA`, nome: "Fundo a.a.", tipo: "pct", cor: true, g: rot },
@@ -1758,7 +1773,7 @@ function htmlResumoJM(lista, nomeB, tab, classeFn = null) {
     { chave: "pAcima", nome: `% acima do ${B}`, tipo: "pct", g: "Consistência" }, { chave: "pPositivas", nome: "% positivas", tipo: "pct", g: "Consistência" }];
   const ord = ordenar(linhas, tab, colunas);
   return tabelaHTML({ colunas, linhas: ord, fixas: 2, grupos: colunas.map((c) => c.g), ordenavel: tab,
-    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [] });
+    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [], mediana: listaMediana?.map(linhaJM) });
 }
 
 // lista completa de todas as janelas (CSV com ponto e vírgula e vírgula decimal: abre direto no Excel em português)
@@ -5521,7 +5536,8 @@ function renderRkTabela() {
     (R.nDef > R.ordem.length ? ` (de ${R.nDef} no ranking; os demais estão listados abaixo da tabela)` : "") +
     (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
   $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 80, 72, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
-    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)) });
+    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)),
+    mediana: R.ordem.map((x) => linhaRkTela(R, x)) });
   const fora = [...R.fora.map((x) => `${esc(curto(st.porCnpj.get(x.c)?.NOME || cnpjFmt(x.c), 50))} (${esc(x.motivo)})`), ...(R.foraDaBase || []).map((c) => `${cnpjFmt(c)} (fora da base)`)];
   $("#rkFora").innerHTML = (R.ordem.some((x) => x.l.curto) ? `<span class="rk-curto">⚑</span> histórico menor que o período do ranking (entra assim mesmo, com as métricas do tempo que tem). ` : "") +
     (fora.length ? `<b>Fora do ranking (${fora.length}):</b> ${fora.join("; ")}.` : "");
@@ -5543,11 +5559,12 @@ function renderRkPontos() {
           html: prop ? (v, l) => `${fmtValor(m)(v)}${l[`j:${k}`] != null ? ` <small class="nota" title="Janelas deste fundo em relação ao fundo com mais janelas">× ${br(l[`j:${k}`] * 100, 0)}% das janelas</small>` : ""}` : fmtValor(m) },
         { chave: `n:${k}`, nome: prop ? "Nota (consist. × janelas)" : "Nota (0 a 1)", tipo: "num2", g: gnome, html: (v) => br(v, 2) },
         { chave: `p:${k}`, nome: `Pontos (de ${br(pe, ajust ? 1 : 0)})`, tipo: "num2", g: gnome, html: (v) => `<b>${br(v, 2)}</b>` }]; })];
-  const linhas = ordenar(fundosVisiveis(R).map((x) => ({ _c: x.id, pos: x.pos, Fundo: nomeRk(R, x.id), CNPJ: cnpjFmt(x.id), total: x.total,
+  const linhaPts = (x) => ({ _c: x.id, pos: x.pos, Fundo: nomeRk(R, x.id), CNPJ: cnpjFmt(x.id), total: x.total,
     ...Object.fromEntries(GRUPOS_RANK.map((g) => [`g:${g}`, x.grupos[g]])),
-    ...Object.fromEntries(ks.flatMap((k) => [[`v:${k}`, x.notas[k].valor], [`n:${k}`, x.notas[k].nota], [`p:${k}`, x.notas[k].pontos], [`j:${k}`, x.notas[k].pJan ?? null]])) })), "rkPts", colunas);
+    ...Object.fromEntries(ks.flatMap((k) => [[`v:${k}`, x.notas[k].valor], [`n:${k}`, x.notas[k].nota], [`p:${k}`, x.notas[k].pontos], [`j:${k}`, x.notas[k].pJan ?? null]])) });
+  const linhas = ordenar(fundosVisiveis(R).map(linhaPts), "rkPts", colunas);
   $("#rkPontos").innerHTML = avisoP + tabelaHTML({ colunas, linhas, fixas: 2, larguras: [52, 240], grupos: colunas.map((c) => c.g), ordenavel: "rkPts", altura: 520, centralizar: true,
-    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), classes: linhas.map((l) => classeMedalha(l.pos)) });
+    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), classes: linhas.map((l) => classeMedalha(l.pos)), mediana: R.ordem.map(linhaPts) });
 }
 function topRk(R) { return R.ordem.slice(0, TOP_RANK); }
 // séries da janela móvel: top 3 em linha grossa com a cor da medalha; os demais finos e mais claros
@@ -5576,7 +5593,7 @@ function renderRkJMTab() {
   const R = rkAtivo(); if (!R) return;
   const lista = fundosVisiveis(R).filter((x) => x.l.rs);
   $("#tabRkJM").innerHTML = lista.length ? htmlResumoJM(lista.map((x) => ({ _c: x.id, _pos: x.pos, Fundo: `${x.pos}. ${x.l.cad.NOME}`, CNPJ: cnpjFmt(x.id), resumo: x.l.rs })),
-    nomeIndice(R.M.bench), "rkJMt", (l) => classeMedalha(l._pos)) : `<p class="nota">Nenhum fundo tem histórico para uma janela de ${R.M.jmMeses} meses.</p>`;
+    nomeIndice(R.M.bench), "rkJMt", (l) => classeMedalha(l._pos), R.ordem.filter((x) => x.l.rs).map((x) => ({ resumo: x.l.rs }))) : `<p class="nota">Nenhum fundo tem histórico para uma janela de ${R.M.jmMeses} meses.</p>`;
 }
 function dadosCorrRk(R, lista = topRk(R)) {
   if (lista.length < 2) return null;
