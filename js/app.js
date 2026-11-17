@@ -2903,13 +2903,14 @@ const dataJs = (dia) => new Date(dia * 86400000);
 function estiloCel(b, r, j) {
   const c = b.colunas[j], v = b.linhas[r]?.[j]; if (!c?.sim || v == null || v === "") return null;
   switch (c.sim) {
-    case "inv": return { IG: { fundo: "#087040", cor: "#ffffff" }, IQ: { fundo: "#f0b400", cor: "#2a1f00" }, IP: { fundo: "#b35000", cor: "#ffffff" } }[v] || null;
+    // cor na letra (o amarelo da tela fica mais escuro para dar leitura no fundo branco)
+    case "inv": return { IG: { cor: "#087040" }, IQ: { cor: "#b8860b" }, IP: { cor: "#b35000" } }[v] || null;
     case "capt": return /^Aberto/.test(v) ? { cor: "#087040" } : /^Fechado/.test(v) ? { cor: "#c4222a" } : null;
     case "sinal": return typeof v !== "number" ? null : v > 0 ? { cor: "#087040", leve: true } : v < 0 ? { cor: "#b81f25", leve: true } : null;
     case "simNao": return /^Sim/.test(v) ? { cor: "#087040" } : null;
     case "var": return /^▲/.test(v) ? { cor: "#087040" } : /^▼/.test(v) ? { cor: "#b81f25" } : v === "novo" ? { cor: "#0b6a9a" } : { cor: "#6b7280" };
     case "risco": { const f = faixaRisco(b.xpQ?.[r]?._riscoDesc);
-      return f === "rb" ? { fundo: "#087040", cor: "#ffffff" } : f === "rm" ? { fundo: "#f2c200", cor: "#2a2200" } : f === "ra" ? { fundo: "#c4222a", cor: "#ffffff" } : null; }
+      return f === "rb" ? { cor: "#087040" } : f === "rm" ? { cor: "#b8860b" } : f === "ra" ? { cor: "#c4222a" } : null; }
   }
   return null;
 }
