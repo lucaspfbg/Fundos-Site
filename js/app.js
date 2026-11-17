@@ -1165,12 +1165,13 @@ function linhaFiltros(tab, colunas, linhas, fx) {
   }).join("")}</tr>`;
 }
 // linha das medianas: fica fixa no cabeçalho (reaproveita os títulos), com a mediana de cada coluna numérica entre todos os fundos
-const SEM_MEDIANA = new Set(["pos", "var", "_hubId"]);
-function linhaMediana(colunas, linhas, fx) {
+const SEM_MEDIANA = new Set(["pos", "var", "_hubId", "Risco"]);
+function linhaMediana(colunas, linhas, fx, rot = null) {
   const dados = linhas.filter((l) => l && !l._cab), iNome = colunas.findIndex((c) => c.chave === "Fundo");
-  return `<tr class="mediana" title="Mediana de cada coluna entre os ${dados.length} fundos">${colunas.map((c, j) => {
+  const r = rot || `${dados.length} fundo${pl(dados.length)}`;
+  return `<tr class="mediana" title="Mediana de cada coluna entre os ${dados.length} fundos (${esc(r)})">${colunas.map((c, j) => {
     let txt = "";
-    if (j === iNome) txt = `Mediana <small>(${dados.length} fundo${pl(dados.length)})</small>`;
+    if (j === iNome) txt = `Mediana <small>(${esc(r)})</small>`;
     else if (colNumerica(c) && !SEM_MEDIANA.has(c.chave)) {
       const m = mediana(dados.map((l) => valorCol(c, l)));
       if (m != null) { try { txt = c.html ? c.html(m, { [c.chave]: m }) : esc((FMT[c.tipo] || FMT.txt)(m)); } catch { txt = esc(FMT[c.tipo]?.(m) ?? ""); } }
@@ -1182,7 +1183,7 @@ st.colsOcultas = pref("colsOcultas", {});
 const tabColunas = new Map();                          // tabela -> todas as colunas (para a lista do botão "Colunas")
 const COLS_SEMPRE = new Set(["Fundo"]);
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
-  altura = 460, ordenavel = null, classes = [], mediana = null }) {
+  altura = 460, ordenavel = null, classes = [], mediana = null, rotMediana = null }) {
   let ferr = "";
   if (ordenavel) {
     tabColunas.set(ordenavel, colunas);
@@ -1232,7 +1233,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
   }
   const passa = linhas.map((l) => !comFiltro || l._cab || passaFiltros(ordenavel, colunas, l));
   const gruposVivos = new Set(linhas.filter((l, i) => passa[i] && !l._cab && l._g).map((l) => l._g));
-  if (mediana?.length) h += linhaMediana(colunas, mediana, (j) => fx(j, ""));
+  if (mediana?.length) h += linhaMediana(colunas, mediana, (j) => fx(j, ""), rotMediana);
   h += "</thead><tbody>";
   linhas.forEach((l, i) => {
     if (!passa[i] || (l._cab && comFiltro && filtrosAtivos(ordenavel) && !gruposVivos.has(l.chave))) return;
@@ -1753,7 +1754,7 @@ function renderTabJM() {
   if (st.pagina === "xp" && st.roaEixo === "jm") renderROA();
 }
 // tabela-resumo da janela móvel. lista: [{ Fundo, CNPJ, _c?, resumo }]
-function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null) {
+function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null, rotMediana = null) {
   const B = curto(nomeB || "Benchmark", 24);
   const linhaJM = ({ resumo: r, ...x }) => ({ ...x, prim: r.primeira, ult: r.ultima,
     ...Object.fromEntries(["min", "med", "max"].flatMap((f) => Object.entries(r[f]).map(([k, v]) => [`${f}.${k}`, v]))),
@@ -1773,7 +1774,7 @@ function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null) {
     { chave: "pAcima", nome: `% acima do ${B}`, tipo: "pct", g: "Consistência" }, { chave: "pPositivas", nome: "% positivas", tipo: "pct", g: "Consistência" }];
   const ord = ordenar(linhas, tab, colunas);
   return tabelaHTML({ colunas, linhas: ord, fixas: 2, grupos: colunas.map((c) => c.g), ordenavel: tab,
-    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [], mediana: listaMediana?.map(linhaJM) });
+    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [], mediana: listaMediana?.map(linhaJM), rotMediana });
 }
 
 // lista completa de todas as janelas (CSV com ponto e vírgula e vírgula decimal: abre direto no Excel em português)
@@ -5537,7 +5538,7 @@ function renderRkTabela() {
     (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
   $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 80, 72, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
     destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)),
-    mediana: R.ordem.map((x) => linhaRkTela(R, x)) });
+    ...medianaRk(R, (x) => linhaRkTela(R, x)) });
   const fora = [...R.fora.map((x) => `${esc(curto(st.porCnpj.get(x.c)?.NOME || cnpjFmt(x.c), 50))} (${esc(x.motivo)})`), ...(R.foraDaBase || []).map((c) => `${cnpjFmt(c)} (fora da base)`)];
   $("#rkFora").innerHTML = (R.ordem.some((x) => x.l.curto) ? `<span class="rk-curto">⚑</span> histórico menor que o período do ranking (entra assim mesmo, com as métricas do tempo que tem). ` : "") +
     (fora.length ? `<b>Fora do ranking (${fora.length}):</b> ${fora.join("; ")}.` : "");
@@ -5564,9 +5565,13 @@ function renderRkPontos() {
     ...Object.fromEntries(ks.flatMap((k) => [[`v:${k}`, x.notas[k].valor], [`n:${k}`, x.notas[k].nota], [`p:${k}`, x.notas[k].pontos], [`j:${k}`, x.notas[k].pJan ?? null]])) });
   const linhas = ordenar(fundosVisiveis(R).map(linhaPts), "rkPts", colunas);
   $("#rkPontos").innerHTML = avisoP + tabelaHTML({ colunas, linhas, fixas: 2, larguras: [52, 240], grupos: colunas.map((c) => c.g), ordenavel: "rkPts", altura: 520, centralizar: true,
-    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), classes: linhas.map((l) => classeMedalha(l.pos)), mediana: R.ordem.map(linhaPts) });
+    destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), classes: linhas.map((l) => classeMedalha(l.pos)), ...medianaRk(R, linhaPts) });
 }
 function topRk(R) { return R.ordem.slice(0, TOP_RANK); }
+// linha das medianas dos rankings: os 30 melhores (mais perto dos fundos que olhamos do que o ranking inteiro)
+const TOP_MEDIANA = 30;
+const medianaRk = (R, linhaDe, filtro = () => true) => { const L = R.ordem.slice(0, TOP_MEDIANA).filter(filtro);
+  return { mediana: L.map(linhaDe), rotMediana: R.ordem.length > TOP_MEDIANA ? `top ${TOP_MEDIANA}` : null }; };
 // séries da janela móvel: top 3 em linha grossa com a cor da medalha; os demais finos e mais claros
 function seriesJMRk(R, lista) {
   const cores = coresRk(R);
@@ -5593,7 +5598,7 @@ function renderRkJMTab() {
   const R = rkAtivo(); if (!R) return;
   const lista = fundosVisiveis(R).filter((x) => x.l.rs);
   $("#tabRkJM").innerHTML = lista.length ? htmlResumoJM(lista.map((x) => ({ _c: x.id, _pos: x.pos, Fundo: `${x.pos}. ${x.l.cad.NOME}`, CNPJ: cnpjFmt(x.id), resumo: x.l.rs })),
-    nomeIndice(R.M.bench), "rkJMt", (l) => classeMedalha(l._pos), R.ordem.filter((x) => x.l.rs).map((x) => ({ resumo: x.l.rs }))) : `<p class="nota">Nenhum fundo tem histórico para uma janela de ${R.M.jmMeses} meses.</p>`;
+    nomeIndice(R.M.bench), "rkJMt", (l) => classeMedalha(l._pos), ...(({ mediana, rotMediana }) => [mediana, rotMediana])(medianaRk(R, (x) => ({ resumo: x.l.rs }), (x) => x.l.rs))) : `<p class="nota">Nenhum fundo tem histórico para uma janela de ${R.M.jmMeses} meses.</p>`;
 }
 function dadosCorrRk(R, lista = topRk(R)) {
   if (lista.length < 2) return null;
