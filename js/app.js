@@ -84,7 +84,7 @@ function itemNuvemSeguro(it) {
     : it.tipo === "modelo" ? { modelo: modeloSeguro(c.modelo) }
     : { chaves: (Array.isArray(c.chaves) ? c.chaves : []).map(String).filter((k) => k.startsWith("id:") && idSeguro(k.slice(3))) };
   return { id: idSeguro(it.id), tipo: it.tipo, nome: txtSeguro(it.nome) || "(sem nome)", autor: txtSeguro(it.autor), meu: !!it.meu, compartilhado: !!it.compartilhado,
-    atualizado: instanteSeguro(it.atualizado), conteudo };
+    atualizado: instanteSeguro(it.atualizado), conteudo, fixoEquipe: it.tipo === "ranking" && it.fixoEquipe === true };    // fixado pelo administrador (conferido no servidor)
 }
 const curto = (s, n = 45) => (s.length <= n ? s : s.slice(0, n - 1) + "…");
 const barraPct = (el, pct) => { el.style.transform = `translateX(${Math.min(100, Math.max(0, pct)) - 100}%)`; };   // barra de progresso: anda com transform
@@ -4855,7 +4855,7 @@ async function carregarNuvem() {
   const token = lerSessaoEquipe(); if (!token) return;
   const r = await apiEquipe("salvos", { token });
   if (!r.ok) { if (r.erro && !/Ação desconhecida/.test(r.erro)) avisoSel(`<span class="neg">Grupos e rankings da conta: ${esc(r.erro)}</span>`); return; }
-  st.nuvem = { itens: (Array.isArray(r.itens) ? r.itens : []).map(itemNuvemSeguro).filter(Boolean) };
+  st.nuvem = { itens: (Array.isArray(r.itens) ? r.itens : []).map(itemNuvemSeguro).filter(Boolean), admin: r.admin === true };   // admin: pode fixar rankings para a equipe
   const fv = st.nuvem.itens.find((x) => x.tipo === "favoritos" && x.meu);
   if (fv?.conteudo?.chaves) { for (const k of fv.conteudo.chaves) st.favs.add(k); salvar("favoritos", [...st.favs]); }
   atualizarListasSalvos();
@@ -5251,7 +5251,7 @@ function lerRankings() {
           _doRanking: it.nome, _autor: it.autor };
       }
     }
-    return { modelo, _modeloSalvo: c.modelo, cnpjs: c.cnpjs || [], fixo: !!c.fixo && (it.meu || it.compartilhado) };
+    return { modelo, _modeloSalvo: c.modelo, cnpjs: c.cnpjs || [], fixo: it.fixoEquipe };
   });
 }
 // meus rankings da conta que ainda apontam para a cópia antiga de um tipo que está na conta: passam a apontar para o tipo da conta
@@ -5263,9 +5263,10 @@ async function apontarRankingsParaTipo(idTipo) {
 }
 const gravarRankings = (r) => salvar("rankings", Object.fromEntries(Object.entries(r).filter(([, x]) => !x._origem || x._origem === "local").map(([n, x]) => [n, semInternos(x)])));
 // conteúdo de um ranking para a conta: chave do tipo de cálculo + a definição dele, quando é personalizado
-// fixar para a equipe: o ranking abre já calculado para todos (fixar também compartilha; soltar mantém compartilhado)
+// fixar para a equipe (só administrador: coluna "Admin" da aba Equipe; o servidor confere): o ranking abre já calculado para todos
+// ao abrir a página de rankings (fixar também compartilha; soltar mantém compartilhado)
 async function alternarFixoRk(n) {
-  const x = lerRankings()[n]; if (!x || x._origem !== "meu") return;
+  const x = lerRankings()[n]; if (!x || x._origem !== "meu" || !st.nuvem?.admin) return;
   const fixo = !x.fixo;
   const r = await salvarNaNuvem({ id: x._id, tipo: "ranking", nome: x._nome, compartilhado: fixo ? true : x._comp, conteudo: conteudoRanking(x.modelo, x.cnpjs, { fixo }) });
   if (!r.ok) avisoSel(`<span class="neg">${esc(r.erro)}</span>`);
@@ -5327,7 +5328,7 @@ function renderRkLista() {
         : `<button class="sec mini-btn" data-rk-ed="${k}" type="button">Editar</button>` +
           (x._origem === "local" && logado ? ` <button class="sec mini-btn" data-rk-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">${ico("nuvem")}Enviar para a conta</button>` : "") +
           (x._origem === "meu" ? ` <button class="sec mini-btn" data-rk-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>` : "") +
-          (x._origem === "meu" ? ` <button class="sec mini-btn rk-fixo-btn" data-rk-fixo="${k}" type="button" aria-pressed="${!!x.fixo}" title="${x.fixo ? "Deixa de abrir sozinho para a equipe" : "Fixa para a equipe: aparece já calculado para todos ao abrir a página de rankings (e fica compartilhado)"}">${ico("pino")}${x.fixo ? "Soltar" : "Fixar para a equipe"}</button>` : "") +
+          (x._origem === "meu" && st.nuvem?.admin ? ` <button class="sec mini-btn rk-fixo-btn" data-rk-fixo="${k}" type="button" aria-pressed="${!!x.fixo}" title="${x.fixo ? "Deixa de abrir sozinho para a equipe" : "Fixa para a equipe: aparece já calculado para todos ao abrir a página de rankings (e fica compartilhado)"}">${ico("pino")}${x.fixo ? "Soltar" : "Fixar para a equipe"}</button>` : "") +
           ` <button class="cart-rm" data-rk-del="${k}" type="button" title="Excluir ranking" aria-label="Excluir o ranking ${esc(x._nome)}">${ico("lixo")}</button>`;
       return `<tr class="linha-f${rkSel.has(n) ? " marcado" : ""}" data-rk="${esc(n)}" title="Clique para marcar ou desmarcar"><td><label class="tog"><input type="checkbox" data-rk-sel="${esc(n)}" aria-label="Calcular o ranking ${esc(n)}" ${rkSel.has(n) ? "checked" : ""}></label></td>
         <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b>${x.fixo ? ` <span class="rk-fixo" title="Fixado para a equipe: aparece já calculado ao abrir a página de rankings">${ico("pino")}Fixado na equipe</span>` : ""}</td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(rotuloTipo(x.modelo, M, true) || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
