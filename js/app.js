@@ -5602,7 +5602,7 @@ async function calcularRankings({ automatico = false, nomes: soEstes = null } = 
   if (automatico) {                                                        // ao abrir a página só mostra o que já está pronto
     if (soEstes) $("#rkVazio").innerHTML = `<p>Os rankings fixados para a equipe (${esc(nomes.join(", "))}) não abriram sozinhos: ` +
       `${esc(motivoSemPreRk(nomes.map((n) => todos[n]), { com1m: true }) || "não estão pré-calculados para o tipo de cálculo ou a data deles")}.</p>` +
-      `<button class="prim" type="button" data-rk-calc-fixos>${ico("trofeu")}Calcular os rankings fixados</button> <button class="sec" type="button" data-abrir-rank>Montar e calcular rankings…</button>`;
+      `<button class="prim" type="button" data-rk-calc-fixos>${ico("trofeu")}Calcular os rankings fixados</button>`;
     return;
   }
   const cnpjs = [...new Set(nomes.flatMap((n) => todos[n].cnpjs))].filter((c) => st.porCnpj.has(c));

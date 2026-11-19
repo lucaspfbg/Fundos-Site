@@ -1423,3 +1423,6 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 @keyframes esq-brilho { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .esq-b { animation: none; } }
 @media (max-width: 640px) { .esq-linha { grid-template-columns: 32px minmax(90px, 2fr) repeat(2, minmax(40px, 1fr)); } .esq-linha .esq-b:nth-child(n+5) { display: none; } }
+
+/* rankings: botão "Montar e calcular rankings…" sempre no topo, no mesmo lugar com ou sem ranking calculado */
+.rk-topo { display: flex; margin: 0 0 12px; }

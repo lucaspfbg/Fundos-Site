@@ -296,6 +296,8 @@
       </div>
 
       <div id="pgRankings" class="pagina" role="tabpanel" aria-labelledby="abaRankings" data-pagina="rankings" hidden>
+        <!-- sempre no mesmo lugar, com ou sem ranking calculado -->
+        <div class="rk-topo"><button class="prim" type="button" data-abrir-rank><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button></div>
         <section id="dlgRank" class="cartao rk-painel" aria-labelledby="rkTit" hidden>
         <div class="cab"><h2 id="rkTit">Montar rankings</h2><button id="rkPainelFechar" class="sec mini-btn" type="button">Fechar</button></div>
         <div id="rkListaBox">
@@ -358,8 +360,7 @@
             <button id="rkEdSalvar" class="prim" type="button">Salvar ranking</button></div></div>
         </div>
       </section>
-        <div id="rkVazio" class="vazio"><p>Nenhum ranking calculado ainda.</p>
-          <button class="prim" type="button" data-abrir-rank><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button></div>
+        <div id="rkVazio" class="vazio"><p>Nenhum ranking calculado ainda. Use "Montar e calcular rankings…" acima.</p></div>
       <!-- esqueleto: rankings carregando (arquivos pré-calculados) -->
       <section id="rkEsqueleto" class="cartao rk-esq" hidden aria-busy="true" aria-live="polite">
         <div class="cab"><h2>Rankings</h2><p class="nota rk-esq-txt" role="status">Carregando os rankings…</p></div>
