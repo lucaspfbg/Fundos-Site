@@ -3578,6 +3578,7 @@ async function carregarDadosEquipe(tentativa = 0) {
     // falha passageira: continua logado, avisa e tenta de novo sozinho (depois de 5 s e de 15 s)
     st.equipeFalha = r.erro || "Não foi possível carregar os dados da XP agora."; desenharEquipe();
     if (tentativa < 2) carregarDadosEquipe.t = setTimeout(() => carregarDadosEquipe(tentativa + 1), [5000, 15000][tentativa]);
+    else fimAguardoRk();                                                  // desistiu: tira o aviso de rankings carregando
     return;
   }
   st.equipeFalha = null;
@@ -3604,7 +3605,7 @@ async function carregarDadosEquipe(tentativa = 0) {
 }
 async function sairEquipe(silencioso = false) {
   const token = lerSessaoEquipe();
-  gravarSessaoEquipe(null); removerFundosSoXP(); st.equipe = null; st.xp = null; st.xpCols = []; st.nuvem = null; atualizarListasSalvos();
+  gravarSessaoEquipe(null); removerFundosSoXP(); st.equipe = null; st.xp = null; st.xpCols = []; st.nuvem = null; atualizarListasSalvos(); fimAguardoRk();
   if (st.rk?.lista.some((x) => x._xp)) { st.rk.lista = st.rk.lista.filter((x) => !x._xp); st.rk.ativo = 0; if (!st.rk.lista.length) st.rk = null; renderRankings(); }
   desenharEquipe(); aplicarDadosEquipe();
   if (token && !silencioso) apiEquipe("sair", { token });
@@ -4854,7 +4855,7 @@ st.nuvem = null;
 async function carregarNuvem() {
   const token = lerSessaoEquipe(); if (!token) return;
   const r = await apiEquipe("salvos", { token });
-  if (!r.ok) { if (r.erro && !/Ação desconhecida/.test(r.erro)) avisoSel(`<span class="neg">Grupos e rankings da conta: ${esc(r.erro)}</span>`); return; }
+  if (!r.ok) { if (r.erro && !/Ação desconhecida/.test(r.erro)) avisoSel(`<span class="neg">Grupos e rankings da conta: ${esc(r.erro)}</span>`); fimAguardoRk(); return; }
   st.nuvem = { itens: (Array.isArray(r.itens) ? r.itens : []).map(itemNuvemSeguro).filter(Boolean), admin: r.admin === true };   // admin: pode fixar rankings para a equipe
   const fv = st.nuvem.itens.find((x) => x.tipo === "favoritos" && x.meu);
   if (fv?.conteudo?.chaves) { for (const k of fv.conteudo.chaves) st.favs.add(k); salvar("favoritos", [...st.favs]); }
@@ -5587,16 +5588,27 @@ document.addEventListener("click", (e) => { if (!e.target.closest?.("[data-rk-ca
   const todos = lerRankings(); calcularRankings({ nomes: Object.keys(todos).filter((n) => todos[n].fixo) }); });
 function rankingsAoAbrir() {
   if (st.pagina !== "rankings" || st.rk?.lista.length || !st.idx) return;
+  // com login, os fixados só são conhecidos quando a lista da conta chega: até lá, aviso + esqueleto com os nomes da última visita
+  if (lerSessaoEquipe() && !st.nuvem) {
+    const ult = pref("rkFixosNomes", null);                                   // null: 1ª visita (ainda não sabe se há fixados)
+    if (!Array.isArray(ult) || ult.length) { st.rkAguardando = true;
+      esqueletoRk(true, Array.isArray(ult) ? `Aguarde: carregando os rankings fixados (${ult.join(", ")})…` : "Aguarde: carregando os rankings da equipe…"); }
+    return;
+  }
   const todos = lerRankings(), fixos = Object.keys(todos).filter((n) => todos[n].fixo);
-  if (fixos.length) calcularRankings({ automatico: true, nomes: fixos });          // só os fixados para a equipe abrem sozinhos
+  if (st.nuvem) salvar("rkFixosNomes", fixos.map((n) => todos[n]._nome || n));      // para o aviso da próxima visita
+  if (fixos.length) { st.rkAguardando = false; calcularRankings({ automatico: true, nomes: fixos }); }   // só os fixados abrem sozinhos
+  else fimAguardoRk();
 }
+// nada para abrir (ou a conta não carregou): tira o esqueleto e volta o aviso de página vazia
+function fimAguardoRk() { if (!st.rkAguardando) return; st.rkAguardando = false; $("#rkEsqueleto").hidden = true; renderRankings(); }
 async function calcularRankings({ automatico = false, nomes: soEstes = null } = {}) {
   const id = ++rkCalcId;
   await chartPronto;
   const todos = lerRankings(), nomes = [...(soEstes || rkSel)].filter((n) => todos[n]).sort((a, b) => (todos[b].fixo - todos[a].fixo) || a.localeCompare(b, "pt-BR"));
   if (!nomes.length) return;
   const mostra = st.pagina === "rankings" && !st.rk?.lista.length;          // página vazia: esqueleto da tabela enquanto lê os arquivos
-  if (mostra) esqueletoRk(true, `${automatico && soEstes ? "Carregando os rankings fixados" : "Carregando os rankings"} (${nomes.map((n) => todos[n]._nome || n).join(", ")})…`);
+  if (mostra) esqueletoRk(true, `Aguarde: ${automatico && soEstes ? "carregando os rankings fixados" : "carregando os rankings"} (${nomes.map((n) => todos[n]._nome || n).join(", ")})…`);
   let P;
   try { P = await preRk(nomes.map((n) => todos[n]), { com1m: automatico }); }
   finally { if (mostra && id === rkCalcId) { $("#rkEsqueleto").hidden = true; $("#rkVazio").hidden = painelRkAberto(); } }
