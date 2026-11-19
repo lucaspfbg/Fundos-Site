@@ -1398,3 +1398,6 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .tb thead tr.mediana th.fx { z-index: 3; text-align: left; color: var(--ouro-txt); font-weight: 800; }
 .tb thead tr.mediana th * { color: inherit !important; background: none !important; border: 0 !important; box-shadow: none !important; font-weight: inherit; }
 .tb thead tr.mediana th small { font-weight: 600; opacity: .8; }
+
+/* rankings: aviso de que as métricas vieram prontas da atualização da base */
+.rk-pre { color: var(--info-txt); font-weight: 700; }

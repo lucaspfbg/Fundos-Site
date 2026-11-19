@@ -176,6 +176,28 @@ export async function carregarFundos(cnpjs, cdiAnterior, aoAvancar, sinal = null
   return out;
 }
 
+// ---------------------------------------------------------------------------- rankings pré-calculados (atualização da base)
+// pasta ranking/ no Hugging Face: meta.json (sempre lido de novo) e um arquivo por período e janela móvel, guardados por versão
+const baseRanking = () => lerLS("fundos.rkPreBase", null) || BASE + "ranking/";        // fundos.rkPreBase: outra pasta (testes)
+export async function metaRankingPre() {
+  try { const r = await fetch(baseRanking() + "meta.json", { cache: "no-store" }); return r.ok ? await r.json() : null; } catch { return null; }
+}
+export async function lerRankingPre(arquivo, versao) {
+  const url = baseRanking() + arquivo, chave = `${url}?v=${encodeURIComponent(versao)}`;
+  let cache = null;
+  if (guardar && "caches" in window) {
+    try { cache = await caches.open("fundos-rk"); const hit = await cache.match(chave); if (hit) return lerParquet(new Uint8Array(await hit.arrayBuffer())); } catch { cache = null; }
+  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${arquivo}: HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  if (cache) try {                                    // troca a versão anterior deste arquivo pela nova
+    for (const k of await cache.keys()) if (k.url.startsWith(url + "?")) await cache.delete(k);
+    await cache.put(chave, new Response(buf));
+  } catch { /* sem espaço: segue sem guardar */ }
+  return lerParquet(buf);
+}
+
 // cotas mais recentes de outra fonte (ex.: a planilha da corretora, só com login): Map CNPJ -> { d (dia), q (cota), origem }
 let cotasExtras = null;
 const cotasRecusadas = new Map();

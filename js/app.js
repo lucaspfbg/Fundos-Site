@@ -3171,6 +3171,9 @@ async function baixarRelatorioBase(seletorBotao) {
       st.destaque = ""; st.destExtra = conjuntoDestaque(rel.dest);
       prog("aplicando o destaque nos gráficos…"); renderResultado(); if (st.rk) renderRankings(); await pausa();
     }
+    if (st.rk?.lista.some((R) => R._pre) && escolhidas.some((s) => s.k === "rkJM" || s.k === "rkCorr")) {
+      prog("baixando as cotas do top 10 dos rankings…"); await garantirCotasRk(st.rk.lista.flatMap((R) => topRk(R).map((x) => x.id)));
+    }
     const partes = escolhidas.map((s) => blocosRel(s.k)).filter(Boolean);
     // proteção contra arquivos enormes (o navegador pode travar)
     const tabs = partes.flatMap((p) => p.blocos.filter((b) => b.tipo === "tabela"));
@@ -3461,6 +3464,7 @@ function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
   if (st.idx) sincronizarUrl();
   if (rolar) scrollTo({ top: 0, behavior: "auto" });
   if (pg === "xp") { renderXPGeral(); renderROA(); }
+  if (pg === "rankings") rankingsAoAbrir();
   agendarFiltrosFixos();                                                     // tabelas que estavam escondidas
 }
 // durante o relatório todas as páginas ficam visíveis (as imagens dos gráficos saem da tela)
@@ -4107,7 +4111,10 @@ function fontePainel(c, onde, per = null) {
   if (onde === "rk") {
     for (const R of [rkAtivo(), ...(st.rk?.lista || [])].filter(Boolean)) {
       const x = R.ordem.find((o) => o.id === c); if (!x) continue;
-      const r = x.l.r;
+      // pré-calculado: só as métricas do ranking vieram prontas; as demais saem das cotas do fundo, com a mesma data final
+      const f0 = st.rk.fundos.get(c);
+      if (R._pre && f0 && !x.l.rTodas) x.l.rTodas = calcularFundo(f0, st.idx.ibov, R.M.periodo, Number($("#peso").value) / 100, { fimComum: R.fim, ...opcPeso() });
+      const r = x.l.rTodas || x.l.r;
       return { l: { Fundo: cad.NOME, CNPJ: cnpjFmt(c), ...r }, f: st.rk.fundos.get(c), dIni: r["Data Inicial"], dFim: r["Data Final"],
         rotulo: `Ranking ${R.nome} · ${R.M.periodo.toLowerCase()}`, extra: `${x.pos}º lugar · pontuação ${br(x.total, 1)} (Performance ${br(x.grupos.Performance, 1)} · Consistência ${br(x.grupos["Consistência"], 1)} · Risco ${br(x.grupos.Risco, 1)})` };
     }
@@ -4138,6 +4145,9 @@ function barraPerPF(c, fonte) {
     : `<span class="pf-per-tag">${esc(fonte.rotulo)}</span>`) + `<span class="nota">${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))}</span></div>`;
 }
 function abrirPainelFundo(c, onde = "analise", per = null) {
+  if (onde === "rk" && st.rk && !st.rk.fundos.has(c) && st.rk.lista.some((R) => R._pre && R.ordem.some((x) => x.id === c))) {
+    garantirCotasRk([c]).then(() => { if (st.rk?.fundos.has(c)) abrirPainelFundo(c, onde, per); }); return;
+  }
   const fonte = fontePainel(c, onde, per); if (!fonte) return;
   st.pf = { c, onde };
   const { l, f } = fonte, cad = st.porCnpj.get(c) || {}, q = st.xp ? camposXP(c) : {};
@@ -4603,6 +4613,13 @@ async function calcularRankingXP(cnpjs, modelo) {
 // ranking temporário (não fica salvo): entra primeiro na lista dos calculados, no lugar do anterior com a mesma marca ("_xp", "_env")
 async function calcularRankingTemp(cnpjs, modelo, nome, marca) {
   await chartPronto;
+  const P = await preRk([{ modelo, cnpjs }]);
+  if (P) {                                                                 // pré-calculado: não baixa as cotas de todos os fundos
+    const R = montarRankingPre(nome, { modelo, cnpjs }, P); R[marca] = true;
+    st.rk = { lista: [R, ...(st.rk?.lista || []).filter((x) => !x[marca])], fundos: new Map(st.rk?.fundos || []), ativo: 0 }; semZoom("gRkJM");
+    renderRankings(); renderCarteira(); atualizarEspaco();
+    return R;
+  }
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Ranking: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
@@ -4842,6 +4859,7 @@ async function carregarNuvem() {
   const fv = st.nuvem.itens.find((x) => x.tipo === "favoritos" && x.meu);
   if (fv?.conteudo?.chaves) { for (const k of fv.conteudo.chaves) st.favs.add(k); salvar("favoritos", [...st.favs]); }
   atualizarListasSalvos();
+  rankingsAoAbrir();
 }
 // retorno visual das ações na conta (salvar, compartilhar, enviar, copiar, apagar): o botão clicado fica "ocupado" (girando e
 // desligado) até o servidor responder, e um aviso no rodapé mostra "Salvando na conta…" e depois "Salvo na conta ✓"
@@ -5390,21 +5408,26 @@ function rodarRanking(M, itens, fim, detalhe) {
     if (fim - ult > 10) { fora.push({ c, motivo: `sem cota desde ${fmtData(ult)}` }); continue; }
     const r = calcularFundo(f, st.idx.ibov, M.periodo, peso, { fimComum: fim, ...opcPeso() });
     if (!r) { fora.push({ c, motivo: "sem dados no período" }); continue; }
-    const kObj = indiceObjetivo(cad.INDICADOR_DESEMPENHO);
-    let obj = null;
-    if (kObj && typeof r["% Anualizado"] === "number") { const rv = retornoVol(st.idx, kObj, r["Data Inicial"], r["Data Final"]); if (rv) obj = r["% Anualizado"] - rv.ret; }
     const jm = janelaMovel(f, st.idx, { bench: M.bench, meses: M.jmMeses, ini: iniJM, fim });
-    const rs = jm.length ? resumoJanela(jm) : null;
-    const v = {};
-    for (const k of Object.keys(M.pesos)) v[k] = k === "_objetivo" ? obj : k === "_jmPos" ? rs?.pPositivas ?? null : k === "_jmBench" ? rs?.pAcima ?? null
-      : typeof r[k] === "number" && Number.isFinite(r[k]) ? r[k] : null;
-    v._jmN = rs?.total || 0;                                              // quantidade de janelas (opção "consistência × janelas")
-    linhas.push({ c, cad, r, obj, kObj, v, rs, jm: detalhe ? jm : null, curto: r["Data Inicial"] - inicioPer > 31 });
+    linhas.push(linhaRanking(M, c, cad, r, jm.length ? resumoJanela(jm) : null, detalhe ? jm : null, inicioPer));
   }
+  return { ordem: ordemRanking(M, linhas), fora };
+}
+// um fundo no ranking: objetivo de retorno, valores das métricas e marca de histórico curto (igual no cálculo ao vivo e no pré-calculado)
+function linhaRanking(M, c, cad, r, rs, jm, inicioPer) {
+  const kObj = indiceObjetivo(cad.INDICADOR_DESEMPENHO);
+  let obj = null;
+  if (kObj && typeof r["% Anualizado"] === "number") { const rv = retornoVol(st.idx, kObj, r["Data Inicial"], r["Data Final"]); if (rv) obj = r["% Anualizado"] - rv.ret; }
+  const v = {};
+  for (const k of Object.keys(M.pesos)) v[k] = k === "_objetivo" ? obj : k === "_jmPos" ? rs?.pPositivas ?? null : k === "_jmBench" ? rs?.pAcima ?? null
+    : typeof r[k] === "number" && Number.isFinite(r[k]) ? r[k] : null;
+  v._jmN = rs?.total || 0;                                                // quantidade de janelas (opção "consistência × janelas")
+  return { c, cad, r, obj, kObj, v, rs, jm, curto: r["Data Inicial"] - inicioPer > 31 };
+}
+function ordemRanking(M, linhas) {
   const porId = new Map(linhas.map((l) => [l.c, l]));
-  const ordem = ordenarRanking(pontuar(linhas.map((l) => ({ id: l.c, v: l.v })), M.pesos, M), (id) => porId.get(id).r["% Acumulado"])
+  return ordenarRanking(pontuar(linhas.map((l) => ({ id: l.c, v: l.v })), M.pesos, M), (id) => porId.get(id).r["% Acumulado"])
     .map((p, i) => ({ ...p, pos: i + 1, l: porId.get(p.id) }));
-  return { ordem, fora };
 }
 function montarRanking(nome, def, fundos) {
   const M = modeloDe(def.modelo), comp = COMPARACOES[st.rkComp] ? st.rkComp : "1m";      // a mesma data de comparação para todos os rankings
@@ -5419,10 +5442,126 @@ function montarRanking(nome, def, fundos) {
   return { nome, def, M, modelo: def.modelo, fim, fimAnt, comp, rotVar: ROTULO_VAR[comp], iniJM: somarMeses(fim, -12 * JM_ANOS), ...atual, nDef: def.cnpjs.length,
     apel: apelidos(atual.ordem.map((x) => x.id)), foraDaBase: def.cnpjs.filter((c) => !st.porCnpj.has(c)) };
 }
-async function calcularRankings() {
+// ---------- rankings pré-calculados: as métricas de todos os fundos ativos já vêm prontas da atualização da base
+// (mesmo código de cálculo, rodado no servidor). Vale quando o tipo de cálculo usa um período e uma janela pré-calculados,
+// a comparação é com 1 mês antes, o peso é 100% e a data final do ranking é a da base. Senão, calcula ao vivo como antes.
+const RK_PRE = { meta: undefined, arqs: new Map() };
+async function metaRkPre() {
+  if (RK_PRE.meta === undefined) RK_PRE.meta = await D.metaRankingPre();
+  return RK_PRE.meta;
+}
+function tabelaRkPre(arq) {                                // [Map CNPJ -> métricas na data final, Map na data de comparação]
+  const jm = arq.startsWith("jm");
+  if (!RK_PRE.arqs.has(arq)) RK_PRE.arqs.set(arq, D.lerRankingPre(arq + ".parquet", RK_PRE.meta.gerado_em).then((linhas) => {
+    const out = [new Map(), new Map()];
+    for (const l of linhas) {
+      const o = {};
+      for (const [k, v] of Object.entries(l)) {
+        if (k === "CNPJ" || k === "REF") continue;
+        if (k.endsWith("~txt")) { if (v != null) o[k.slice(0, -4)] = v; continue; }      // texto no lugar do número (ex.: Beta sem dados)
+        const [a, b] = jm ? k.split(".") : [k];
+        if (b) (o[a] ||= {})[b] = v; else if (!(a in o)) o[a] = v;
+      }
+      out[l.REF].set(l.CNPJ, o);
+    }
+    return out;
+  }).catch((e) => { RK_PRE.arqs.delete(arq); throw e; }));
+  return RK_PRE.arqs.get(arq);
+}
+const mesesRk = (M) => parseInt(M.periodo, 10);
+const fimDoRanking = (def) => Math.max(-Infinity, ...def.cnpjs.map((c) => st.porCnpj.get(c)?._dia).filter((d) => d != null));
+// arquivos pré-calculados de um ranking: período e janela do tipo de cálculo, na data final dele (a cota mais recente entre os fundos)
+function planoRkPre(def, meta) {
+  const M = modeloDe(def.modelo), d = meta.datas.find((x) => x.fimDia === fimDoRanking(def));
+  if (!d || !meta.periodos.includes(mesesRk(M)) || !meta.janelas.includes(`${M.jmMeses}_${M.bench}`)) return null;
+  return { d, m: `m${mesesRk(M)}_${d.fimDia}`, jm: `jm${M.jmMeses}_${M.bench}_${d.fimDia}` };
+}
+// os arquivos de que estes rankings precisam (ou null: algum deles tem de ser calculado ao vivo)
+async function preRk(defs) {
+  if (st.rkAoVivo || st.rkComp !== "1m" || Number($("#peso").value) !== 100 || st.pesoPeriodo) return null;
+  const meta = await metaRkPre(); if (!meta?.datas?.length || !defs.length) return null;
+  const planos = defs.map((d) => planoRkPre(d, meta)); if (planos.some((x) => !x)) return null;
+  const arqs = [...new Set(planos.flatMap((x) => [x.m, x.jm]))];
+  try { const tabs = await Promise.all(arqs.map(tabelaRkPre)); return { meta, tab: new Map(arqs.map((a, i) => [a, tabs[i]])) }; }
+  catch (e) { console.warn("rankings pré-calculados indisponíveis:", e); return null; }
+}
+function montarRankingPre(nome, def, P) {
+  const M = modeloDe(def.modelo), meses = mesesRk(M), pl0 = planoRkPre(def, P.meta), mt = P.tab.get(pl0.m), jt = P.tab.get(pl0.jm);
+  const itens = [...new Set(def.cnpjs)].filter((c) => st.porCnpj.has(c)).map((c) => ({ c, cad: st.porCnpj.get(c) }));
+  const fim = pl0.d.fimDia, fimAnt = pl0.d.fimAntDia;
+  const rodar = (ref, dia) => {
+    const inicioPer = somarMeses(dia, -meses), linhas = [], fora = [];
+    for (const { c, cad } of itens) {
+      const r = mt[ref].get(c);
+      if (!r) {                                                         // o mesmo motivo que o cálculo ao vivo daria
+        const ini = cad.DATA_PRIMEIRA_COTA ? diaDe(cad.DATA_PRIMEIRA_COTA) : null;
+        fora.push({ c, motivo: cad._dia == null ? "sem cotas na base" : ini != null && ini > dia ? "ainda não existia nessa data"
+          : dia - cad._dia > 10 ? `sem cota desde ${fmtData(cad._dia)}` : "sem dados no período" });
+        continue;
+      }
+      linhas.push(linhaRanking(M, c, cad, r, jt[ref].get(c) || null, null, inicioPer));
+    }
+    return { ordem: ordemRanking(M, linhas), fora };
+  };
+  const atual = rodar(0, fim), antes = rodar(1, fimAnt);
+  const posAnt = new Map(antes.ordem.map((x) => [x.id, x.pos]));
+  for (const x of atual.ordem) x.var = posAnt.has(x.id) ? posAnt.get(x.id) - x.pos : null;
+  return { nome, def, M, modelo: def.modelo, fim, fimAnt, comp: "1m", rotVar: ROTULO_VAR["1m"], iniJM: somarMeses(fim, -12 * JM_ANOS), ...atual, nDef: def.cnpjs.length,
+    apel: apelidos(atual.ordem.map((x) => x.id)), foraDaBase: def.cnpjs.filter((c) => !st.porCnpj.has(c)), _pre: true };
+}
+// cotas dos fundos que os gráficos (janela móvel e correlação), o painel e o relatório usam: só desses, em segundo plano
+const rkCotasPend = new Set();
+async function garantirCotasRk(cnpjs, R = null) {
+  if (!st.rk) return;
+  const faltam = [...new Set(cnpjs)].filter((c) => !st.rk.fundos.has(c) && !rkCotasPend.has(c) && st.porCnpj.has(c));
+  if (faltam.length) {
+    faltam.forEach((c) => rkCotasPend.add(c));
+    try { const fs = await D.carregarFundos(faltam, st.idx.cdiAnterior); for (const [c, f] of fs) st.rk?.fundos.set(c, f); }
+    catch (e) { console.error(e); }
+    finally { faltam.forEach((c) => rkCotasPend.delete(c)); }
+  }
+  for (const X of R ? [R] : st.rk?.lista || []) {                          // janela móvel completa (para o gráfico) dos que já têm cotas
+    if (!X._pre) continue;
+    for (const x of X.ordem) { const f = st.rk.fundos.get(x.id); if (f && !x.l.jm) x.l.jm = janelaMovel(f, st.idx, { bench: X.M.bench, meses: X.M.jmMeses, ini: X.iniJM, fim: X.fim }); }
+    X.corr = null; X.corrVis = null;
+  }
+}
+async function cotasVisiveisRk() {
+  const R = rkAtivo(); if (!R?._pre) return;
+  const lista = fundosVisiveis(R).map((x) => x.id); if (lista.every((c) => st.rk.fundos.has(c))) return;
+  await garantirCotasRk(lista, R);
+  if (rkAtivo() === R) { renderRkJM(); renderRkCorr(); }
+}
+// recalcula ao vivo (todas as cotas): outra data de comparação ou as cotas mais recentes da XP
+async function rankingsAoVivo() {
+  if (!st.rk?.lista.length) return;
+  const cnpjs = [...new Set(st.rk.lista.flatMap((R) => R.def.cnpjs))].filter((c) => st.porCnpj.has(c) && !st.rk.fundos.has(c));
+  if (cnpjs.length) {
+    abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
+    try { const fs = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev)); for (const [c, f] of fs) st.rk.fundos.set(c, f); fecharCarga(); }
+    catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return; }
+  }
+  st.rk.lista = st.rk.lista.map((R) => ({ ...montarRanking(R.nome, R.def, st.rk.fundos), _xp: R._xp, _env: R._env })); renderRankings(); renderCarteira();
+}
+document.addEventListener("click", (e) => { if (e.target.closest?.("[data-rk-ao-vivo]")) { st.rkAoVivo = true; rankingsAoVivo(); } });
+
+let rkCalcId = 0;
+// ao abrir a página (ou quando os rankings da conta chegam): os escolhidos da última vez, só se vierem pré-calculados
+function rankingsAoAbrir() { if (st.pagina === "rankings" && !st.rk?.lista.length && rkSel.size && st.idx) calcularRankings({ automatico: true }); }
+async function calcularRankings({ automatico = false } = {}) {
+  const id = ++rkCalcId;
   await chartPronto;
   const todos = lerRankings(), nomes = [...rkSel].filter((n) => todos[n]).sort((a, b) => a.localeCompare(b, "pt-BR"));
   if (!nomes.length) return;
+  const P = await preRk(nomes.map((n) => todos[n]));
+  if (id !== rkCalcId) return;                                             // outro cálculo começou enquanto lia os arquivos
+  if (P) {                                                                 // pré-calculado: pronto na hora, as cotas dos gráficos vêm depois
+    st.rk = { lista: nomes.map((n) => montarRankingPre(n, todos[n], P)), fundos: new Map(st.rk?.fundos || []), ativo: 0 }; semZoom("gRkJM");
+    if (!automatico) { $("#dlgRank").hidden = true; mostrarPagina("rankings"); }
+    renderRankings(); renderCarteira(); atualizarEspaco();
+    return;
+  }
+  if (automatico) return;                                                  // ao abrir a página só mostra o que já está pronto
   const cnpjs = [...new Set(nomes.flatMap((n) => todos[n].cnpjs))].filter((c) => st.porCnpj.has(c));
   $("#dlgRank").hidden = true;
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
@@ -5433,6 +5572,7 @@ async function calcularRankings() {
       faseCarga(`calculando o ranking ${nomes[i]} (${i + 1} de ${nomes.length})…`, 90 + 8 * i / nomes.length); await pausa();
       lista.push(montarRanking(nomes[i], todos[nomes[i]], fundos));
     }
+    if (id !== rkCalcId) return;
     st.rk = { lista, fundos, ativo: 0 }; semZoom("gRkJM");
     faseCarga("montando as tabelas…", 99); await pausa();
     mostrarPagina("rankings");
@@ -5460,7 +5600,7 @@ function renderRankings() {
   renderRkTudo();
   avisoDestaqueRk();
 }
-function renderRkTudo() { renderRkBotao(); renderRkTabela(); renderRkPontos(); renderRkJM(); renderRkCorr(); renderRkPesos(); avisoDestaqueRk(); }
+function renderRkTudo() { renderRkBotao(); renderRkTabela(); renderRkPontos(); renderRkJM(); renderRkCorr(); renderRkPesos(); avisoDestaqueRk(); cotasVisiveisRk(); }
 function renderRkBotao() {                       // botão da barra fixa (acompanha a rolagem) e o de baixo da tabela
   const R = rkAtivo(), n = R?.ordem.length || 0, todos = !!st.rkTodos;
   for (const b of $$(".rk-alterna")) {
@@ -5535,7 +5675,9 @@ function renderRkTabela() {
   $("#rkInfo").innerHTML = !R.fim ? "Nenhum fundo com cotas." : `<b>${esc(R.M.nome)}</b> · métricas dos últimos ${esc(R.M.periodo.toLowerCase())} até ${fmtData(R.fim)} · janela móvel de ${R.M.jmMeses} meses ` +
     `contra o ${esc(nomeIndice(R.M.bench))} (aplicações desde ${fmtData(R.iniJM)}) · <b>${R.ordem.length}</b> fundo${pl(R.ordem.length)} analisado${pl(R.ordem.length)}` +
     (R.nDef > R.ordem.length ? ` (de ${R.nDef} no ranking; os demais estão listados abaixo da tabela)` : "") +
-    (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}`;
+    (R.ordem.length > TOP_RANK && !todos ? ` · mostrando o top ${TOP_RANK}` : "") + ` · "Var. ${esc(R.rotVar || "mês")}" compara com o ranking de ${fmtData(R.fimAnt)}` +
+    (R._pre ? ` · <span class="rk-pre" title="As métricas de todos os fundos são calculadas toda noite, na atualização da base, com o mesmo cálculo do site">⚡ calculado na atualização da base (cotas da CVM até ${fmtData(R.fim)})</span>` +
+      (st.xp ? ` <button type="button" class="link" data-rk-ao-vivo title="Baixa as cotas de todos os fundos e recalcula com as cotas mais recentes da planilha da XP">recalcular com as cotas da XP</button>` : "") : "");
   $("#rkTabela").innerHTML = tabelaHTML({ colunas, linhas, fixas: st.xp ? 7 : 3, larguras: st.xp ? [64, 66, 80, 72, 48, 56, 250] : [64, 66, 270],          /* Pos. = 64 px (a medalha não cabe em 48) */ grupos: colunas.map((c) => c.g), ordenavel: "rk", altura: 560,
     destacar: linhas.map((l) => casa(st.destaque, l.Fundo, l.CNPJ, l._nomeCVM)), classes: linhas.map((l) => classeMedalha(l.pos)),
     ...medianaRk(R, (x) => linhaRkTela(R, x)) });
@@ -5610,6 +5752,8 @@ function dadosCorrRk(R, lista = topRk(R)) {
 function renderRkCorr() {
   const R = rkAtivo(); if (!R) return;
   const chave = st.rkTodos ? "todos" : "top";
+  $("#rkTitCorr").textContent = st.rkTodos ? "Correlação de todos os fundos" : `Correlação do top ${TOP_RANK}`;
+  if (R._pre && fundosVisiveis(R).some((x) => !st.rk.fundos.has(x.id))) { $("#tabRkCorr").innerHTML = `<p class="nota">Carregando as cotas dos fundos para a correlação…</p>`; return; }
   if (!R.corrVis || R.corrVis.chave !== chave) R.corrVis = { chave, d: dadosCorrRk(R, fundosVisiveis(R)) };
   $("#rkTitCorr").textContent = st.rkTodos ? "Correlação de todos os fundos" : `Correlação do top ${TOP_RANK}`;
   if (!R.corrVis.d) { $("#tabRkCorr").innerHTML = `<p class="nota">Precisa de pelo menos 2 fundos.</p>`; return; }
@@ -5951,8 +6095,12 @@ function renderCompRk() {
 // troca a data de comparação: refaz os rankings já calculados com as cotas já baixadas (não baixa nada)
 async function recalcularRankings() {
   if (!st.rk?.lista.length) return;
+  if (st.rk.lista.some((R) => R._pre)) {                                   // pré-calculado só vale para 1 mês antes
+    if (st.rkComp === "1m" && !st.rkAoVivo) { const P = await preRk(st.rk.lista.map((R) => R.def)); if (P) { st.rk.lista = st.rk.lista.map((R) => (R._pre ? montarRankingPre(R.nome, R.def, P) : R)); renderRankings(); return; } }
+    return rankingsAoVivo();
+  }
   const sec = $("#secRank"); sec.classList.add("rk-recalc"); await pausa();
-  try { st.rk.lista = st.rk.lista.map((R) => montarRanking(R.nome, R.def, st.rk.fundos)); renderRankings(); }
+  try { st.rk.lista = st.rk.lista.map((R) => ({ ...montarRanking(R.nome, R.def, st.rk.fundos), _xp: R._xp, _env: R._env })); renderRankings(); }
   finally { sec.classList.remove("rk-recalc"); }
 }
 document.addEventListener("click", (e) => {
