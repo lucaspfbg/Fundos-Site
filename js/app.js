@@ -5582,13 +5582,13 @@ function esqueletoRk(on, texto = "Carregando os rankings…") {
   el.hidden = !on;
   if (!on) renderRankings();                                              // volta o aviso de vazio ou a tabela
 }
-// ao abrir a página (ou quando os rankings da conta chegam): os escolhidos da última vez, só se vierem pré-calculados
+// ao abrir a página (ou quando os rankings da conta chegam): os rankings fixados para a equipe, se vierem pré-calculados
 document.addEventListener("click", (e) => { if (!e.target.closest?.("[data-rk-calc-fixos]")) return;
   const todos = lerRankings(); calcularRankings({ nomes: Object.keys(todos).filter((n) => todos[n].fixo) }); });
 function rankingsAoAbrir() {
   if (st.pagina !== "rankings" || st.rk?.lista.length || !st.idx) return;
   const todos = lerRankings(), fixos = Object.keys(todos).filter((n) => todos[n].fixo);
-  if (fixos.length) calcularRankings({ automatico: true, nomes: fixos }); else if (rkSel.size) calcularRankings({ automatico: true });
+  if (fixos.length) calcularRankings({ automatico: true, nomes: fixos });          // só os fixados para a equipe abrem sozinhos
 }
 async function calcularRankings({ automatico = false, nomes: soEstes = null } = {}) {
   const id = ++rkCalcId;
