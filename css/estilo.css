@@ -1401,3 +1401,7 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 
 /* rankings: aviso de que as métricas vieram prontas da atualização da base */
 .rk-pre { color: var(--info-txt); font-weight: 700; }
+.rk-fixo { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 1px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 700;
+  color: var(--ouro-txt); background: color-mix(in srgb, var(--ouro) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--ouro) 45%, transparent); }
+.rk-fixo .ico, #rkPills .ico { width: 12px; height: 12px; }
+.rk-fixo-btn[aria-pressed=true] { border-color: var(--ouro); color: var(--ouro-txt); }

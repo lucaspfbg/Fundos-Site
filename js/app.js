@@ -80,7 +80,7 @@ function itemNuvemSeguro(it) {
   const c = objSeguro(it.conteudo), def = c.modeloDef ? modeloSeguro(c.modeloDef) : null;
   const conteudo = it.tipo === "grupo" ? { cnpjs: cnpjsSeguros(c.cnpjs) }
     : it.tipo === "carteira" ? { cart: cartSegura(c.cart || c) }
-    : it.tipo === "ranking" ? { modelo: idSeguro(c.modelo) || "MM", cnpjs: cnpjsSeguros(c.cnpjs), ...(def ? { modeloDef: def } : {}) }
+    : it.tipo === "ranking" ? { modelo: idSeguro(c.modelo) || "MM", cnpjs: cnpjsSeguros(c.cnpjs), ...(def ? { modeloDef: def } : {}), ...(c.fixo === true ? { fixo: true } : {}) }
     : it.tipo === "modelo" ? { modelo: modeloSeguro(c.modelo) }
     : { chaves: (Array.isArray(c.chaves) ? c.chaves : []).map(String).filter((k) => k.startsWith("id:") && idSeguro(k.slice(3))) };
   return { id: idSeguro(it.id), tipo: it.tipo, nome: txtSeguro(it.nome) || "(sem nome)", autor: txtSeguro(it.autor), meu: !!it.meu, compartilhado: !!it.compartilhado,
@@ -619,7 +619,7 @@ const SALVOS = {
   carteira: { ler: () => lerCarteiras(), lerLocais: () => lerCarteirasLocais(), chave: "carteirasSalvas", conteudo: (x) => ({ cart: x.cart }), redesenhar: () => renderCarteirasSalvas(),
     erro: (m) => { $("#cartAviso").innerHTML = erroNeg(m); }, erroRedesenha: true,
     excluir: { titulo: "Excluir a carteira?", o: "a carteira", nota: " A carteira montada agora não muda." } },
-  ranking: { ler: () => lerRankings(), lerLocais: () => lerRankingsLocais(), chave: "rankings", conteudo: (x) => conteudoRanking(x.modelo, x.cnpjs), redesenhar: () => renderRkLista(),
+  ranking: { ler: () => lerRankings(), lerLocais: () => lerRankingsLocais(), chave: "rankings", conteudo: (x) => conteudoRanking(x.modelo, x.cnpjs, { fixo: x._origem === "meu" && x.fixo }), redesenhar: () => renderRkLista(),
     erro: (m) => avisoSel(erroNeg(m)), erroRedesenha: false, aoExcluir: (n) => rkSel.delete(n),
     excluir: { titulo: "Excluir o ranking?", o: "o ranking", nota: "" } },
 };
@@ -5251,7 +5251,7 @@ function lerRankings() {
           _doRanking: it.nome, _autor: it.autor };
       }
     }
-    return { modelo, _modeloSalvo: c.modelo, cnpjs: c.cnpjs || [] };
+    return { modelo, _modeloSalvo: c.modelo, cnpjs: c.cnpjs || [], fixo: !!c.fixo && (it.meu || it.compartilhado) };
   });
 }
 // meus rankings da conta que ainda apontam para a cópia antiga de um tipo que está na conta: passam a apontar para o tipo da conta
@@ -5259,14 +5259,22 @@ function lerRankings() {
 async function apontarRankingsParaTipo(idTipo) {
   for (const x of Object.values(lerRankings()))
     if (x._origem === "meu" && x.modelo === idTipo && x._modeloSalvo !== idTipo)
-      await salvarNaNuvem({ id: x._id, tipo: "ranking", nome: x._nome, compartilhado: x._comp, conteudo: conteudoRanking(idTipo, x.cnpjs) });
+      await salvarNaNuvem({ id: x._id, tipo: "ranking", nome: x._nome, compartilhado: x._comp, conteudo: conteudoRanking(idTipo, x.cnpjs, { fixo: x.fixo }) });
 }
 const gravarRankings = (r) => salvar("rankings", Object.fromEntries(Object.entries(r).filter(([, x]) => !x._origem || x._origem === "local").map(([n, x]) => [n, semInternos(x)])));
 // conteúdo de um ranking para a conta: chave do tipo de cálculo + a definição dele, quando é personalizado
-function conteudoRanking(modelo, cnpjs) {
+// fixar para a equipe: o ranking abre já calculado para todos (fixar também compartilha; soltar mantém compartilhado)
+async function alternarFixoRk(n) {
+  const x = lerRankings()[n]; if (!x || x._origem !== "meu") return;
+  const fixo = !x.fixo;
+  const r = await salvarNaNuvem({ id: x._id, tipo: "ranking", nome: x._nome, compartilhado: fixo ? true : x._comp, conteudo: conteudoRanking(x.modelo, x.cnpjs, { fixo }) });
+  if (!r.ok) avisoSel(`<span class="neg">${esc(r.erro)}</span>`);
+  renderRkLista();
+}
+function conteudoRanking(modelo, cnpjs, { fixo = false } = {}) {
   const nv = st.modelosNuvemMeus[modelo] || st.modelosEquipe[modelo], conta = modelosConta()[modelo];
   const def = nv ? semInternos(nv) : conta ? { ...semInternos(conta), nome: conta._nome } : modelosSalvos()[modelo];
-  return { modelo: nv ? nv._orig || modelo : modelo, cnpjs: [...cnpjs], ...(def ? { modeloDef: def } : {}) };
+  return { modelo: nv ? nv._orig || modelo : modelo, cnpjs: [...cnpjs], ...(def ? { modeloDef: def } : {}), ...(fixo ? { fixo: true } : {}) };
 }
 const rkSel = new Set(pref("rankingsSel", []));
 const salvarRkSel = () => salvar("rankingsSel", [...rkSel]);
@@ -5319,9 +5327,10 @@ function renderRkLista() {
         : `<button class="sec mini-btn" data-rk-ed="${k}" type="button">Editar</button>` +
           (x._origem === "local" && logado ? ` <button class="sec mini-btn" data-rk-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador e não some se o navegador apagar os dados">${ico("nuvem")}Enviar para a conta</button>` : "") +
           (x._origem === "meu" ? ` <button class="sec mini-btn" data-rk-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>` : "") +
+          (x._origem === "meu" ? ` <button class="sec mini-btn rk-fixo-btn" data-rk-fixo="${k}" type="button" aria-pressed="${!!x.fixo}" title="${x.fixo ? "Deixa de abrir sozinho para a equipe" : "Fixa para a equipe: aparece já calculado para todos ao abrir a página de rankings (e fica compartilhado)"}">${ico("pino")}${x.fixo ? "Soltar" : "Fixar para a equipe"}</button>` : "") +
           ` <button class="cart-rm" data-rk-del="${k}" type="button" title="Excluir ranking" aria-label="Excluir o ranking ${esc(x._nome)}">${ico("lixo")}</button>`;
       return `<tr class="linha-f${rkSel.has(n) ? " marcado" : ""}" data-rk="${esc(n)}" title="Clique para marcar ou desmarcar"><td><label class="tog"><input type="checkbox" data-rk-sel="${esc(n)}" aria-label="Calcular o ranking ${esc(n)}" ${rkSel.has(n) ? "checked" : ""}></label></td>
-        <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b></td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(rotuloTipo(x.modelo, M, true) || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
+        <td class="t">${botaoFav("ranking", x)}<b>${esc(x._nome)}</b>${x.fixo ? ` <span class="rk-fixo" title="Fixado para a equipe: aparece já calculado ao abrir a página de rankings">${ico("pino")}Fixado na equipe</span>` : ""}</td><td class="t">${seloOrigem(x)}</td><td class="t">${esc(rotuloTipo(x.modelo, M, true) || x.modelo)} <small class="nota">· ${esc(M.periodo || "")} · janela ${M.jmMeses || "?"}m vs ${esc(M.bench || "")}
 </small></td>
         <td>${x.cnpjs.length}</td><td>${x.atualizado ? new Date(x.atualizado).toLocaleDateString("pt-BR") : ""}</td>
         <td class="gr-acoes">${acoes}</td></tr>`; }).join("")}</tbody></table>`);
@@ -5382,7 +5391,7 @@ async function salvarEditorRk() {
   if (st.nuvem && (!orig || orig._origem === "meu")) {
     const outro = Object.entries(g).find(([k, x]) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase() && k !== rkEd.nomeOrig);
     if (outro && !(await confirmar("Substituir o ranking?", `Você já tem na conta o ranking <b>${esc(nome)}</b>. Substituir?`, "Substituir"))) return;
-    const r = await salvarNaNuvem({ id: orig?._id || outro?.[1]._id, tipo: "ranking", nome, compartilhado: $("#rkEdComp").checked, conteudo: conteudoRanking(rkEd.modelo, rkEd.cnpjs) });
+    const r = await salvarNaNuvem({ id: orig?._id || outro?.[1]._id, tipo: "ranking", nome, compartilhado: $("#rkEdComp").checked, conteudo: conteudoRanking(rkEd.modelo, rkEd.cnpjs, { fixo: orig?._origem === "meu" && orig.fixo }) });
     if (!r.ok) { await avisar("Não foi possível salvar na conta", esc(r.erro)); return; }
     if (rkEd.nomeOrig) rkSel.delete(rkEd.nomeOrig);
     rkSel.add(nome); rkEd.aberto = false; $("#rkEditor").hidden = true; $("#rkListaBox").hidden = false; renderRkLista(); return;
@@ -5535,23 +5544,29 @@ async function cotasVisiveisRk() {
 // recalcula ao vivo (todas as cotas): outra data de comparação ou as cotas mais recentes da XP
 async function rankingsAoVivo() {
   if (!st.rk?.lista.length) return;
+  const id = ++rkCalcId;                                                   // outro cálculo pedido depois deste vence
   const cnpjs = [...new Set(st.rk.lista.flatMap((R) => R.def.cnpjs))].filter((c) => st.porCnpj.has(c) && !st.rk.fundos.has(c));
   if (cnpjs.length) {
     abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
     try { const fs = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev)); for (const [c, f] of fs) st.rk.fundos.set(c, f); fecharCarga(); }
     catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return; }
   }
+  if (id !== rkCalcId) return;
   st.rk.lista = st.rk.lista.map((R) => ({ ...montarRanking(R.nome, R.def, st.rk.fundos), _xp: R._xp, _env: R._env })); renderRankings(); renderCarteira();
 }
 document.addEventListener("click", (e) => { if (e.target.closest?.("[data-rk-ao-vivo]")) { st.rkAoVivo = true; rankingsAoVivo(); } });
 
 let rkCalcId = 0;
 // ao abrir a página (ou quando os rankings da conta chegam): os escolhidos da última vez, só se vierem pré-calculados
-function rankingsAoAbrir() { if (st.pagina === "rankings" && !st.rk?.lista.length && rkSel.size && st.idx) calcularRankings({ automatico: true }); }
-async function calcularRankings({ automatico = false } = {}) {
+function rankingsAoAbrir() {
+  if (st.pagina !== "rankings" || st.rk?.lista.length || !st.idx) return;
+  const todos = lerRankings(), fixos = Object.keys(todos).filter((n) => todos[n].fixo);
+  if (fixos.length) calcularRankings({ automatico: true, nomes: fixos }); else if (rkSel.size) calcularRankings({ automatico: true });
+}
+async function calcularRankings({ automatico = false, nomes: soEstes = null } = {}) {
   const id = ++rkCalcId;
   await chartPronto;
-  const todos = lerRankings(), nomes = [...rkSel].filter((n) => todos[n]).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const todos = lerRankings(), nomes = [...(soEstes || rkSel)].filter((n) => todos[n]).sort((a, b) => (todos[b].fixo - todos[a].fixo) || a.localeCompare(b, "pt-BR"));
   if (!nomes.length) return;
   const P = await preRk(nomes.map((n) => todos[n]));
   if (id !== rkCalcId) return;                                             // outro cálculo começou enquanto lia os arquivos
@@ -5595,7 +5610,8 @@ function renderRankings() {
   if (!st.rk?.lista.length) { $("#secRank").hidden = true; return; }
   $("#secRank").hidden = false;
   if (st.rk.ativo >= st.rk.lista.length) st.rk.ativo = 0;
-  $("#rkPills").innerHTML = st.rk.lista.map((R, i) => `<button data-rk-pill="${i}" aria-pressed="${i === st.rk.ativo}">${esc(R.nome)}</button>`).join("");
+  const fixos = lerRankings();
+  $("#rkPills").innerHTML = st.rk.lista.map((R, i) => `<button data-rk-pill="${i}" aria-pressed="${i === st.rk.ativo}"${fixos[R.nome]?.fixo ? ' title="Fixado para a equipe"' : ""}>${fixos[R.nome]?.fixo ? ico("pino") : ""}${esc(R.nome)}</button>`).join("");
   aplicarMinimizados();
   renderRkTudo();
   avisoDestaqueRk();
@@ -6053,6 +6069,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset?.rkDel) return excluirSalvo("ranking", t.dataset.rkDel);
   if (t.dataset?.rkUp) return salvoParaConta("ranking", t.dataset.rkUp);     // ranking deste computador -> conta (e sai do computador)
   if (t.dataset?.rkComp) return alternarCompartilhado("ranking", t.dataset.rkComp);
+  if (t.dataset?.rkFixo) return alternarFixoRk(t.dataset.rkFixo);
   if (t.dataset?.rkCopia) return copiarSalvo("ranking", t.dataset.rkCopia); // ranking de um colega -> cópia minha (com o tipo de cálculo dele)
   const lr = t.closest?.("#rkLista tr[data-rk]");
   if (lr && !t.closest("button, input, label")) { const n = lr.dataset.rk; rkSel.has(n) ? rkSel.delete(n) : rkSel.add(n); return renderRkLista(); }
@@ -6096,7 +6113,7 @@ function renderCompRk() {
 async function recalcularRankings() {
   if (!st.rk?.lista.length) return;
   if (st.rk.lista.some((R) => R._pre)) {                                   // pré-calculado só vale para 1 mês antes
-    if (st.rkComp === "1m" && !st.rkAoVivo) { const P = await preRk(st.rk.lista.map((R) => R.def)); if (P) { st.rk.lista = st.rk.lista.map((R) => (R._pre ? montarRankingPre(R.nome, R.def, P) : R)); renderRankings(); return; } }
+    if (st.rkComp === "1m" && !st.rkAoVivo) { const id = ++rkCalcId, P = await preRk(st.rk.lista.map((R) => R.def)); if (id !== rkCalcId) return; if (P) { st.rk.lista = st.rk.lista.map((R) => (R._pre ? montarRankingPre(R.nome, R.def, P) : R)); renderRankings(); return; } }
     return rankingsAoVivo();
   }
   const sec = $("#secRank"); sec.classList.add("rk-recalc"); await pausa();
