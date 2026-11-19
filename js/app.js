@@ -4904,8 +4904,8 @@ async function apagarDaNuvem(id) {
 function atualizarListasSalvos() {
   if ($("#dlgGrupos").open) renderGrupos();
   if ($("#dlgCarteiras")?.open) renderCarteirasSalvas();
-  if (!$("#dlgRank").hidden && !rkEd.aberto) renderRkLista();
-  if (!$("#dlgRank").hidden && !$("#rkModelosBox").hidden) renderModelos();      // tipos de cálculo da conta
+  if (painelRkAberto() && !rkEd.aberto) renderRkLista();
+  if (painelRkAberto() && !$("#rkModelosBox").hidden) renderModelos();      // tipos de cálculo da conta
   resumoLateralRk();
 }
 // selo "onde está": só neste computador · na sua conta (compartilhado ou só você) · de um colega
@@ -5311,12 +5311,21 @@ function resumoLateralRk() {
   $("#rkResumoLat").textContent = n ? `${n} ranking${pl(n)} salvo${pl(n)} · ${m} marcado${pl(m)} para calcular` : "Nenhum ranking montado ainda.";
 }
 // montar rankings: painel dentro da página Rankings (antes era uma janela por cima)
+// painel "Montar rankings": sempre na página; minimizado mostra só a linha do título com o botão azul no meio
+const painelRkAberto = () => !$("#dlgRank").classList.contains("rk-min");
+function estadoPainelRk(aberto) {
+  const p = $("#dlgRank"), b = $("#rkPainelFechar");
+  p.classList.toggle("rk-min", !aberto); $("#rkCorpo").inert = !aberto;          // fechado: nada lá dentro recebe foco
+  b.textContent = aberto ? "−" : "+"; b.title = aberto ? "Minimizar o painel de montar rankings" : "Abrir o painel de montar rankings";
+  b.setAttribute("aria-label", b.title); b.setAttribute("aria-expanded", String(aberto));
+}
 function abrirRank() {
   rkEd.aberto = false; renderRkLista(); mostrarTelaRk("lista");
-  $("#dlgRank").hidden = false; $("#rkVazio").hidden = true;
-  $("#dlgRank").scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  estadoPainelRk(true); $("#rkVazio").hidden = true;
+  if (st.pagina !== "rankings") mostrarPagina("rankings");
 }
-function fecharRank() { $("#dlgRank").hidden = true; renderRankings(); }
+function fecharRank() { estadoPainelRk(false); renderRankings(); }
+estadoPainelRk(false);                                                     // começa minimizado
 function renderRkLista() {
   const g = lerRankings(), logado = !!st.nuvem;
   const nomes = nomesOrdenados(g, "ranking", st.soFav?.rk);
@@ -5590,12 +5599,12 @@ async function calcularRankings({ automatico = false, nomes: soEstes = null } = 
   if (mostra) esqueletoRk(true, `${automatico && soEstes ? "Carregando os rankings fixados" : "Carregando os rankings"} (${nomes.map((n) => todos[n]._nome || n).join(", ")})…`);
   let P;
   try { P = await preRk(nomes.map((n) => todos[n]), { com1m: automatico }); }
-  finally { if (mostra && id === rkCalcId) { $("#rkEsqueleto").hidden = true; $("#rkVazio").hidden = !$("#dlgRank").hidden; } }
+  finally { if (mostra && id === rkCalcId) { $("#rkEsqueleto").hidden = true; $("#rkVazio").hidden = painelRkAberto(); } }
   if (id !== rkCalcId) return;                                             // outro cálculo começou enquanto lia os arquivos
   if (P && automatico && st.rkComp !== "1m") { st.rkCompAuto = st.rkComp; st.rkComp = "1m"; renderCompRk(); }   // volta ao padrão da pessoa ao trocar
   if (P) {                                                                 // pré-calculado: pronto na hora, as cotas dos gráficos vêm depois
     st.rk = { lista: nomes.map((n) => montarRankingPre(n, todos[n], P)), fundos: new Map(st.rk?.fundos || []), ativo: 0 }; semZoom("gRkJM");
-    if (!automatico) { $("#dlgRank").hidden = true; mostrarPagina("rankings"); }
+    if (!automatico) { estadoPainelRk(false); mostrarPagina("rankings"); }
     renderRankings(); renderCarteira(); atualizarEspaco();
     return;
   }
@@ -5606,7 +5615,7 @@ async function calcularRankings({ automatico = false, nomes: soEstes = null } = 
     return;
   }
   const cnpjs = [...new Set(nomes.flatMap((n) => todos[n].cnpjs))].filter((c) => st.porCnpj.has(c));
-  $("#dlgRank").hidden = true;
+  estadoPainelRk(false);
   abrirCarga(cnpjs); $("#cargaTit").textContent = `Rankings: carregando ${cnpjs.length} fundo${pl(cnpjs.length)}`;
   try {
     const fundos = await carregarFundosCancelavel(cnpjs, (feitos, total, ev) => atualizarCarga(feitos, total, ev));
@@ -5634,7 +5643,7 @@ const usaIbov = (R) => R.M.bench === "IBOV";
 const classeMedalha = (pos) => (pos <= 3 ? `rk-m${pos}` : "");
 const fundosVisiveis = (R) => (st.rkTodos ? R.ordem : R.ordem.slice(0, TOP_RANK));     // o botão "ranking completo" vale para tudo
 function renderRankings() {
-  $("#rkVazio").hidden = !!st.rk?.lista.length || !$("#dlgRank").hidden;     // com o painel de montar aberto, o aviso de vazio sai
+  $("#rkVazio").hidden = !!st.rk?.lista.length || painelRkAberto();     // com o painel de montar aberto, o aviso de vazio sai
   if (!st.rk?.lista.length) { $("#secRank").hidden = true; return; }
   $("#secRank").hidden = false;
   if (st.rk.ativo >= st.rk.lista.length) st.rk.ativo = 0;
@@ -6092,7 +6101,7 @@ async function importarRankings(arquivo) {
 document.addEventListener("click", async (e) => {
   const t = e.target;
   if (t.id === "abrirRank" || t.closest?.("[data-abrir-rank]")) return abrirRank();
-  if (t.id === "rkPainelFechar") return fecharRank();
+  if (t.id === "rkPainelFechar") return painelRkAberto() ? fecharRank() : abrirRank();
   if (t.id === "rkNovo") return abrirEditorRk();
   if (t.dataset?.rkEd) return abrirEditorRk(t.dataset.rkEd);
   if (t.dataset?.rkDel) return excluirSalvo("ranking", t.dataset.rkDel);

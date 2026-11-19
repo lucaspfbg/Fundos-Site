@@ -296,10 +296,12 @@
       </div>
 
       <div id="pgRankings" class="pagina" role="tabpanel" aria-labelledby="abaRankings" data-pagina="rankings" hidden>
-        <!-- sempre no mesmo lugar, com ou sem ranking calculado -->
-        <div class="rk-topo"><button class="prim" type="button" data-abrir-rank><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button></div>
-        <section id="dlgRank" class="cartao rk-painel" aria-labelledby="rkTit" hidden>
-        <div class="cab"><h2 id="rkTit">Montar rankings</h2><button id="rkPainelFechar" class="sec mini-btn" type="button">Fechar</button></div>
+        <section id="dlgRank" class="cartao rk-painel rk-min" aria-labelledby="rkTit">
+        <!-- sempre no mesmo lugar: minimizado mostra só esta linha, com o botão azul no meio; "+" / "−" abre e fecha (com animação) -->
+        <div class="cab rk-painel-cab"><h2 id="rkTit">Montar rankings</h2>
+          <button class="prim rk-abrir" type="button" data-abrir-rank><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Montar e calcular rankings…</button>
+          <button id="rkPainelFechar" class="btn-min" type="button" aria-controls="rkCorpo" aria-expanded="false" title="Abrir o painel de montar rankings" aria-label="Abrir o painel de montar rankings">+</button></div>
+        <div id="rkCorpo" class="rk-corpo"><div class="rk-corpo-in">
         <div id="rkListaBox">
           <p class="nota">Cada ranking é uma lista de fundos com um tipo de cálculo (os pesos das métricas). Marque os que quer calcular e clique em Calcular rankings.
             Os rankings ficam guardados neste navegador.</p>
@@ -359,6 +361,7 @@
             <label id="rkEdCompBox" class="tog" hidden title="Os colegas logados também veem este ranking (só você altera ou apaga)"><input id="rkEdComp" type="checkbox" checked> Compartilhar com a equipe</label>
             <button id="rkEdSalvar" class="prim" type="button">Salvar ranking</button></div></div>
         </div>
+              </div></div>
       </section>
         <div id="rkVazio" class="vazio"><p>Nenhum ranking calculado ainda. Use "Montar e calcular rankings…" acima.</p></div>
       <!-- esqueleto: rankings carregando (arquivos pré-calculados) -->

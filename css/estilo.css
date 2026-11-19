@@ -1424,5 +1424,20 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 @media (prefers-reduced-motion: reduce) { .esq-b { animation: none; } }
 @media (max-width: 640px) { .esq-linha { grid-template-columns: 32px minmax(90px, 2fr) repeat(2, minmax(40px, 1fr)); } .esq-linha .esq-b:nth-child(n+5) { display: none; } }
 
-/* rankings: botão "Montar e calcular rankings…" sempre no topo, no mesmo lugar com ou sem ranking calculado */
-.rk-topo { display: flex; margin: 0 0 12px; }
+/* rankings: painel "Montar rankings" sempre no topo. Minimizado: só a linha do título, com o botão azul no meio e "+" à direita;
+   abre e fecha com animação rápida (a altura anima por grid-template-rows) */
+.rk-painel-cab { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; transition: margin-bottom .24s ease; }
+.rk-painel-cab h2 { justify-self: start; }
+.cab.rk-painel-cab > .btn-min { justify-self: end; margin-left: 0; }
+.rk-painel .rk-abrir { transition: opacity .18s ease, transform .18s ease, visibility .18s; }
+.rk-painel:not(.rk-min) .rk-abrir { opacity: 0; visibility: hidden; transform: scale(.96); }     /* aberto: o próprio painel já está ali */
+.rk-corpo { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .26s cubic-bezier(.2, .8, .2, 1), opacity .2s ease; }
+.rk-corpo-in { overflow: hidden; min-height: 0; }
+.rk-painel.rk-min .rk-corpo { grid-template-rows: 0fr; opacity: 0; }
+.rk-painel.rk-min .rk-painel-cab { margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .rk-corpo, .rk-painel .rk-abrir, .rk-painel-cab { transition: none; } }
+@media (max-width: 640px) {
+  .rk-painel-cab { grid-template-columns: 1fr auto; }
+  .rk-painel-cab .rk-abrir { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+  .rk-painel:not(.rk-min) .rk-abrir { display: none; }
+}
