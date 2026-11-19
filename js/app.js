@@ -5566,6 +5566,13 @@ async function rankingsAoVivo() {
 document.addEventListener("click", (e) => { if (e.target.closest?.("[data-rk-ao-vivo]")) { st.rkAoVivo = true; rankingsAoVivo(); } });
 
 let rkCalcId = 0;
+// esqueleto da tabela enquanto os arquivos pré-calculados chegam (alguns segundos na 1ª vez do dia)
+function esqueletoRk(on, texto = "Carregando os rankings…") {
+  const el = $("#rkEsqueleto"); if (!el) return;
+  if (on) { $(".rk-esq-txt", el).textContent = texto; $("#rkVazio").hidden = true; $("#secRank").hidden = true; }
+  el.hidden = !on;
+  if (!on) renderRankings();                                              // volta o aviso de vazio ou a tabela
+}
 // ao abrir a página (ou quando os rankings da conta chegam): os escolhidos da última vez, só se vierem pré-calculados
 document.addEventListener("click", (e) => { if (!e.target.closest?.("[data-rk-calc-fixos]")) return;
   const todos = lerRankings(); calcularRankings({ nomes: Object.keys(todos).filter((n) => todos[n].fixo) }); });
@@ -5579,7 +5586,11 @@ async function calcularRankings({ automatico = false, nomes: soEstes = null } = 
   await chartPronto;
   const todos = lerRankings(), nomes = [...(soEstes || rkSel)].filter((n) => todos[n]).sort((a, b) => (todos[b].fixo - todos[a].fixo) || a.localeCompare(b, "pt-BR"));
   if (!nomes.length) return;
-  const P = await preRk(nomes.map((n) => todos[n]), { com1m: automatico });
+  const mostra = st.pagina === "rankings" && !st.rk?.lista.length;          // página vazia: esqueleto da tabela enquanto lê os arquivos
+  if (mostra) esqueletoRk(true, `${automatico && soEstes ? "Carregando os rankings fixados" : "Carregando os rankings"} (${nomes.map((n) => todos[n]._nome || n).join(", ")})…`);
+  let P;
+  try { P = await preRk(nomes.map((n) => todos[n]), { com1m: automatico }); }
+  finally { if (mostra && id === rkCalcId) { $("#rkEsqueleto").hidden = true; $("#rkVazio").hidden = !$("#dlgRank").hidden; } }
   if (id !== rkCalcId) return;                                             // outro cálculo começou enquanto lia os arquivos
   if (P && automatico && st.rkComp !== "1m") { st.rkCompAuto = st.rkComp; st.rkComp = "1m"; renderCompRk(); }   // volta ao padrão da pessoa ao trocar
   if (P) {                                                                 // pré-calculado: pronto na hora, as cotas dos gráficos vêm depois
