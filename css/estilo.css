@@ -1446,3 +1446,13 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .cart-nome-tit { margin-left: 10px; padding: 2px 12px; border-radius: 99px; font-size: .8em; font-weight: 800; color: var(--ouro-txt);
   background: color-mix(in srgb, var(--ouro) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--ouro) 45%, transparent); vertical-align: 2px; }
 .cart-nome-tit[hidden] { display: none; }
+
+/* carteira: comparação de carteiras salvas (tabelas com todas as carteiras; os gráficos da carteira montada saem) */
+#secCart.comparando .jm-ctl > label:not(.cart-ref-lbl), #secCart.comparando .cart-acoes > :not(#cartSalvas):not(#cartAviso) { display: none; }
+#cartGraf.comparando > :not(h3:first-child):not(#cartMetricas) { display: none; }
+.cart-comp-banner { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--ouro); border-radius: var(--r-sm); background: color-mix(in srgb, var(--ouro) 10%, var(--card)); color: var(--txt); }
+.cart-comp-banner[hidden] { display: none; }
+.cart-pesos-comp td:not(.t) { text-align: right; font-variant-numeric: tabular-nums; }
+.cart-pesos-comp td.sem-peso { color: var(--sub); }
+.cart-pesos-comp th .sw, .cart-comp-tit .sw, .cart-tab .sw { margin-right: 6px; }
+.cart-comp-tit { margin-top: 18px; }

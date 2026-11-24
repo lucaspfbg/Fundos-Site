@@ -423,7 +423,7 @@
           Pode adicionar qualquer fundo da base: os que ainda não foram baixados são buscados ao clicar em <b>Calcular carteira</b>. A carteira fica guardada neste navegador.</p>
         <div class="jm-ctl opcoes">
           <label class="largo">Adicionar fundo ou índice <div id="cbCartAdd" class="combo"></div></label>
-          <label>Referência <div id="cbCartRef" class="combo"></div></label>
+          <label class="cart-ref-lbl">Referência <div id="cbCartRef" class="combo"></div></label>
           <label>Rebalanceamento <select id="cartRebal">
             <option value="0">Nunca (comprar e manter)</option><option value="1">Mensal</option><option value="3">Trimestral</option>
             <option value="6">Semestral</option><option value="12">Anual</option></select></label>
@@ -441,6 +441,7 @@
           <p id="cartAviso" class="nota cart-aviso" aria-live="polite"></p>
         <span id="cartSoma" class="nota"></span>
         </div>
+        <p id="cartCompBanner" class="nota cart-comp-banner" hidden></p>
         <div id="cartItens"></div>
         <div id="cartRes"></div>
         <div id="cartGraf">
