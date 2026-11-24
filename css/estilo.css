@@ -1462,3 +1462,13 @@ tr.cart-consol td { font-weight: 800; }
 tr.cart-aberta td { box-shadow: inset 0 -2px 0 var(--ouro); }
 .cart-comp-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
 .cart-comp-acoes { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+
+/* comparação de carteiras: o que abre a carteira fica indicado (sem cobrir os dados) */
+.dica-comp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 8px; }
+.dica-comp[hidden] { display: none; }
+.dica-comp .nota { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
+.dica-comp .nota .ico { width: 14px; height: 14px; }
+.cart-tog { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-right: 6px; border-radius: 4px; font-size: 12px; line-height: 1;
+  color: var(--ouro-txt); border: 1px solid color-mix(in srgb, var(--ouro) 60%, transparent); background: color-mix(in srgb, var(--ouro) 12%, var(--card)); }
+tr[data-cart-alt]:hover .cart-alt-nome { text-decoration: underline; text-underline-offset: 3px; }
+tr.cart-aberta .cart-tog { background: var(--ouro); color: #1a1a1a; }

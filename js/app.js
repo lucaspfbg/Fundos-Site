@@ -1367,8 +1367,8 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
   ord.forEach((it, i) => (it["#"] = i + 1));                       // posição pelo valor final (continua visível ao ordenar por outra coluna)
   const okey = "leg:" + chave;
   const colunas = [{ chave: "#", nome: "#", tipo: "int" },
-    { chave: "Fundo", nome: opc.rotulo || "Fundo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l.cor}"></span>${marcaParado(l)}` +
-      (l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : esc(v)) },
+    { chave: "Fundo", nome: opc.rotulo || "Fundo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l.cor}"></span>${marcaParado(l)}` + (l._cart != null ? nomeCartAlt(l._cart, v) :
+      (l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : esc(v))) },
     ...colsValor.map((c) => ({ chave: c, nome: c, tipo: "pct", cor: true }))];
   if (st.ord[okey]) ord = ordenar(ord, okey, colunas);
   const todos = opc.todos === true || (opc.rk ? !!st.rkTodos : st.todos[chave]);
@@ -1494,7 +1494,8 @@ function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax
       plugins: {
         legend: { display: false }, linhaRef: { y: ref },
         decimation: { enabled: true, algorithm: "lttb", samples: 600 },
-        tooltip: { callbacks: { title: (it) => tituloX(it[0].parsed.x), label: (it) => `${it.dataset.label}: ${fmtY(it.parsed.y)}` } },
+        tooltip: { callbacks: { title: (it) => tituloX(it[0].parsed.x), label: (it) => `${it.dataset.label}: ${fmtY(it.parsed.y)}`,
+          footer: (it) => (it.some((x) => x.dataset._cart != null) ? `Clique na linha da carteira para ${it.some((x) => st.cartAbertas?.has(x.dataset._cart)) ? "voltar ao consolidado" : "ver os fundos dela"}` : "") } },
       },
       scales: {
         x: { type: "linear", min: xMin, max: xMax, ticks: { callback: (v) => fmtData(v), maxTicksLimit: 7, includeBounds: false, color: corTexto() }, grid: { display: false } },
@@ -1522,7 +1523,8 @@ function estrela(cor, tam = 28) {
 // pts: { nome, cor, x, y, tipo: "fundo" | "bench" | "carteira", forte, apagado }
 // opcional por ponto: r (raio da bolha), vazio (só contorno), alfa (transparência, ex.: "B3"); xLog: eixo x em escala logarítmica
 function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v, 1), tituloY = "Volatilidade (risco, % a.a.)", yMin = 0, rotulo = null, quad = null, xLog = false, yLog = false }) {
-  const rotuloRR = rotulo || ((it) => `${it.raw.nome}: volatilidade ${brPct(it.parsed.y)} · ${tituloX.startsWith("Retorno") ? "retorno " + brPct(it.parsed.x) + " a.a." : "Sharpe " + br(it.parsed.x, 2)}`);
+  const rotuloRR = rotulo || ((it) => `${it.raw.nome}: volatilidade ${brPct(it.parsed.y)} · ${tituloX.startsWith("Retorno") ? "retorno " + brPct(it.parsed.x) + " a.a." : "Sharpe " + br(it.parsed.x, 2)}` +
+    (it.raw._cart != null ? ` · clique para ${st.cartAbertas?.has(it.raw._cart) ? "voltar ao consolidado" : "ver os fundos"}` : ""));
   const grupo = (tipo, estilo) => {
     const ps = pts.filter((p) => p.tipo === tipo);
     return { label: tipo, data: ps.map((p) => ({ x: p.x, y: p.y, nome: p.nome, rotulo: p.tipo !== "fundo" || p.forte, _c: p._c || null, _cart: p._cart ?? null })),
@@ -1769,7 +1771,7 @@ function renderTabJM() {
   if (st.pagina === "xp" && st.roaEixo === "jm") renderROA();
 }
 // tabela-resumo da janela móvel. lista: [{ Fundo, CNPJ, _c?, resumo }]
-function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null, rotMediana = null) {
+function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null, rotMediana = null, atrLinha = null) {
   const B = curto(nomeB || "Benchmark", 24);
   const linhaJM = ({ resumo: r, ...x }) => ({ ...x, prim: r.primeira, ult: r.ultima,
     ...Object.fromEntries(["min", "med", "max"].flatMap((f) => Object.entries(r[f]).map(([k, v]) => [`${f}.${k}`, v]))),
@@ -1780,7 +1782,7 @@ function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null, r
     { chave: `${f}.ret`, nome: "Rentabilidade", tipo: "pct", cor: true, g: rot }, { chave: `${f}.retAA`, nome: "Fundo a.a.", tipo: "pct", cor: true, g: rot },
     { chave: `${f}.benchAA`, nome: `${B} a.a.`, tipo: "pct", cor: true, g: rot }, { chave: `${f}.dif`, nome: "Diferença", tipo: "pct", cor: true, g: rot }];
   const colunas = [
-    { chave: "Fundo", nome: "Fundo", tipo: "txt", g: "Fundo", html: (v, l) => (l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : `<b>${esc(v)}</b>`) },
+    { chave: "Fundo", nome: atrLinha ? "Carteira / fundo" : "Fundo", tipo: "txt", g: "Fundo", html: (v, l) => (l._cart != null ? `<b>${nomeCartAlt(l._cart, v)}</b>` : l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : `<b>${esc(v)}</b>`) },
     { chave: "CNPJ", nome: "CNPJ", tipo: "txt", g: "Fundo" },
     { chave: "prim", nome: "Primeira aplicação", tipo: "data", g: "Período analisado" }, { chave: "ult", nome: "Última aplicação", tipo: "data", g: "Período analisado" },
     ...faixa("min", "Mínimo", true), ...faixa("med", "Mediana", false), ...faixa("max", "Máximo", true),
@@ -1789,7 +1791,7 @@ function htmlResumoJM(lista, nomeB, tab, classeFn = null, listaMediana = null, r
     { chave: "pAcima", nome: `% acima do ${B}`, tipo: "pct", g: "Consistência" }, { chave: "pPositivas", nome: "% positivas", tipo: "pct", g: "Consistência" }];
   const ord = ordenar(linhas, tab, colunas);
   return tabelaHTML({ colunas, linhas: ord, fixas: 2, grupos: colunas.map((c) => c.g), ordenavel: tab,
-    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [], mediana: listaMediana?.map(linhaJM), rotMediana });
+    destacar: ord.map((l) => casa(st.destaque, l.Fundo, l.CNPJ)), altura: 420, classes: classeFn ? ord.map(classeFn) : [], mediana: listaMediana?.map(linhaJM), rotMediana, atrLinha });
 }
 
 // lista completa de todas as janelas (CSV com ponto e vírgula e vírgula decimal: abre direto no Excel em português)
@@ -2396,6 +2398,18 @@ const CORES_CART = ["#c9a23a", "#8e44ad", "#0c8a4e", "#e8590c", "#3b5bdb", "#d63
 const corComp = (i) => CORES_CART[i % CORES_CART.length];
 const atrCartComp = (l) => (l._cart != null ? ` data-cart-alt="${l._cart}" title="Clique para ${st.cartAbertas?.has(l._cart) ? "voltar ao consolidado" : "ver os fundos desta carteira"}"` : "");
 const classeCartComp = (i) => `cart-consol${st.cartAbertas?.has(i) ? " cart-aberta" : ""}`;
+// nome clicável da carteira nas tabelas dos gráficos: "+" (ver os fundos) ou "−" (voltar ao consolidado)
+const nomeCartAlt = (i, nome) => `<span class="cart-alt-nome"><b class="cart-tog" aria-hidden="true">${st.cartAbertas?.has(i) ? "−" : "+"}</b>${esc(nome)}</span>`;
+// faixa acima de cada gráfico: como abrir uma carteira e um botão para fechar cada carteira aberta
+function dicasComp() {
+  for (const el of $$("[data-dica-comp]")) {
+    el.hidden = !st.cartComp;
+    if (!st.cartComp || !st.cartCompRes) { el.innerHTML = ""; continue; }
+    const abertas = [...st.cartAbertas].filter((i) => st.cartCompRes.lista[i]);
+    el.innerHTML = `<span class="nota">${ico("info")}Clique numa carteira (no gráfico ou no nome com <b>+</b> na tabela) para ver os fundos dela.</span>` +
+      abertas.map((i) => `<button type="button" class="sec mini-btn cart-fechar" data-cart-fechar="${i}" title="Volta ${esc(st.cartCompRes.lista[i].nome)} ao consolidado">− Fechar ${esc(st.cartCompRes.lista[i].nome)}</button>`).join("");
+  }
+}
 function rotuloFundoComp(R, k, nome) { return [...st.cartAbertas].filter((i) => !st.cartCompRes.lista[i]?.R.erro).length > 1 ? `${R.nomes[k]} · ${nome}` : R.nomes[k]; }
 function refComp() {
   const { ini, fim } = st.cartCompRes, ref = st.cart.ref, sr = serieItem(ref);
@@ -2422,7 +2436,7 @@ function alternarCartAberta(i) {
 function renderCompGraficos() {
   if (!st.cartCompRes) return;
   $("#cartGraf").hidden = false;
-  renderCartAcum(); renderCartDd(); renderCartRisco(); renderCartCorr(); calcularCartJM(); renderCartJM(); bannerComp();
+  renderCartAcum(); renderCartDd(); renderCartRisco(); renderCartCorr(); calcularCartJM(); renderCartJM(); bannerComp(); dicasComp();
 }
 function renderCartAcum() {
   const R = vistaCart(); if (!R) return;
@@ -2491,7 +2505,7 @@ function renderTabCartRisco() {
   const pts = st.cartUI.pts; if (!pts) return;
   const chaveX = st.cartUI.eixo === "ret" ? "anual" : "sharpe";
   const colunas = [
-    { chave: "nome", nome: "Ativo", tipo: "txt", html: (v, l) => (l.tipo === "carteira" ? `<b>★ ${esc(v)}</b>` :
+    { chave: "nome", nome: st.cartComp ? "Carteira / ativo" : "Ativo", tipo: "txt", html: (v, l) => (l.tipo === "carteira" ? (l._cart != null ? `<b>★ ${nomeCartAlt(l._cart, v)}</b>` : `<b>★ ${esc(v)}</b>`) :
       `<span class="sw${l.tipo === "bench" ? " losango" : ""}" style="background:${l.cor}"></span>` + (l.c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l.c)}">${esc(v)}</span>` : `<i>${esc(v)}</i>`)) },
     { chave: "anual", nome: "Retorno a.a.", tipo: "pct", cor: true }, { chave: "vol", nome: "Volatilidade", tipo: "pct" }, { chave: "sharpe", nome: "Sharpe", tipo: "num2", cor: true }];
   const linhas = st.ord.cartRisco ? ordenar(pts, "cartRisco", colunas) : [...pts].sort((a, b) => (b[chaveX] ?? -Infinity) - (a[chaveX] ?? -Infinity));
@@ -2568,7 +2582,8 @@ function renderCartJM() {
 }
 function renderTabCartJM() {
   const jm = jmCart(); if (!jm || !jm.lista.length) return;
-  $("#tabCartJM").innerHTML = htmlResumoJM(jm.lista.map((x) => ({ _c: x.c, Fundo: x.nome, CNPJ: x.c ? cnpjFmt(x.c) : "", resumo: x.resumo })), jm.nomeB, "cartJM");
+  $("#tabCartJM").innerHTML = htmlResumoJM(jm.lista.map((x) => ({ _c: x.c, _cart: x._cart, Fundo: x.nome, CNPJ: x.c ? cnpjFmt(x.c) : "", resumo: x.resumo })), jm.nomeB, "cartJM",
+    st.cartComp ? (l) => (l._cart != null ? classeCartComp(l._cart) : "") : null, null, null, st.cartComp ? atrCartComp : null);
 }
 
 let tCart;
@@ -5126,7 +5141,7 @@ const ctSel = new Set(pref("carteirasComp", []));
 st.cartAbertas = new Set();                                                // carteiras comparadas com a quebra por fundo aberta nos gráficos
 function fecharComparacao() {
   st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true;
-  $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando");
+  $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); dicasComp();
   renderCarteira();
 }
 async function compararCarteiras(nomes) {
@@ -5224,7 +5239,7 @@ function renderCompMetricas() {
 async function carregarCarteiraSalva(n) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return false;
   if (st.cart.itens.length && !(await confirmar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`, "Carregar"))) return false;
-  if (st.cartComp) { st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true; $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); }
+  if (st.cartComp) { st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true; dicasComp(); $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); }
   // ativos, pesos, referência, rebalanceamento e valor vêm da carteira salva; o período é o que está escolhido na página
   // (antes vinham também as datas da hora em que ela foi salva: por isso o período "mudava sozinho" para 23/10/2025 a 23/10/2026)
   const { ini: _i, fim: _f, perMeses: _p, ...resto } = JSON.parse(JSON.stringify(x.cart));
@@ -5246,6 +5261,8 @@ document.addEventListener("click", async (e) => {
   }
   if (t.id === "cartCompFechar2") return fecharComparacao();
   if (t.id === "cartRecolher") { st.cartAbertas.clear(); return renderCompGraficos(); }
+  const fc = t.closest?.("[data-cart-fechar]");
+  if (fc) { st.cartAbertas.delete(Number(fc.dataset.cartFechar)); return renderCompGraficos(); }
   const alt = t.closest?.("[data-cart-alt]");
   if (alt && !t.closest(".lk-fundo, a, input, select")) return alternarCartAberta(Number(alt.dataset.cartAlt));
   if (t.dataset?.ctSel !== undefined) { const n = t.dataset.ctSel; t.checked ? ctSel.add(n) : ctSel.delete(n); return renderCarteirasSalvas(); }
