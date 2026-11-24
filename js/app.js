@@ -1371,7 +1371,7 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
       (l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : esc(v)) },
     ...colsValor.map((c) => ({ chave: c, nome: c, tipo: "pct", cor: true }))];
   if (st.ord[okey]) ord = ordenar(ord, okey, colunas);
-  const todos = opc.rk ? !!st.rkTodos : st.todos[chave];
+  const todos = opc.todos === true || (opc.rk ? !!st.rkTodos : st.todos[chave]);
   const marc = ord.map((it) => casa(st.destaque, it.Fundo));
   let vis = ord, seps = new Set();
   if (!todos && ord.length > 10) {
@@ -1386,7 +1386,8 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
   const dest = vis.map((it, i) => !seps.has(i) && casa(st.destaque, it.Fundo));
   const tog = opc.rk ? (opc.n > 10 ? `<label class="tog"><input type="checkbox" data-rk-todos ${st.rkTodos ? "checked" : ""}> Mostrar o ranking completo (${opc.n})</label>` : "")
     : ord.length > 10 ? `<label class="tog"><input type="checkbox" data-todos="${chave}" ${todos ? "checked" : ""}> Mostrar todos (${ord.length})</label>` : "";
-  return tog + tabelaHTML({ colunas, linhas: vis, fixas: 2, larguras: [34, 210], destacar: dest, separadores: seps, altura: 420, classes: vis.map((it) => it._classe || ""), ordenavel: okey });
+  return (opc.todos ? "" : tog) + tabelaHTML({ colunas, linhas: vis, fixas: 2, larguras: [34, 210], destacar: dest, separadores: seps, altura: 420, classes: vis.map((it) => it._classe || ""), ordenavel: okey,
+    atrLinha: opc.atr || null });
 }
 
 // ============================== gráficos ==============================
@@ -1457,7 +1458,7 @@ function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax
   const datasets = series.map((s) => {
     const ativo = !algum || s.bench || s.forte || casa(st.destaque, s.nome, ...(s.busca || []));
     const cor = s.cor + (!ativo ? "22" : s.fraca ? "88" : "");
-    return { label: s.nome, data: s.x.map((x, i) => ({ x, y: s.y[i] })), borderColor: cor, backgroundColor: cor,
+    return { label: s.nome, _cart: s._cart, data: s.x.map((x, i) => ({ x, y: s.y[i] })), borderColor: cor, backgroundColor: cor,
       borderWidth: s.forte ? 3.2 : s.fraca ? 1.1 : algum && ativo && !s.bench ? 3 : 1.4, borderDash: s.bench ? [6, 4] : [], pointRadius: 0,
       pointHoverRadius: 4, order: s.forte ? -1 : ativo ? 0 : 1 };
   });
@@ -1480,6 +1481,16 @@ function grafico(id, series, { fmtY = (v) => brPct(v, 1), ref = null, xMin, xMax
     options: {
       parsing: false, normalized: true, animation: false, responsive: true, maintainAspectRatio: false, layout: { padding: { top: FAIXA_ZOOM } },
       interaction: { mode: "nearest", intersect: false, axis: "xy" },
+      // comparação de carteiras: clique perto da linha de uma carteira abre/fecha os fundos dela (não vale depois de um zoom ou arrasto)
+      onClick: (ev, els, ch) => {
+        const cv = ch.canvas, d = cv._apertou, n = ev.native, el = els[0], ds = el && ch.data.datasets[el.datasetIndex];
+        if (ds?._cart == null || Date.now() - (cv._zoomEm || 0) < 400 || cv.dataset.lupa === "1") return;
+        if (d && n && Math.hypot(n.clientX - d.x, n.clientY - d.y) > 6) return;
+        if (Math.hypot(el.element.x - ev.x, el.element.y - ev.y) > 14) return;              // longe da linha: não é clique nela
+        alternarCartAberta(ds._cart);
+      },
+      onHover: (ev, els, ch) => { const el = els[0], ds = el && ch.data.datasets[el.datasetIndex];
+        ch.canvas.style.cursor = ds?._cart != null && Math.hypot(el.element.x - ev.x, el.element.y - ev.y) <= 14 ? "pointer" : ""; },
       plugins: {
         legend: { display: false }, linhaRef: { y: ref },
         decimation: { enabled: true, algorithm: "lttb", samples: 600 },
@@ -1514,7 +1525,7 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
   const rotuloRR = rotulo || ((it) => `${it.raw.nome}: volatilidade ${brPct(it.parsed.y)} · ${tituloX.startsWith("Retorno") ? "retorno " + brPct(it.parsed.x) + " a.a." : "Sharpe " + br(it.parsed.x, 2)}`);
   const grupo = (tipo, estilo) => {
     const ps = pts.filter((p) => p.tipo === tipo);
-    return { label: tipo, data: ps.map((p) => ({ x: p.x, y: p.y, nome: p.nome, rotulo: p.tipo !== "fundo" || p.forte, _c: p._c || null })),
+    return { label: tipo, data: ps.map((p) => ({ x: p.x, y: p.y, nome: p.nome, rotulo: p.tipo !== "fundo" || p.forte, _c: p._c || null, _cart: p._cart ?? null })),
       backgroundColor: ps.map((p) => (p.vazio ? "transparent" : p.cor + (p.apagado ? "33" : p.alfa || ""))),
       borderColor: ps.map((p) => (p.forte ? (escuro() ? "#fff" : ANIL) : p.vazio ? p.cor : tipo === "fundo" ? "#ffffff" : OURO)),
       borderWidth: ps.map((p) => (p.forte ? 2 : p.vazio ? 1.5 : 1)), pointRadius: ps.map((p) => (p.r != null ? (p.forte ? Math.max(p.r, 9) : p.r) : p.forte ? 9 : estilo.r)),
@@ -1549,9 +1560,10 @@ function graficoRR(id, pts, { fmtX, tituloX, refX = null, fmtY = (v) => brPct(v,
         if (Date.now() - (cv._zoomEm || 0) < 400 || cv.dataset.lupa === "1") return;
         if (d && n && Math.hypot(n.clientX - d.x, n.clientY - d.y) > 6) return;    // foi um arrasto, não um clique
         const el = els[0], raw = el && ch.data.datasets[el.datasetIndex]?.data[el.index];
+        if (raw?._cart != null) return alternarCartAberta(raw._cart);          // estrela de uma carteira comparada: abre/fecha os fundos dela
         if (raw?._c) abrirPainelFundo(raw._c, ondePainel(cv));
       },
-      onHover: (ev, els, ch) => { const el = els[0], raw = el && ch.data.datasets[el.datasetIndex]?.data[el.index]; ch.canvas.style.cursor = raw?._c ? "pointer" : ""; },
+      onHover: (ev, els, ch) => { const el = els[0], raw = el && ch.data.datasets[el.datasetIndex]?.data[el.index]; ch.canvas.style.cursor = raw?._c || raw?._cart != null ? "pointer" : ""; },
       animation: false, responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, linhaRef: { x: refX }, quadrantes: quad,
         tooltip: { callbacks: { label: rotuloRR } } },
@@ -2377,13 +2389,48 @@ function seriesCarteira(campo) {     // campo: "acum" (retorno acumulado) ou "dd
   s.push({ nome: nomeCart(), cor: corCarteira(), x, y: conv(R.sim.valor), forte: true });
   return s;
 }
+// comparação: a carteira aberta mostra os fundos dela; as outras ficam só no consolidado
+// cores das carteiras comparadas: paleta própria, sem repetir as dos fundos (que usam PALETA), para não confundir a linha
+// consolidada com a de um fundo quando a carteira está aberta
+const CORES_CART = ["#c9a23a", "#8e44ad", "#0c8a4e", "#e8590c", "#3b5bdb", "#d6336c", "#5c940d", "#0b7285"];
+const corComp = (i) => CORES_CART[i % CORES_CART.length];
+const atrCartComp = (l) => (l._cart != null ? ` data-cart-alt="${l._cart}" title="Clique para ${st.cartAbertas?.has(l._cart) ? "voltar ao consolidado" : "ver os fundos desta carteira"}"` : "");
+const classeCartComp = (i) => `cart-consol${st.cartAbertas?.has(i) ? " cart-aberta" : ""}`;
+function rotuloFundoComp(R, k, nome) { return [...st.cartAbertas].filter((i) => !st.cartCompRes.lista[i]?.R.erro).length > 1 ? `${R.nomes[k]} · ${nome}` : R.nomes[k]; }
+function refComp() {
+  const { ini, fim } = st.cartCompRes, ref = st.cart.ref, sr = serieItem(ref);
+  return sr ? simularCarteira([{ s: sr, nome: ref.rot }], [1], { ini, fim }) : null;
+}
+function seriesComp(campo) {
+  const conv = (v) => (campo === "acum" ? Array.from(v, (y) => y - 1) : curvaDrawdown(v)), s = [];
+  st.cartCompRes.lista.forEach(({ nome, R }, i) => {
+    if (R.erro) return;
+    const x = R.sim.dias;
+    if (st.cartAbertas.has(i)) R.validos.forEach((it, k) => s.push({ nome: rotuloFundoComp(R, k, nome), c: it.tipo === "f" ? it.v : null, cor: R.cores[k], x, y: conv(R.sim.porAtivo[k]), fraca: true }));
+    s.push({ nome, cor: corComp(i), x, y: conv(R.sim.valor), forte: true, _cart: i });
+  });
+  if (campo === "acum") { const r = refComp(); if (r) s.push({ nome: "Referência: " + st.cart.ref.rot, cor: corItem(st.cart.ref), x: r.dias, y: conv(r.valor), bench: true }); }
+  return s;
+}
+const vistaCart = () => (st.cartComp ? (st.cartCompRes ? { d0: st.cartCompRes.ini, dN: st.cartCompRes.fim } : null) : st.cartRes);
+const linhaLegCart = (s) => ({ Fundo: s.nome, _c: s.c, cor: s.cor, _cart: s._cart, _classe: s._cart != null ? classeCartComp(s._cart) : "" });
+function alternarCartAberta(i) {
+  if (!st.cartComp) return;
+  st.cartAbertas.has(i) ? st.cartAbertas.delete(i) : st.cartAbertas.add(i);
+  renderCompGraficos();
+}
+function renderCompGraficos() {
+  if (!st.cartCompRes) return;
+  $("#cartGraf").hidden = false;
+  renderCartAcum(); renderCartDd(); renderCartRisco(); renderCartCorr(); calcularCartJM(); renderCartJM(); bannerComp();
+}
 function renderCartAcum() {
-  const R = st.cartRes; if (!R) return;
+  const R = vistaCart(); if (!R) return;
   const u = st.cartUI.rel;
   $("#cartRelOn").checked = u.on; $("#cartRelCtl").hidden = !u.on;
   $$("#cartRelModo button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === u.modo));
   definirCombo("cbCartAlvo", u.alvo);
-  let series = seriesCarteira("acum"), ref = null, fmtY = (v) => brPct(v, 1);
+  let series = st.cartComp ? seriesComp("acum") : seriesCarteira("acum"), ref = null, fmtY = (v) => brPct(v, 1);
   if (u.on) {
     const k = st.idx.disponiveis.find((x) => nomeIndice(x) === u.alvo);
     let bench = null;
@@ -2396,29 +2443,47 @@ function renderCartAcum() {
     $("#cartRelNota").textContent = u.modo === "dif" ? `Rentabilidade acumulada menos a do ${u.alvo}.` : `Rentabilidade ÷ a do ${u.alvo}. Início omitido enquanto o alvo está perto de zero.`;
   } else $("#cartRelNota").textContent = "";
   grafico("gCartEvol", series, { fmtY, ref, xMin: R.d0, xMax: R.dN });
-  $("#legCartEvol").innerHTML = tabelaLegenda("cartAcum", series.map((s) => ({ Fundo: s.nome, _c: s.c, cor: s.cor, Final: finalDe(s) })), ["Final"]);
+  $("#legCartEvol").innerHTML = tabelaLegenda("cartAcum", series.map((s) => ({ ...linhaLegCart(s), Final: finalDe(s) })), ["Final"], st.cartComp ? { todos: true, atr: atrCartComp, rotulo: "Carteira / fundo" } : {});
 }
 function renderCartDd() {
-  const R = st.cartRes; if (!R) return;
-  const series = seriesCarteira("dd");
+  const R = vistaCart(); if (!R) return;
+  const series = st.cartComp ? seriesComp("dd") : seriesCarteira("dd");
   grafico("gCartDD", series, { xMin: R.d0, xMax: R.dN });
   const mdd = (s) => Math.min(0, ...s.y);
-  $("#legCartDD").innerHTML = tabelaLegenda("cartDd", series.map((s) => ({ Fundo: s.nome, _c: s.c, cor: s.cor, Final: finalDe(s), "Máx. queda": mdd(s) })), ["Final", "Máx. queda"]);
+  $("#legCartDD").innerHTML = tabelaLegenda("cartDd", series.map((s) => ({ ...linhaLegCart(s), Final: finalDe(s), "Máx. queda": mdd(s) })), ["Final", "Máx. queda"], st.cartComp ? { todos: true, atr: atrCartComp, rotulo: "Carteira / fundo" } : {});
 }
 
 // ---------- risco × retorno (eixo retorno ou Sharpe) com a tabela ao lado
+function pontosRiscoComp() {
+  const pts = [];
+  st.cartCompRes.lista.forEach(({ nome, R }, i) => {
+    if (R.erro) return;
+    if (st.cartAbertas.has(i)) R.validos.forEach((it, k) => pts.push({ nome: rotuloFundoComp(R, k, nome), c: it.tipo === "f" ? it.v : null, cor: R.cores[k], anual: R.eA[k].anual, vol: R.eA[k].vol, sharpe: R.eA[k].sharpe, tipo: it.tipo === "i" ? "bench" : "fundo" }));
+    pts.push({ nome, cor: corComp(i), anual: R.eT.anual, vol: R.eT.vol, sharpe: R.eT.sharpe, tipo: "carteira", _cart: i });
+  });
+  const r = refComp(), ref = st.cart.ref;
+  if (r) { const simC = simularCarteira([{ s: st.idx.niveis.CDI, nome: "CDI" }], [1], { ini: st.cartCompRes.ini, fim: st.cartCompRes.fim });
+    const e = estatisticas(r.dias, r.valor, simC ? estatisticas(simC.dias, simC.valor).anual : null);
+    if (ref.tipo === "i" && INDICES[ref.v]?.tipo !== "preco") e.sharpe = null;
+    pts.push({ nome: "Referência: " + ref.rot, cor: corItem(ref), anual: e.anual, vol: e.vol, sharpe: e.sharpe, tipo: "bench" }); }
+  return pts;
+}
 function renderCartRisco() {
-  const R = st.cartRes; if (!R) return;
+  const R = vistaCart(); if (!R) return;
   const eixo = st.cartUI.eixo, chaveX = eixo === "ret" ? "anual" : "sharpe";
   $$("#cartRiscoEixo button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.e === eixo));
-  const pts = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], anual: R.eA[k].anual, vol: R.eA[k].vol, sharpe: R.eA[k].sharpe, tipo: it.tipo === "i" ? "bench" : "fundo" }));
-  if (R.eRef) pts.push({ nome: "Referência: " + st.cart.ref.rot, cor: corItem(st.cart.ref), anual: R.eRef.anual, vol: R.eRef.vol, sharpe: R.eRef.sharpe, tipo: "bench" });
-  pts.push({ nome: nomeCart(), cor: OURO, anual: R.eT.anual, vol: R.eT.vol, sharpe: R.eT.sharpe, tipo: "carteira" });
+  let pts;
+  if (st.cartComp) pts = pontosRiscoComp();
+  else {
+    pts = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], anual: R.eA[k].anual, vol: R.eA[k].vol, sharpe: R.eA[k].sharpe, tipo: it.tipo === "i" ? "bench" : "fundo" }));
+    if (R.eRef) pts.push({ nome: "Referência: " + st.cart.ref.rot, cor: corItem(st.cart.ref), anual: R.eRef.anual, vol: R.eRef.vol, sharpe: R.eRef.sharpe, tipo: "bench" });
+    pts.push({ nome: nomeCart(), cor: OURO, anual: R.eT.anual, vol: R.eT.vol, sharpe: R.eT.sharpe, tipo: "carteira" });
+  }
   st.cartUI.pts = pts;
   const algum = pts.some((p) => p.tipo === "fundo" && casa(st.destaque, p.nome));
   graficoRR("gCartRR", pts.filter((p) => p[chaveX] != null).map((p) => {
     const m = p.tipo === "fundo" && algum && casa(st.destaque, p.nome);
-    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.tipo, forte: m, apagado: algum && p.tipo === "fundo" && !m, _c: p.tipo === "fundo" ? p.c || p._c || null : null };
+    return { nome: p.nome, cor: p.cor, x: p[chaveX], y: p.vol, tipo: p.tipo, forte: m, apagado: algum && p.tipo === "fundo" && !m, _c: p.tipo === "fundo" ? p.c || p._c || null : null, _cart: p._cart };
   }), { fmtX: chaveX === "anual" ? (v) => brPct(v, 1) : (v) => br(v, 2), tituloX: chaveX === "anual" ? "Retorno (% a.a.)" : "Sharpe (sobre o CDI)", refX: chaveX === "sharpe" ? 0 : null });
   renderTabCartRisco();
 }
@@ -2431,11 +2496,24 @@ function renderTabCartRisco() {
     { chave: "anual", nome: "Retorno a.a.", tipo: "pct", cor: true }, { chave: "vol", nome: "Volatilidade", tipo: "pct" }, { chave: "sharpe", nome: "Sharpe", tipo: "num2", cor: true }];
   const linhas = st.ord.cartRisco ? ordenar(pts, "cartRisco", colunas) : [...pts].sort((a, b) => (b[chaveX] ?? -Infinity) - (a[chaveX] ?? -Infinity));
   $("#tabCartRisco").innerHTML = tabelaHTML({ colunas, linhas, fixas: 1, larguras: [210], ordenavel: "cartRisco", altura: 420,
-    destacar: linhas.map((p) => p.tipo === "fundo" && casa(st.destaque, p.nome)), classes: linhas.map((p) => (p.tipo === "carteira" ? "cart-total" : "")) });
+    destacar: linhas.map((p) => p.tipo === "fundo" && casa(st.destaque, p.nome)),
+    classes: linhas.map((p) => (p.tipo === "carteira" ? `cart-total${p._cart != null ? " " + classeCartComp(p._cart) : ""}` : "")), atrLinha: st.cartComp ? atrCartComp : null });
 }
 
 // ---------- correlação entre os ativos e a carteira
 function renderCartCorr() {
+  if (st.cartComp) {
+    if (!st.cartCompRes) return;
+    const itens = [];
+    st.cartCompRes.lista.forEach(({ nome, R }, i) => {
+      if (R.erro) return;
+      const rets = (v) => { const m = new Map(); for (let t = 1; t < v.length; t++) m.set(R.sim.dias[t], v[t] / v[t - 1] - 1); return m; };
+      if (st.cartAbertas.has(i)) R.validos.forEach((it, k) => itens.push({ nome: rotuloFundoComp(R, k, nome), c: it.tipo === "f" ? it.v : null, cnpj: it.tipo === "f" ? it.v : "", cor: R.cores[k], bench: it.tipo === "i", ret: rets(R.sim.porAtivo[k]) }));
+      itens.push({ nome: `★ ${nome}`, cor: corComp(i), bench: true, ret: rets(R.sim.valor) });
+    });
+    st.cartCompRes.corr = { itens, m: matrizCorrelacao(itens.map((i) => i.ret)) };
+    return renderMatrizCorr("tabCartCorr", "cart", itens, st.cartCompRes.corr.m);
+  }
   const R = st.cartRes; if (!R) return;
   const rets = (v) => { const m = new Map(); for (let t = 1; t < v.length; t++) m.set(R.sim.dias[t], v[t] / v[t - 1] - 1); return m; };
   const itens = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cnpj: it.tipo === "f" ? it.v : "", cor: R.cores[k], bench: it.tipo === "i", ret: rets(R.sim.porAtivo[k]) }));
@@ -2446,25 +2524,34 @@ function renderCartCorr() {
 
 // ---------- janela móvel da carteira e dos ativos (no período da carteira)
 function calcularCartJM() {
-  const R = st.cartRes; if (!R) return;
+  const R = st.cartComp ? null : st.cartRes; if (!R && !st.cartCompRes) return;
   const b = st.cartUI.jmBench, meses = st.cartUI.jmMeses;
   let bench = b.tipo === "n" ? "" : b.v, nomeB = b.tipo === "n" ? "" : b.rot;
   if (b.tipo === "f") { const g = fundoCart(b.v); if (g) bench = { fundo: g }; else { bench = "CDI"; nomeB = "CDI"; } }
   const ini = diaDe(new Date(st.cartUI.jmIni)), fim = diaDe(new Date(st.cartUI.jmFim));
   // carteira refeita no período da janela móvel (mesmos pesos e rebalanceamento)
-  const simJ = simularCarteira(R.ativos, R.pesos, { ini, fim, rebal: R.rebal });
   const p = { bench, meses, ini, fim };
-  const lista = [...(simJ ? [{ nome: `★ ${nomeCart()}`, cor: corCarteira(), forte: true, f: pseudoFundo(simJ.dias, simJ.valor) }] : []),
-    ...R.validos.map((it, k) => {
-      const s = R.ativos[k].s;
-      return { nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], fraca: true,
-        f: it.tipo === "f" ? fundoCart(it.v) : pseudoFundo(s.d, s.L) };
-    })].filter((x) => !(b.tipo === "f" && x.c === b.v));
+  const ativosJM = (R0, rot) => R0.validos.map((it, k) => {
+    const s = R0.ativos[k].s;
+    return { nome: rot(k), c: it.tipo === "f" ? it.v : null, cor: R0.cores[k], fraca: true, f: it.tipo === "f" ? fundoCart(it.v) : pseudoFundo(s.d, s.L) };
+  });
+  let lista = [], simJ = null;
+  if (R) {
+    simJ = simularCarteira(R.ativos, R.pesos, { ini, fim, rebal: R.rebal });
+    lista = [...(simJ ? [{ nome: `★ ${nomeCart()}`, cor: corCarteira(), forte: true, f: pseudoFundo(simJ.dias, simJ.valor) }] : []), ...ativosJM(R, (k) => R.nomes[k])];
+  } else st.cartCompRes.lista.forEach(({ nome, R: Rc }, i) => {            // comparação: cada carteira refeita no período da janela móvel
+    if (Rc.erro) return;
+    const sj = simularCarteira(Rc.ativos, Rc.pesos, { ini, fim, rebal: Rc.rebal });
+    if (st.cartAbertas.has(i)) lista.push(...ativosJM(Rc, (k) => rotuloFundoComp(Rc, k, nome)));
+    if (sj) lista.push({ nome, cor: corComp(i), forte: true, f: pseudoFundo(sj.dias, sj.valor), _cart: i });
+  });
+  lista = lista.filter((x) => !(b.tipo === "f" && x.c === b.v));
   for (const x of lista) { x.linhas = janelaMovel(x.f, st.idx, p); x.resumo = x.linhas.length ? resumoJanela(x.linhas) : null; }
-  R.jm = { p, nomeB, lista: lista.filter((x) => x.resumo), simJ };
+  (R || st.cartCompRes).jm = { p, nomeB, lista: lista.filter((x) => x.resumo), simJ, comp: !R };
 }
+const jmCart = () => (st.cartComp ? st.cartCompRes?.jm : st.cartRes?.jm);
 function renderCartJM() {
-  const jm = st.cartRes?.jm; if (!jm) return;
+  const jm = jmCart(); if (!jm) return;
   const n = jm.lista.reduce((s, x) => s + x.linhas.length, 0);
   $("#cartJmCorpo").hidden = !jm.lista.length;
   if (!jm.lista.length) { $("#cartJmInfo").innerHTML = `<p class="nota">Nenhuma janela de ${jm.p.meses} meses cabe entre ${fmtData(jm.p.ini)} e ${fmtData(jm.p.fim)}. Diminua a duração ou amplie as datas.</p>`; return; }
@@ -2472,15 +2559,15 @@ function renderCartJM() {
   $("#cartJmInfo").innerHTML = [`<b>${jm.p.meses} meses</b> de aplicação`, `benchmark: <b>${esc(jm.nomeB || "nenhum")}</b>`,
     `aplicações de <b>${fmtData(prim)}</b> a <b>${fmtData(ult)}</b>`, `<b>${br(n, 0)}</b> janelas`].map((t) => `<span>${t}</span>`).join("") +
     (jm.simJ?.cortadoIni ? `<span class="aviso-chip">a carteira só começa em ${fmtData(jm.simJ.dias[0])}, quando todos os ativos têm cota</span>` : "") +
-    (!jm.simJ ? `<span class="aviso-chip">a carteira não tem dias em comum nesse intervalo; aparecem só os ativos</span>` : "");
-  const series = jm.lista.map((x) => { const v = x.linhas.filter((l) => l.dif != null); return { nome: x.nome, c: x.c, cor: x.cor, forte: x.forte, fraca: x.fraca, x: v.map((l) => l.ini), y: v.map((l) => l.dif) }; });
+    (!jm.simJ && !jm.comp ? `<span class="aviso-chip">a carteira não tem dias em comum nesse intervalo; aparecem só os ativos</span>` : "");
+  const series = jm.lista.map((x) => { const v = x.linhas.filter((l) => l.dif != null); return { nome: x.nome, c: x.c, cor: x.cor, forte: x.forte, fraca: x.fraca, _cart: x._cart, x: v.map((l) => l.ini), y: v.map((l) => l.dif) }; });
   grafico("gCartJM", series, { ref: 0, xMin: prim, xMax: ult, tituloX: (x) => `Aplicação em ${fmtData(x)}` });
-  $("#legCartJM").innerHTML = tabelaLegenda("cartJM", jm.lista.map((x, i) => ({ Fundo: x.nome, _c: x.c, cor: x.cor,
-    Final: series[i].y.length ? series[i].y[series[i].y.length - 1] : null, Mediana: x.resumo.med.dif })), ["Final", "Mediana"]);
+  $("#legCartJM").innerHTML = tabelaLegenda("cartJM", jm.lista.map((x, i) => ({ ...linhaLegCart(series[i]),
+    Final: series[i].y.length ? series[i].y[series[i].y.length - 1] : null, Mediana: x.resumo.med.dif })), ["Final", "Mediana"], st.cartComp ? { todos: true, atr: atrCartComp, rotulo: "Carteira / fundo" } : {});
   renderTabCartJM();
 }
 function renderTabCartJM() {
-  const jm = st.cartRes?.jm; if (!jm || !jm.lista.length) return;
+  const jm = jmCart(); if (!jm || !jm.lista.length) return;
   $("#tabCartJM").innerHTML = htmlResumoJM(jm.lista.map((x) => ({ _c: x.c, Fundo: x.nome, CNPJ: x.c ? cnpjFmt(x.c) : "", resumo: x.resumo })), jm.nomeB, "cartJM");
 }
 
@@ -5036,8 +5123,9 @@ async function salvarCarteiraAtual() {
 }
 // ---------- comparação de carteiras salvas: mesmo período da página, uma linha por carteira (pelo nome), com legenda
 const ctSel = new Set(pref("carteirasComp", []));
+st.cartAbertas = new Set();                                                // carteiras comparadas com a quebra por fundo aberta nos gráficos
 function fecharComparacao() {
-  st.cartComp = null; st.cartCompRes = null; $("#secCartComp").hidden = true; $("#cartCompBanner").hidden = true;
+  st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true;
   $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando");
   renderCarteira();
 }
@@ -5052,39 +5140,33 @@ async function compararCarteiras(nomes) {
     try { const novos = await carregarFundosCancelavel(faltam, (feitos, total, ev) => atualizarCarga(feitos, total, ev)); st.cartFundos = new Map([...(st.cartFundos || new Map()), ...novos]); fecharCarga(); atualizarEspaco(); }
     catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return; }
   }
-  st.cartComp = defs.map((x) => ({ nome: x._nome, cart: x.cart }));
+  st.cartComp = defs.map((x) => ({ nome: x._nome, cart: x.cart })); st.cartAbertas = new Set();
   renderCarteira();
-  $("#secCartComp").scrollIntoView({ block: "start", behavior: rolagemSuave() });
+  $("#cartCompBanner").scrollIntoView({ block: "start", behavior: rolagemSuave() });
 }
 // comparando: cada carteira com os próprios pesos e rebalanceamento, no período e com a referência da página
 function calcularComparacao(ini, fim) {
-  const lista = st.cartComp.map(({ nome, cart }, i) => ({ nome, cart, cor: PALETA[i % PALETA.length], R: resultadoCart(cart, ini, fim, st.cart.ref) }));
+  const lista = st.cartComp.map(({ nome, cart }, i) => ({ nome, cart, cor: corComp(i), R: resultadoCart(cart, ini, fim, st.cart.ref) }));
   st.cartCompRes = { lista, ini, fim };
   $("#secCart").classList.add("comparando"); $("#cartGraf").classList.add("comparando");
   $("#cartNomeTit").hidden = false; $("#cartNomeTit").textContent = `comparando ${lista.length} carteiras`;
-  $("#cartCompBanner").hidden = false;
-  $("#cartCompBanner").innerHTML = `Comparando <b>${lista.map((x) => esc(x.nome)).join(", ")}</b> no período da página. ` +
-    `<button id="cartCompFechar2" class="link" type="button">Fechar comparação</button> (volta para a carteira montada)`;
-  renderCartCompGrafico(); renderCompPesos(); renderCompResumo(); renderCompMetricas();
+  renderCompPesos(); renderCompResumo(); renderCompMetricas(); renderCompGraficos();
 }
-// gráfico: uma linha por carteira (pelo nome), com a legenda
-function renderCartCompGrafico() {
-  const { lista, ini, fim } = st.cartCompRes, sec = $("#secCartComp"), series = [], linhas = [], avisos = [];
-  sec.hidden = false;
-  for (const { nome, cart, cor, R } of lista) {
-    const fora = cart.itens.length - (R.validos?.length || 0);
-    if (fora && !R.erro) avisos.push(`${esc(nome)}: ${fora} ativo${pl(fora)} sem cotas no período ficou de fora`);
+// aviso do topo: quais carteiras, início de cada uma, "Recolher todas" e "Fechar comparação"
+function bannerComp() {
+  const { lista, ini, fim } = st.cartCompRes, avisos = [], tarde = [];
+  for (const { nome, cart, R } of lista) {
     if (R.erro) { avisos.push(`${esc(nome)}: ${R.erro === "sem dias" ? "sem dias em comum suficientes entre os ativos no período" : "nenhum ativo com cotas no período"}`); continue; }
-    series.push({ nome, cor, x: Array.from(R.sim.dias), y: Array.from(R.sim.valor, (v) => v - 1), forte: true });
-    linhas.push({ Fundo: nome, cor, Final: R.eT.total, "Ao ano": R.eT.anual, Volatilidade: R.eT.vol, "Máx. queda": R.eT.mdd, _ini: R.d0 });
+    const fora = cart.itens.length - R.validos.length; if (fora) avisos.push(`${esc(nome)}: ${fora} ativo${pl(fora)} sem cotas no período ficou de fora`);
+    if (R.d0 > ini + 7) tarde.push(`${esc(nome)} desde ${fmtData(R.d0)}`);
   }
-  $("#cartCompNota").innerHTML = `Período da página: ${fmtData(ini)} a ${fmtData(fim)}. Cada carteira usa os próprios pesos e rebalanceamento e começa no primeiro dia em que todos os ativos dela têm cotas` +
-    (linhas.some((l) => l._ini > ini + 7) ? ` (${linhas.filter((l) => l._ini > ini + 7).map((l) => `${esc(l.Fundo)} desde ${fmtData(l._ini)}`).join("; ")})` : "") + "." +
-    (avisos.length ? `<br><span class="neg">${avisos.join(" · ")}</span>` : "");
-  semZoom("gCartComp");
-  const xs = series.flatMap((s) => [s.x[0], s.x[s.x.length - 1]]);
-  grafico("gCartComp", series, { ref: 0, xMin: xs.length ? Math.min(...xs) : undefined, xMax: xs.length ? Math.max(...xs) : undefined });
-  $("#legCartComp").innerHTML = tabelaLegenda("cartComp", linhas, ["Final", "Ao ano", "Volatilidade", "Máx. queda"], { rotulo: "Carteira" });
+  const n = st.cartAbertas.size;
+  $("#cartCompBanner").hidden = false;
+  $("#cartCompBanner").innerHTML = `<span>Comparando <b>${lista.map((x) => esc(x.nome)).join(", ")}</b> de ${fmtData(ini)} a ${fmtData(fim)}` +
+    (tarde.length ? ` (${tarde.join("; ")})` : "") + `. Nos gráficos, clique numa carteira (linha, estrela ou linha da tabela ao lado) para ver os fundos dela; clique de novo para voltar ao consolidado.` +
+    (avisos.length ? `<br><span class="neg">${avisos.join(" · ")}</span>` : "") + `</span>` +
+    `<span class="cart-comp-acoes"><button id="cartRecolher" class="sec mini-btn" type="button"${n ? "" : " disabled"}>Recolher todas${n ? ` (${n} aberta${pl(n)})` : ""}</button>` +
+    `<button id="cartCompFechar2" class="sec mini-btn" type="button">Fechar comparação</button></span>`;
 }
 // pesos: uma coluna por carteira; o ativo que não está numa carteira fica com 0
 function renderCompPesos() {
@@ -5142,7 +5224,7 @@ function renderCompMetricas() {
 async function carregarCarteiraSalva(n) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return false;
   if (st.cart.itens.length && !(await confirmar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`, "Carregar"))) return false;
-  if (st.cartComp) { st.cartComp = null; st.cartCompRes = null; $("#secCartComp").hidden = true; $("#cartCompBanner").hidden = true; $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); }
+  if (st.cartComp) { st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true; $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); }
   // ativos, pesos, referência, rebalanceamento e valor vêm da carteira salva; o período é o que está escolhido na página
   // (antes vinham também as datas da hora em que ela foi salva: por isso o período "mudava sozinho" para 23/10/2025 a 23/10/2026)
   const { ini: _i, fim: _f, perMeses: _p, ...resto } = JSON.parse(JSON.stringify(x.cart));
@@ -5162,7 +5244,10 @@ document.addEventListener("click", async (e) => {
     if (ctSel.size === 1) { const n = [...ctSel][0]; if (st.cartComp) fecharComparacao(); if (await carregarCarteiraSalva(n)) calcularCarteiraBotao(); return; }
     return compararCarteiras([...ctSel]);
   }
-  if (t.id === "cartCompFechar" || t.id === "cartCompFechar2") return fecharComparacao();
+  if (t.id === "cartCompFechar2") return fecharComparacao();
+  if (t.id === "cartRecolher") { st.cartAbertas.clear(); return renderCompGraficos(); }
+  const alt = t.closest?.("[data-cart-alt]");
+  if (alt && !t.closest(".lk-fundo, a, input, select")) return alternarCartAberta(Number(alt.dataset.cartAlt));
   if (t.dataset?.ctSel !== undefined) { const n = t.dataset.ctSel; t.checked ? ctSel.add(n) : ctSel.delete(n); return renderCarteirasSalvas(); }
   const d = t.closest?.("[data-ct-ver],[data-ct-car],[data-ct-del],[data-ct-up],[data-ct-comp],[data-ct-copia]"); if (!d) return;
   const ds = d.dataset, g = lerCarteiras();
