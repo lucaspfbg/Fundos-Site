@@ -409,8 +409,15 @@
         <button class="sec mini-btn" type="button" data-enviar="cart" title="Leva os fundos desta carteira para a análise ou para um ranking, sem buscar de novo" aria-label="Enviar para análise ou ranking"><svg class="ico" aria-hidden="true"><use href="#i-enviar"/></svg><span class="rot">Enviar para análise ou ranking…</span></button>
         <button id="btnRelCart" class="sec mini-btn" type="button" title="Escolher partes e baixar em PDF, PNG ou Excel" aria-label="Baixar relatório"><svg class="ico" aria-hidden="true"><use href="#i-baixar"/></svg><span class="rot">Baixar relatório</span></button>
       </div>
+      <section id="secCartComp" class="cartao" data-sec="cartComp" hidden>
+        <div class="cab"><h2>Comparação de carteiras</h2>
+          <button id="cartCompFechar" class="sec mini-btn" type="button">Fechar comparação</button>
+          <button class="btn-min" type="button" data-min="cartComp" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
+        <p id="cartCompNota" class="nota"></p>
+        <div class="linha2"><div class="graf"><canvas id="gCartComp" aria-label="Rentabilidade acumulada de cada carteira no período"></canvas></div><div id="legCartComp" class="leg"></div></div>
+      </section>
       <section id="secCart" class="cartao" data-sec="cart" hidden>
-        <div class="cab"><h2>Carteira</h2>
+        <div class="cab"><h2>Carteira<span id="cartNomeTit" class="cart-nome-tit" hidden></span></h2>
           <button class="btn-min" type="button" data-min="cart" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
         <p class="nota">Dê um peso a cada fundo (ou índice) e veja o desempenho da carteira, com rebalanceamento e a contribuição de cada ativo.
           Pode adicionar qualquer fundo da base: os que ainda não foram baixados são buscados ao clicar em <b>Calcular carteira</b>. A carteira fica guardada neste navegador.</p>
@@ -557,7 +564,8 @@
   </div>
   <p class="nota"><label class="tog"><input id="ctSoFav" type="checkbox"> Só favoritos ★</label></p>
   <div id="ctLista"></div>
-  <div class="dlg-pe"><span class="nota">Carregar substitui a carteira montada agora (ativos, pesos, referência, rebalanceamento, valor e período).</span></div>
+  <div class="dlg-pe"><button id="ctComparar" class="prim" type="button" disabled>Comparar carteiras</button><span class="nota">Carregar substitui a carteira montada agora (ativos, pesos, referência, rebalanceamento e valor); o período continua o escolhido na página.
+    Marque duas ou mais em "Comparar" para ver as carteiras lado a lado no mesmo período.</span></div>
 </dialog>
 
 <dialog id="dlgGrupos" class="dlg-medio" aria-labelledby="grTit">

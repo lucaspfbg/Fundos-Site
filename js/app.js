@@ -54,6 +54,7 @@ function cartSegura(c) {
   return { itens: (Array.isArray(c.itens) ? c.itens : []).map(ativoSeguro).filter(Boolean),
     ref: r ? { tipo: r.tipo, v: r.v, rot: txtSeguro(c.ref.rot) || (r.tipo === "i" ? nomeIndice(r.v) : cnpjFmt(r.v)) } : { tipo: "i", v: "CDI", rot: "CDI" },
     rebal: [0, 1, 3, 6, 12].includes(Number(c.rebal)) ? Number(c.rebal) : 0, valor: Math.max(0, numSeguro(c.valor, 10000)), ini: dataSegura(c.ini), fim: dataSegura(c.fim),
+    nome: txtSeguro(c.nome, 80) || "",                                     // nome da carteira salva que foi carregada (vazio: montada aqui)
     perMeses: [12, 24, 36, 60].includes(Number(c.perMeses)) ? Number(c.perMeses) : 0 };
 }
 // tipo de cálculo: só métricas que existem, pesos numéricos, grupos conhecidos, índice conhecido e período em meses
@@ -1085,6 +1086,7 @@ function agruparLinhas(linhas, tab, campo, info) {
 function alternarGrupo(chave) {
   st.fechados.has(chave) ? st.fechados.delete(chave) : st.fechados.add(chave);
   salvar("gruposFechados", [...st.fechados]);
+  if (chave.startsWith("cartAtivos|")) return renderCartResumo();         // grupos da tabela de desempenho da carteira
   renderMetricas();
 }
 
@@ -1364,7 +1366,7 @@ function tabelaLegenda(chave, itens, colsValor, opc = {}) {
   ord.forEach((it, i) => (it["#"] = i + 1));                       // posição pelo valor final (continua visível ao ordenar por outra coluna)
   const okey = "leg:" + chave;
   const colunas = [{ chave: "#", nome: "#", tipo: "int" },
-    { chave: "Fundo", nome: "Fundo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l.cor}"></span>${marcaParado(l)}` +
+    { chave: "Fundo", nome: opc.rotulo || "Fundo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l.cor}"></span>${marcaParado(l)}` +
       (l._c ? `<span class="lk-fundo" tabindex="0" role="button" data-mini="${esc(l._c)}">${esc(v)}</span>` : esc(v)) },
     ...colsValor.map((c) => ({ chave: c, nome: c, tipo: "pct", cor: true }))];
   if (st.ord[okey]) ord = ordenar(ord, okey, colunas);
@@ -2138,6 +2140,9 @@ function serieItem(it) {
 }
 const REBAL = { 0: "", 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" };
 const corCarteira = () => (escuro() ? "#ffffff" : "#141a4a");
+// nome da carteira (a salva que foi carregada ou a que acabou de ser salva); sem nome, "Carteira"
+const nomeCart = () => st.cart.nome || "Carteira";
+const rotuloRebal = (rebal) => (rebal ? `rebalanceamento ${REBAL[rebal]}` : "comprar e manter");
 // série diária -> "fundo" no formato do cálculo de métricas (CDI do dia anterior, como no VBA)
 const pseudoFundo = (dias, valores) => prepararFundo(Array.from(dias, (d, t) => ({ d, q: valores[t] })), st.idx.cdiAnterior);
 
@@ -2147,7 +2152,8 @@ function renderCarteira() {
   const c = st.cart;
   // período escolhido numa pílula ("12 meses"…): as datas andam junto com a base (últimos N meses até a cota mais recente)
   if (c.perMeses) { const f = fimBase(), ini = isoDe(somarMeses(f, -c.perMeses)), fim = isoDe(f); if (c.ini !== ini || c.fim !== fim) { c.ini = ini; c.fim = fim; salvarCart(); } }
-  if (!c.ini || !c.fim) usarPeriodoAtivo(false);
+  if (!c.ini || !c.fim) { c.perMeses = 12; const f = fimBase(); c.ini = isoDe(somarMeses(f, -12)); c.fim = isoDe(f); salvarCart(); }   // padrão: 12 meses
+  $("#cartNomeTit").hidden = !c.nome; $("#cartNomeTit").textContent = c.nome;
   $("#cartRebal").value = String(c.rebal); $("#cartValor").value = c.valor; $("#cartIni").value = c.ini; $("#cartFim").value = c.fim; marcarPeriodoCart();
   $("#cartJmMeses").value = st.cartUI.jmMeses;
   // janela móvel da carteira: datas próprias (padrão: 5 anos de aplicações até a última cota)
@@ -2187,6 +2193,7 @@ function usarPeriodoAtivo(recalcular = true) {
 
 // ---------- simulação e resumo (indicadores + contribuição de cada ativo)
 function calcularCarteira() {
+  if (st.cartComp) renderCartComp();                                       // a comparação de carteiras segue o período da página
   const c = st.cart, res = $("#cartRes");
   const validos = c.itens.filter((it) => (Number(it.peso) || 0) > 0 && serieItem(it));
   $("#cartGraf").hidden = true; st.cartRes = null;
@@ -2232,6 +2239,12 @@ function periodoCartHTML() {
     (motivos.length ? ` · ${motivos.join("; ")}.` : "") + `</p>`;
 }
 // ---------- resumo: indicadores e a tabela de ativos (ordenável pelo título; as linhas de totais ficam no fim)
+// grupo de cada ativo na tabela de desempenho: categoria XP do fundo; sem ela, a classe CVM; índices à parte
+function categoriaAtivo(it) {
+  if (it.tipo === "i") return "Índices";
+  const xp = st.xp ? camposXP(it.v).Categoria : null;
+  return xp || st.porCnpj.get(it.v)?.CLASSIFICACAO_CVM || "Sem classificação";
+}
 function renderCartResumo() {
   const R = st.cartRes; if (!R) return;
   const c = st.cart, res = $("#cartRes");
@@ -2257,16 +2270,17 @@ function renderCartResumo() {
   const th = (rot, extra = "") => `<th${extra}><span class="th-txt">${rot}</span></th>`;
   h += `<div class="tb-wrap"><table class="tb cart-tab"><thead><tr>${th("Carteira", ' class="fx fx-ult t" style="left:0;min-width:240px;max-width:240px"')}${th("Peso")}${th("Retorno")}${th("Ao ano")}
     ${th("Volatilidade")}${th("Sharpe")}${th("Máx. queda")}${th("Contribuição para o retorno")}</tr></thead><tbody>
-    <tr class="cart-total">${nomeFx(`Carteira${rebal ? ` (rebalanceamento ${REBAL[rebal]})` : " (comprar e manter)"}`)}<td>100%</td>${celP(eT.total)}${celP(eT.anual)}
+    <tr class="cart-total">${nomeFx(`${esc(nomeCart())} <small class="nota">· ${rotuloRebal(rebal)}</small>`)}<td>100%</td>${celP(eT.total)}${celP(eT.anual)}
       <td>${brPct(eT.vol)}</td><td style="${corSinal(eT.sharpe)}">${eT.sharpe == null ? "–" : br(eT.sharpe, 2)}</td>${celP(eT.mdd)}<td style="${corSinal(somaC)}"><b>${brPct(somaC)}</b></td></tr>` +
     (eRef ? linhaE("cart-ref", `Referência: ${esc(c.ref.rot)}`, eRef) +
-      `<tr class="cart-ref ef">${nomeFx("Carteira contra a referência")}<td></td><td style="${corSinal(eT.total - eRef.total)}">${pp(eT.total - eRef.total)}</td>
+      `<tr class="cart-ref ef">${nomeFx(`${esc(nomeCart())} contra a referência`)}<td></td><td style="${corSinal(eT.total - eRef.total)}">${pp(eT.total - eRef.total)}</td>
        <td style="${corSinal(exc)}">${pp(exc)}</td><td colspan="4"></td></tr>` : "") +
     (eBH ? linhaE("cart-ref", "Mesma carteira sem rebalancear", eBH, "100%") +
       `<tr class="cart-ref ef">${nomeFx(`Efeito do rebalanceamento ${REBAL[rebal]}`)}<td></td><td style="${corSinal(eT.total - eBH.total)}">${pp(eT.total - eBH.total)}</td><td colspan="5"></td></tr>` : "") +
     `</tbody></table></div>`;
   // 2) cada ativo: a mesma tabela das métricas (ordena pelo título, filtra no topo, rola com poucas linhas à vista)
-  const linhasO = validos.map((it, k) => ({ k, Fundo: nomeItem(it), peso: pesos[k], total: eA[k].total, anual: eA[k].anual, vol: eA[k].vol, sharpe: eA[k].sharpe, mdd: eA[k].mdd, contrib: sim.contrib[k] }));
+  const linhasO = validos.map((it, k) => ({ k, Fundo: nomeItem(it), peso: pesos[k], total: eA[k].total, anual: eA[k].anual, vol: eA[k].vol, sharpe: eA[k].sharpe, mdd: eA[k].mdd, contrib: sim.contrib[k],
+    _cat: categoriaAtivo(it) }));
   const colsO = [
     { chave: "Fundo", nome: "Ativo", tipo: "txt", html: (v, l) => { const it = validos[l.k];
       return `<span class="sw${it.tipo === "i" ? " losango" : ""}" style="background:${corItem(it)}"></span>` +
@@ -2279,7 +2293,9 @@ function renderCartResumo() {
       `<span class="minibar"><i class="${v >= 0 ? "up" : "down"}" style="width:${(Math.abs(v) / maxC * 50).toFixed(1)}%"></i></span>` },
   ];
   h += `<h4 class="cart-ativos-tit">Ativos <small class="nota">(${validos.length})</small></h4><div class="cart-ativos">` +
-    tabelaHTML({ colunas: colsO, linhas: ordenar(linhasO, "cartAtivos", colsO), fixas: 1, larguras: [240], ordenavel: "cartAtivos", altura: 330 }) + `</div>`;
+    tabelaHTML({ colunas: colsO, linhas: agruparLinhas(ordenar(linhasO, "cartAtivos", colsO), "cartAtivos", (l) => l._cat,
+      (m) => `peso ${br(m.reduce((a, l) => a + l.peso, 0) * 100, 1)}% · contribuição ${brPct(m.reduce((a, l) => a + l.contrib, 0))}`),
+      fixas: 1, larguras: [240], ordenavel: "cartAtivos", altura: 330 }) + `</div>`;
   // o período calculado (e por que difere das datas escolhidas) fica na linha logo abaixo dos indicadores
   const refCurta = simRef && simRef.dias[simRef.dias.length - 1] < dN ? `A referência só tem dado até ${fmtData(simRef.dias[simRef.dias.length - 1])}. ` : "";
   h += `<p class="nota">${refCurta}Contribuição = quanto cada ativo gerou de resultado sobre o valor inicial, considerando o peso que ele tinha a cada dia; a soma é o retorno da carteira.
@@ -2293,7 +2309,7 @@ function renderCartMetricas() {
   const R = st.cartRes; if (!R) return;
   const peso = Number($("#peso").value) / 100, opc = { ini: R.d0, fim: R.dN, ...opcPeso() };
   const linhaDe = (nome, f, extra = {}) => { const r = f ? calcularFundo(f, st.idx.ibov, "Personalizado", peso, opc) : null; return r && Object.assign(r, { Fundo: nome }, extra); };
-  const linhas = [linhaDe(`Carteira${R.rebal ? ` (rebalanceamento ${REBAL[R.rebal]})` : ""}`, pseudoFundo(R.sim.dias, R.sim.valor), { _cart: true })];
+  const linhas = [linhaDe(`${nomeCart()}${R.rebal ? ` (${rotuloRebal(R.rebal)})` : ""}`, pseudoFundo(R.sim.dias, R.sim.valor), { _cart: true })];
   if (R.simBH) linhas.push(linhaDe("Mesma carteira sem rebalancear", pseudoFundo(R.simBH.dias, R.simBH.valor), { _cart: true }));
   R.validos.forEach((it, k) => {
     const fc = it.tipo === "f" ? fundoCart(it.v) : null;      // nº de cotas e "Var. ponderada" na chave: cotas novas ou a opção ligada recalculam
@@ -2340,7 +2356,7 @@ function seriesCarteira(campo) {     // campo: "acum" (retorno acumulado) ou "dd
   const R = st.cartRes, x = R.sim.dias, conv = (v) => (campo === "acum" ? Array.from(v, (y) => y - 1) : curvaDrawdown(v));
   const s = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], x, y: conv(R.sim.porAtivo[k]), fraca: true }));
   if (campo === "acum" && R.simRef) s.push({ nome: "Referência: " + st.cart.ref.rot, cor: corItem(st.cart.ref), x: R.simRef.dias, y: conv(R.simRef.valor), bench: true });
-  s.push({ nome: "Carteira", cor: corCarteira(), x, y: conv(R.sim.valor), forte: true });
+  s.push({ nome: nomeCart(), cor: corCarteira(), x, y: conv(R.sim.valor), forte: true });
   return s;
 }
 function renderCartAcum() {
@@ -2379,7 +2395,7 @@ function renderCartRisco() {
   $$("#cartRiscoEixo button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.e === eixo));
   const pts = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], anual: R.eA[k].anual, vol: R.eA[k].vol, sharpe: R.eA[k].sharpe, tipo: it.tipo === "i" ? "bench" : "fundo" }));
   if (R.eRef) pts.push({ nome: "Referência: " + st.cart.ref.rot, cor: corItem(st.cart.ref), anual: R.eRef.anual, vol: R.eRef.vol, sharpe: R.eRef.sharpe, tipo: "bench" });
-  pts.push({ nome: "Carteira", cor: OURO, anual: R.eT.anual, vol: R.eT.vol, sharpe: R.eT.sharpe, tipo: "carteira" });
+  pts.push({ nome: nomeCart(), cor: OURO, anual: R.eT.anual, vol: R.eT.vol, sharpe: R.eT.sharpe, tipo: "carteira" });
   st.cartUI.pts = pts;
   const algum = pts.some((p) => p.tipo === "fundo" && casa(st.destaque, p.nome));
   graficoRR("gCartRR", pts.filter((p) => p[chaveX] != null).map((p) => {
@@ -2405,7 +2421,7 @@ function renderCartCorr() {
   const R = st.cartRes; if (!R) return;
   const rets = (v) => { const m = new Map(); for (let t = 1; t < v.length; t++) m.set(R.sim.dias[t], v[t] / v[t - 1] - 1); return m; };
   const itens = R.validos.map((it, k) => ({ nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cnpj: it.tipo === "f" ? it.v : "", cor: R.cores[k], bench: it.tipo === "i", ret: rets(R.sim.porAtivo[k]) }));
-  itens.push({ nome: "★ Carteira", cor: OURO, bench: true, ret: rets(R.sim.valor) });
+  itens.push({ nome: `★ ${nomeCart()}`, cor: OURO, bench: true, ret: rets(R.sim.valor) });
   R.corr = { itens, m: matrizCorrelacao(itens.map((i) => i.ret)) };
   renderMatrizCorr("tabCartCorr", "cart", itens, R.corr.m);
 }
@@ -2420,7 +2436,7 @@ function calcularCartJM() {
   // carteira refeita no período da janela móvel (mesmos pesos e rebalanceamento)
   const simJ = simularCarteira(R.ativos, R.pesos, { ini, fim, rebal: R.rebal });
   const p = { bench, meses, ini, fim };
-  const lista = [...(simJ ? [{ nome: "★ Carteira", cor: corCarteira(), forte: true, f: pseudoFundo(simJ.dias, simJ.valor) }] : []),
+  const lista = [...(simJ ? [{ nome: `★ ${nomeCart()}`, cor: corCarteira(), forte: true, f: pseudoFundo(simJ.dias, simJ.valor) }] : []),
     ...R.validos.map((it, k) => {
       const s = R.ativos[k].s;
       return { nome: R.nomes[k], c: it.tipo === "f" ? it.v : null, cor: R.cores[k], fraca: true,
@@ -2480,7 +2496,7 @@ document.addEventListener("click", (e) => {
     const n = c.itens.length; c.itens.forEach((it) => (it.peso = Math.round(10000 / n) / 100));
     salvarCart(); renderCarteira();
   }
-  else if (t.id === "cartLimpar") { if (c.itens.length && !confirm("Tirar todos os ativos da carteira?")) return; c.itens = []; salvarCart(); renderCarteira(); }
+  else if (t.id === "cartLimpar") { if (c.itens.length && !confirm("Tirar todos os ativos da carteira?")) return; c.itens = []; c.nome = ""; salvarCart(); renderCarteira(); }
   else if (t.id === "cartPeriodo") usarPeriodoAtivo(true);
   else if (t.closest?.("#cartPers [data-cm]")) { c.perMeses = Number(t.closest("[data-cm]").dataset.cm); renderCarteira(); }     // renderCarteira acerta as datas e salva
   else if (t.closest?.("#cartRelModo button")) { st.cartUI.rel.modo = t.closest("button").dataset.m; semZoom("gCartEvol"); renderCartAcum(); }
@@ -2820,7 +2836,7 @@ function blocosBrutos(k) {
     const v0 = Number(c.valor) || 0, linhas = [];
     for (let t = 0; t < det.dias.length; t++) {
       R.validos.forEach((it, k2) => linhas.push([det.dias[t], R.nomes[k2], det.porAtivo[k2][t], det.posDia[k2][t] * v0, det.posDia[k2][t] / det.valor[t], det.ganhoDia[k2][t] * v0]));
-      linhas.push([det.dias[t], "Carteira", det.valor[t], det.valor[t] * v0, 1, t ? (det.valor[t] - det.valor[t - 1]) * v0 : 0]);
+      linhas.push([det.dias[t], nomeCart(), det.valor[t], det.valor[t] * v0, 1, t ? (det.valor[t] - det.valor[t - 1]) * v0 : 0]);
     }
     bruto({ nome: "Dados - carteira diária", nota: `Valores em R$ para R$ ${br(v0, 0)} aplicados. Peso no fim do dia, antes do rebalanceamento.`,
       colunas: [{ nome: "Data", tipo: "data" }, { nome: "Ativo", tipo: "txt" }, { nome: "Nível do ativo (base 1)", tipo: "cota" }, { nome: "Valor na carteira (R$)", tipo: "valor" },
@@ -2882,7 +2898,7 @@ function blocosRel(k) {
         ["Volatilidade ao ano", brPct(e.vol)], ["Índice de Sharpe", e.sharpe == null ? "–" : br(e.sharpe, 2)], ["Máxima queda", brPct(e.mdd)],
         ["Meses positivos", e.mesesPos == null ? "–" : `${br(e.mesesPos * 100, 0)}% de ${e.nMeses}`], ["Melhor mês", brPct(e.melhorMes)], ["Pior mês", brPct(e.piorMes)]] });
       const lin = R.validos.map((it, k2) => [R.nomes[k2], R.pesos[k2], R.eA[k2].total, R.eA[k2].anual, R.eA[k2].vol, R.eA[k2].sharpe, R.eA[k2].mdd, R.sim.contrib[k2]]);
-      lin.push(["Carteira", 1, e.total, e.anual, e.vol, e.sharpe, e.mdd, R.sim.contrib.reduce((a, b) => a + b, 0)]);
+      lin.push([nomeCart(), 1, e.total, e.anual, e.vol, e.sharpe, e.mdd, R.sim.contrib.reduce((a, b) => a + b, 0)]);
       if (R.eRef) lin.push([`Referência: ${st.cart.ref.rot}`, null, R.eRef.total, R.eRef.anual, R.eRef.vol, R.eRef.sharpe, R.eRef.mdd, null]);
       if (R.eBH) lin.push(["Mesma carteira sem rebalancear", 1, R.eBH.total, R.eBH.anual, R.eBH.vol, R.eBH.sharpe, R.eBH.mdd, null]);
       B.push({ tipo: "tabela", nome: "Carteira - ativos", colunas: [{ nome: "Ativo", tipo: "txt" }, { nome: "Peso", tipo: "pct" }, { nome: "Retorno", tipo: "pct" }, { nome: "Ao ano", tipo: "pct" },
@@ -4951,7 +4967,7 @@ const lerCarteirasLocais = () => mapaSeguro(pref("carteirasSalvas", {}), carteir
 function lerCarteiras() {
   return juntarSalvos(lerCarteirasLocais(), "carteira", (it) => ({ cart: it.conteudo?.cart || it.conteudo || {} }));
 }
-const copiaCart = () => JSON.parse(JSON.stringify({ itens: st.cart.itens, ref: st.cart.ref, rebal: st.cart.rebal, valor: st.cart.valor, ini: st.cart.ini, fim: st.cart.fim }));
+const copiaCart = () => JSON.parse(JSON.stringify({ itens: st.cart.itens, ref: st.cart.ref, rebal: st.cart.rebal, valor: st.cart.valor }));   // sem o período: ao carregar vale o da página
 const nomeAtivo = (it) => (it.tipo === "i" ? nomeIndice(it.v) : curto(st.porCnpj.get(it.v)?.NOME || cnpjFmt(it.v), 44));
 function abrirCarteirasSalvas() { renderCarteirasSalvas(); $("#dlgCarteiras").showModal(); $("#ctNome").focus(); }
 function renderCarteirasSalvas() {
@@ -4963,19 +4979,24 @@ function renderCarteirasSalvas() {
   $("#ctNomes").innerHTML = Object.values(g).filter((x) => x._origem !== "equipe").map((x) => `<option value="${esc(x._nome)}">`).join("");
   $("#ctLista").innerHTML = (logado ? "" : `<p class="nota">Entre na área da equipe para salvar carteiras na sua conta (aparecem em qualquer computador) e ver as dos colegas.</p>`) +
     (!nomes.length ? `<p class="nota">${$("#ctSoFav").checked ? "Nenhuma carteira favorita. Clique na estrela ☆ ao lado de uma carteira." : "Nenhuma carteira salva ainda. Monte uma carteira e salve acima."}</p>` :
-    `<table class="tb gr-tab"><thead><tr><th class="t">Carteira</th><th class="t">Onde está</th><th>Ativos</th><th>Atualizada em</th><th class="t">Carregar</th><th class="t"><span class="sr-only">Ações</span></th></tr></thead><tbody>${nomes.map((n) => {
+    `<table class="tb gr-tab"><thead><tr><th><span class="sr-only">Comparar</span></th><th class="t">Carteira</th><th class="t">Onde está</th><th>Ativos</th><th>Atualizada em</th><th class="t">Carregar</th><th class="t"><span class="sr-only">Ações</span></th></tr></thead><tbody>${nomes.map((n) => {
       const x = g[n], k = esc(n), itens = x.cart?.itens || [], aberto = renderCarteirasSalvas.aberto === n;
       const acoes = x._origem === "local" ? (logado ? `<button class="sec mini-btn" data-ct-up="${k}" type="button" title="Guarda na sua conta: aparece em qualquer computador">${ico("nuvem")}Enviar para a conta</button> ` : "") +
           `<button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir carteira" aria-label="Excluir a carteira ${esc(x._nome)}">${ico("lixo")}</button>`
         : x._origem === "meu" ? `<button class="sec mini-btn" data-ct-comp="${k}" type="button">${x._comp ? ico("cadeado") + "Deixar só meu" : ico("pessoas") + "Compartilhar"}</button>
           <button class="cart-rm" data-ct-del="${k}" type="button" title="Excluir da sua conta" aria-label="Excluir a carteira ${esc(x._nome)}">${ico("lixo")}</button>`
         : `<button class="sec mini-btn" data-ct-copia="${k}" type="button" title="Cria uma cópia sua, que você pode alterar">⧉ Copiar para mim</button>`;
-      return `<tr class="sv-linha-${x._origem}"><td class="t">${botaoFav("carteira", x)}<button class="link gr-ver" data-ct-ver="${k}" title="Ver os ativos e pesos">${aberto ? "▾" : "▸"} <b>${esc(x._nome)}</b></button></td>
+      return `<tr class="sv-linha-${x._origem}"><td><label class="tog" title="Marcar para comparar"><input type="checkbox" data-ct-sel="${k}" aria-label="Comparar a carteira ${esc(x._nome)}" ${ctSel.has(n) ? "checked" : ""}></label></td><td class="t">${botaoFav("carteira", x)}<button class="link gr-ver" data-ct-ver="${k}" title="Ver os ativos e pesos">${aberto ? "▾" : "▸"} <b>${esc(x._nome)}</b></button></td>
         <td class="t">${seloOrigem(x)}</td><td>${itens.length}</td><td>${x.atualizado ? new Date(x.atualizado).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</td>
         <td class="t"><button class="prim mini-btn" data-ct-car="${k}" type="button" title="Substitui a carteira montada agora">Carregar</button></td><td class="t gr-acoes">${acoes}</td></tr>` +
-        (aberto ? `<tr class="gr-det"><td colspan="6"><div class="chips">${itens.map((it) => `<span class="chip">${esc(nomeAtivo(it))} · <b>${br(Number(it.peso) || 0, 1)}%</b></span>`).join("")}</div>
+        (aberto ? `<tr class="gr-det"><td colspan="7"><div class="chips">${itens.map((it) => `<span class="chip">${esc(nomeAtivo(it))} · <b>${br(Number(it.peso) || 0, 1)}%</b></span>`).join("")}</div>
           <p class="nota">Referência: ${esc(x.cart.ref?.rot || x.cart.ref?.v || "–")} · rebalanceamento: ${esc({ 0: "nunca", 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" }[x.cart.rebal] ?? "–")} · valor inicial: R$ ${br(Number(x.cart.valor) || 0, 0)}</p></td></tr>` : "");
     }).join("")}</tbody></table>`);
+  for (const n of [...ctSel]) if (!g[n]) ctSel.delete(n);
+  const m = ctSel.size;
+  $("#ctComparar").disabled = m < 2;
+  $("#ctComparar").innerHTML = ico("grafico") + (m < 2 ? "Comparar carteiras (marque 2 ou mais)" : `Comparar ${m} carteiras`);
+  salvar("carteirasComp", [...ctSel]);
 }
 async function salvarCarteiraAtual() {
   const nome = $("#ctNome").value.trim(); if (!nome) { $("#ctNome").focus(); return; }
@@ -4985,18 +5006,65 @@ async function salvarCarteiraAtual() {
     const ex = Object.values(g).find((x) => x._origem === "meu" && x._nome.toLowerCase() === nome.toLowerCase());
     if (ex && !(await confirmar("Substituir a carteira?", `Você já tem na conta a carteira <b>${esc(ex._nome)}</b>. Substituir pela carteira montada agora?`, "Substituir"))) return;
     const r = await salvarNaNuvem({ id: ex?._id, tipo: "carteira", nome, compartilhado: $("#ctComp").checked, conteudo: { cart } });
-    if (r.ok) { $("#ctNome").value = ""; renderCarteirasSalvas(); $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(nome)}" salva na sua conta${$("#ctComp").checked ? " e compartilhada com a equipe" : ""}.</span>`; return; }
+    if (r.ok) { st.cart.nome = nome; salvarCart(); renderCarteira(); $("#ctNome").value = ""; renderCarteirasSalvas(); $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(nome)}" salva na sua conta${$("#ctComp").checked ? " e compartilhada com a equipe" : ""}.</span>`; return; }
     if (!(await salvarAquiEmVezDaConta(r.erro))) return;
   }
   const loc = lerCarteirasLocais();
   if (loc[nome] && !(await confirmar("Substituir a carteira?", `Já existe a carteira <b>${esc(nome)}</b> neste computador. Substituir?`, "Substituir"))) return;
   loc[nome] = { cart, atualizado: new Date().toISOString() }; salvar("carteirasSalvas", loc);
+  st.cart.nome = nome; salvarCart(); renderCarteira();
   $("#ctNome").value = ""; renderCarteirasSalvas(); $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(nome)}" salva neste computador.</span>`;
+}
+// ---------- comparação de carteiras salvas: mesmo período da página, uma linha por carteira (pelo nome), com legenda
+const ctSel = new Set(pref("carteirasComp", []));
+async function compararCarteiras(nomes) {
+  const g = lerCarteiras(), defs = nomes.map((n) => g[n]).filter((x) => x?.cart?.itens?.length);
+  if (defs.length < 2) return;
+  await chartPronto;
+  $("#dlgCarteiras").close(); mostrarPagina("carteira");
+  const faltam = [...new Set(defs.flatMap((x) => x.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v) && st.porCnpj.has(it.v)).map((it) => it.v)))];
+  if (faltam.length) {
+    abrirCarga(faltam); $("#cargaTit").textContent = `Comparação: carregando ${faltam.length} fundo${pl(faltam.length)}`;
+    try { const novos = await carregarFundosCancelavel(faltam, (feitos, total, ev) => atualizarCarga(feitos, total, ev)); st.cartFundos = new Map([...(st.cartFundos || new Map()), ...novos]); fecharCarga(); atualizarEspaco(); }
+    catch (e) { if (e.message !== INTERROMPIDO) console.error(e); fecharCarga(e.message); return; }
+  }
+  st.cartComp = defs.map((x) => ({ nome: x._nome, cart: x.cart }));
+  renderCartComp();
+  $("#secCartComp").scrollIntoView({ block: "start", behavior: rolagemSuave() });
+}
+// recalcula com o período da página (chamado também quando o período muda)
+function renderCartComp() {
+  const sec = $("#secCartComp"); if (!st.cartComp?.length) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const ini = diaDe(new Date(st.cart.ini)), fim = diaDe(new Date(st.cart.fim)), series = [], linhas = [], avisos = [];
+  st.cartComp.forEach(({ nome, cart }, i) => {
+    const validos = cart.itens.filter((it) => (Number(it.peso) || 0) > 0 && serieItem(it));
+    const fora = cart.itens.length - validos.length;
+    if (fora) avisos.push(`${esc(nome)}: ${fora} ativo${pl(fora)} sem cotas no período ficou de fora`);
+    if (!validos.length) { avisos.push(`${esc(nome)}: nenhum ativo com cotas no período`); return; }
+    const soma = validos.reduce((a, it) => a + Number(it.peso), 0);
+    const sim = simularCarteira(validos.map((it) => ({ s: serieItem(it), nome: nomeItem(it) })), validos.map((it) => Number(it.peso) / soma), { ini, fim, rebal: Number(cart.rebal) || 0 });
+    if (!sim) { avisos.push(`${esc(nome)}: sem dias em comum suficientes entre os ativos no período`); return; }
+    const e = estatisticas(sim.dias, sim.valor), cor = PALETA[i % PALETA.length];
+    series.push({ nome, cor, x: Array.from(sim.dias), y: Array.from(sim.valor, (v) => v - 1), forte: true });
+    linhas.push({ Fundo: nome, cor, Final: e.total, "Ao ano": e.anual, Volatilidade: e.vol, "Máx. queda": e.mdd, _ini: sim.dias[0] });
+  });
+  $("#cartCompNota").innerHTML = `Período da página: ${fmtData(ini)} a ${fmtData(fim)}. Cada carteira usa os próprios pesos e rebalanceamento e começa no primeiro dia em que todos os ativos dela têm cotas` +
+    (linhas.some((l) => l._ini > ini + 7) ? ` (${linhas.filter((l) => l._ini > ini + 7).map((l) => `${esc(l.Fundo)} desde ${fmtData(l._ini)}`).join("; ")})` : "") + "." +
+    (avisos.length ? `<br><span class="neg">${avisos.join(" · ")}</span>` : "");
+  semZoom("gCartComp");
+  const xs = series.flatMap((s) => [s.x[0], s.x[s.x.length - 1]]);
+  grafico("gCartComp", series, { ref: 0, xMin: xs.length ? Math.min(...xs) : undefined, xMax: xs.length ? Math.max(...xs) : undefined });
+  $("#legCartComp").innerHTML = tabelaLegenda("cartComp", linhas, ["Final", "Ao ano", "Volatilidade", "Máx. queda"], { rotulo: "Carteira" });
 }
 async function carregarCarteiraSalva(n) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return;
   if (st.cart.itens.length && !(await confirmar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`, "Carregar"))) return;
-  Object.assign(st.cart, JSON.parse(JSON.stringify(x.cart)));
+  // ativos, pesos, referência, rebalanceamento e valor vêm da carteira salva; o período é o que está escolhido na página
+  // (antes vinham também as datas da hora em que ela foi salva: por isso o período "mudava sozinho" para 23/10/2025 a 23/10/2026)
+  const { ini: _i, fim: _f, perMeses: _p, ...resto } = JSON.parse(JSON.stringify(x.cart));
+  Object.assign(st.cart, resto, { nome: x._nome });
+  if (!st.cart.ini || !st.cart.fim) st.cart.perMeses = 12;
   salvarCart(); $("#dlgCarteiras").close(); mostrarPagina("carteira"); renderCarteira();
   const faltam = st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v)).length;
   $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(x._nome)}" carregada${x._origem === "equipe" ? ` (de ${esc(x._autor)})` : ""}.</span>` +
@@ -5006,6 +5074,9 @@ document.addEventListener("click", async (e) => {
   const t = e.target;
   if (t.id === "cartSalvas") return abrirCarteirasSalvas();
   if (t.id === "ctSalvar") return salvarCarteiraAtual();
+  if (t.id === "ctComparar") return compararCarteiras([...ctSel]);
+  if (t.id === "cartCompFechar") { st.cartComp = null; $("#secCartComp").hidden = true; return; }
+  if (t.dataset?.ctSel !== undefined) { const n = t.dataset.ctSel; t.checked ? ctSel.add(n) : ctSel.delete(n); return renderCarteirasSalvas(); }
   const d = t.closest?.("[data-ct-ver],[data-ct-car],[data-ct-del],[data-ct-up],[data-ct-comp],[data-ct-copia]"); if (!d) return;
   const ds = d.dataset, g = lerCarteiras();
   if (ds.ctVer) { renderCarteirasSalvas.aberto = renderCarteirasSalvas.aberto === ds.ctVer ? null : ds.ctVer; return renderCarteirasSalvas(); }

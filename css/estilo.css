@@ -1441,3 +1441,8 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
   .rk-painel-cab .rk-abrir { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
   .rk-painel:not(.rk-min) .rk-abrir { display: none; }
 }
+
+/* carteira: nome da carteira carregada em destaque no título */
+.cart-nome-tit { margin-left: 10px; padding: 2px 12px; border-radius: 99px; font-size: .8em; font-weight: 800; color: var(--ouro-txt);
+  background: color-mix(in srgb, var(--ouro) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--ouro) 45%, transparent); vertical-align: 2px; }
+.cart-nome-tit[hidden] { display: none; }
