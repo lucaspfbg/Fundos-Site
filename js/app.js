@@ -5212,8 +5212,9 @@ function renderCompResumo() {
         `<td style="${corSinal(R.eRef ? R.eT.anual - R.eRef.anual : null)}">${pp(R.eRef && R.eT.anual != null && R.eRef.anual != null ? R.eT.anual - R.eRef.anual : null)}</td></tr>`).join("") +
     (eR ? `<tr class="cart-ref">${nomeFx(`Referência: ${esc(ref.rot)}`)}${celP(eR.total)}${celP(eR.anual)}<td>${brPct(eR.vol)}</td>${num(eR.sharpe)}${celP(eR.mdd)}<td></td></tr>` : "") +
     `</tbody></table></div>`;
-  h += lista.map(({ nome, cor, R }, i) => R.erro ? "" : `<h4 class="cart-ativos-tit cart-comp-tit"><span class="sw" style="background:${cor}"></span>${esc(nome)} <small class="nota">· desempenho e atribuição por ativo (${R.validos.length})</small></h4>` +
-    tabelaAtivosCart(R, `cartAtivos:${i}`)).join("");
+  // cada carteira num bloco com a cor dela: o nome fica colado à própria tabela, não à de cima
+  h += lista.map(({ nome, cor, R }, i) => R.erro ? "" : `<section class="cart-comp-bloco" style="--cc:${cor}"><h4 class="cart-comp-tit"><span class="sw" style="background:${cor}"></span>${esc(nome)}<small class="nota">desempenho e atribuição por ativo (${R.validos.length})</small></h4>` +
+    tabelaAtivosCart(R, `cartAtivos:${i}`) + `</section>`).join("");
   $("#cartRes").innerHTML = h + `<p class="nota">A linha da referência usa o período da página; "contra a referência" compara cada carteira com ela no período da própria carteira. ${NOTA_CONTRIB}</p>`;
 }
 // métricas completas: uma linha por carteira (★) e uma por fundo, com as carteiras em que ele aparece

@@ -1454,7 +1454,11 @@ button.ocupado::after, label.ocupado::after { content: ""; display: inline-block
 .cart-pesos-comp td:not(.t) { text-align: right; font-variant-numeric: tabular-nums; }
 .cart-pesos-comp td.sem-peso { color: var(--sub); }
 .cart-pesos-comp th .sw, .cart-comp-tit .sw, .cart-tab .sw { margin-right: 6px; }
-.cart-comp-tit { margin-top: 18px; }
+.cart-comp-bloco { margin: 26px 0 8px; padding: 10px 12px 12px; border: 1px solid var(--borda); border-left: 4px solid var(--cc, var(--ouro)); border-radius: 10px;
+  background: color-mix(in srgb, var(--cc, var(--ouro)) 5%, var(--card)); }
+.cart-comp-tit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 8px; font-size: 18px; font-weight: 800; line-height: 1.25; }
+.cart-comp-tit .sw { align-self: center; width: 12px; height: 12px; }
+.cart-comp-tit small { font-size: 13px; font-weight: 500; }
 
 /* comparação de carteiras: linhas das tabelas dos gráficos que abrem/fecham a quebra da carteira */
 [data-cart-alt] { cursor: pointer; }
