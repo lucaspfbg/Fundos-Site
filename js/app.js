@@ -6542,7 +6542,7 @@ const dataComp = (v) => { const d = diaComp(v); return d == null ? "" : fmtData(
 const cnpjOk = (c) => typeof c === "string" && /^[0-9A-Z]{14}$/.test(c);
 const recentesComp = (Array.isArray(pref("compRecentes", [])) ? pref("compRecentes", []) : []).filter(cnpjOk).slice(0, 8);
 const fundoUrl = new URLSearchParams(location.search).get("fundo");
-st.comp = { c: cnpjOk(fundoUrl) ? fundoUrl : recentesComp[0] || null, recentes: recentesComp, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "" };
+st.comp = { c: cnpjOk(fundoUrl) ? fundoUrl : recentesComp[0] || null, recentes: recentesComp, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "", emis: new Map(), emisCnpj: new Map(), emisPref: new Map() };
 let compId = 0, tCompBusca;
 const nomeComp = (c) => (st.xp ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || cnpjFmt(c));
 const botaoComp = (c) => `<button type="button" class="sec mini-btn" data-ir-comp="${c}" title="Abrir a página da composição da carteira deste fundo (informes da CVM)">${ico("camadas")}Composição da carteira</button>`;
@@ -6621,11 +6621,25 @@ async function carregarComp() {
   const temDet = R.some((l) => l.MES === st.comp.mes && l.N > 0), chave = `${c}|${st.comp.mes}`;
   if (temDet && st.comp.detDe !== chave) {
     carregando(`Carregando os ativos de ${rotMes(st.comp.mes).toLowerCase()}…`);
-    try { const d = await D.lerComposicao(c, String(st.comp.mes)); if (id !== compId) return; st.comp.det = d || []; st.comp.detDe = chave; }
+    try {
+      const [d, emis] = await Promise.all([D.lerComposicao(c, String(st.comp.mes)), D.emissoresComposicao()]); if (id !== compId) return;
+      st.comp.det = d || []; st.comp.detDe = chave; usarEmissores(emis);
+    }
     catch (e) { if (id !== compId) return; st.comp.erro = `Não foi possível carregar os ativos (${e.message}).`; }
   }
   if (id === compId) renderCompTabela();
 }
+// emissor das debêntures pelo código (tabela do SND publicada com a composição). Código fora da tabela (série nova ou
+// repactuada): usa as 4 letras do emissor no código (LIGHB4 → LIGH), se todas as debêntures com essas letras forem da mesma empresa
+// No crédito privado o CDA traz o CNPJ do emissor com o nome cortado em 15 letras: o CNPJ busca o nome inteiro.
+function usarEmissores(t) {
+  if (!t?.porCod.size || t === st.comp.emisDe) return;
+  const pref = new Map();
+  for (const [cod, emp] of t.porCod) { const p = cod.slice(0, 4); pref.set(p, pref.has(p) && pref.get(p) !== emp ? null : emp); }
+  Object.assign(st.comp, { emis: t.porCod, emisCnpj: t.porCnpj, emisPref: pref, emisDe: t });
+}
+const emissorDeb = (a) => (a.DOC_EMISSOR && st.comp.emisCnpj.get(a.DOC_EMISSOR)) || (!a.COD ? null : st.comp.emis.get(a.COD) ||
+  (a.APLIC === "Debêntures" && /^[A-Z]{4}/.test(a.COD) ? st.comp.emisPref.get(a.COD.slice(0, 4)) : null)) || null;
 const LIMITE_ATIVOS_GRUPO = 1500;                         // fundos com dezenas de milhares de opções: mostra os maiores
 function renderCompTabela() {
   const { c, mes } = st.comp, nomeF = nomeComp(c);
@@ -6667,11 +6681,11 @@ function renderCompTabela() {
     if (!aberto(k)) continue;
     const ms = ordenar(membros.map((a) => {
       // nome: código (ex.: CMGDA2) e descrição ou emissor; "DEB" e outras siglas curtas da CVM não descrevem o ativo
-      const d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || a.EMISSOR;
+      const emis = emissorDeb(a) || a.EMISSOR, d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || emis;
       const cnpjCota = a.COD && /^\d{14}$/.test(a.COD), isin = a.COD && /^BR[A-Z0-9]{10}$/.test(a.COD), cod = !cnpjCota && !isin && a.COD !== desc ? a.COD : null;
       const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
       return { Ativo: nome, Tipo: a.ATIVO || "",
-        Emissor: a.EMISSOR && a.EMISSOR !== desc ? a.EMISSOR : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
+        Emissor: emis && emis !== desc ? emis : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
         Valor: a.VALOR, pc: a.VALOR / total,
         Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", _cor: cor, _g: k };
     }), "comp", cols).slice(0, LIMITE_ATIVOS_GRUPO);

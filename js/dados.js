@@ -242,6 +242,20 @@ export async function lerComposicao(cnpj, parte) {
   return (await lerVersionado(`${baseComp()}${parte}/g${g}.parquet`, versao)).filter((l) => l.CNPJ === cnpj);
 }
 
+// empresa emissora de cada debênture (o CDA só traz o código, ex.: CMGDA2, ou o nome cortado, ex.: "TRANSMISS ALIAN"):
+// { porCod: Map COD -> nome, porCnpj: Map CNPJ -> nome }; vazios se a tabela ainda não foi publicada
+let emisComp = null;
+export function emissoresComposicao() {
+  const vazio = () => ({ porCod: new Map(), porCnpj: new Map() });
+  emisComp ||= metaComposicao().then(async (meta) => {
+    if (!meta?.emissores) return vazio();
+    const ls = await lerVersionado(`${baseComp()}emissores.parquet`, meta.emissores), r = vazio();
+    for (const l of ls) { if (l.COD) r.porCod.set(l.COD, l.EMISSOR); if (l.CNPJ && !r.porCnpj.has(l.CNPJ)) r.porCnpj.set(l.CNPJ, l.EMISSOR); }
+    return r;
+  }).catch(() => { emisComp = null; return vazio(); });
+  return emisComp;
+}
+
 // cotas mais recentes de outra fonte (ex.: a planilha da corretora, só com login): Map CNPJ -> { d (dia), q (cota), origem }
 let cotasExtras = null;
 const cotasRecusadas = new Map();
