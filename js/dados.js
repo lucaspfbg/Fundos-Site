@@ -198,6 +198,50 @@ export async function lerRankingPre(arquivo, versao) {
   return lerParquet(buf);
 }
 
+// ---------------------------------------------------------------------------- composição das carteiras (CDA da CVM)
+// pasta composicao/ no Hugging Face: meta.json (meses), resumo/gNNN.parquet (totais por mês e tipo de aplicação) e
+// AAAAMM/gNNN.parquet (ativos do mês). NNN = raiz do CNPJ % meta.grupos. Cada arquivo é guardado pela versão do mês.
+const baseComp = () => lerLS("fundos.compBase", null) || BASE + "composicao/";      // fundos.compBase: outra pasta (testes)
+let metaComp = null;
+export function metaComposicao() {
+  metaComp ||= fetch(baseComp() + "meta.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((m) => { if (!m) metaComp = null; return m; });               // sem meta (ainda não publicado ou falha): tenta de novo depois
+  return metaComp;
+}
+const lidosComp = new Map();                                             // url?v=versão -> Promise<linhas>
+async function lerVersionado(url, versao) {
+  const chave = `${url}?v=${encodeURIComponent(versao)}`;
+  if (lidosComp.has(chave)) return lidosComp.get(chave);
+  const p = (async () => {
+    let cache = null;
+    if (guardar && "caches" in window) {
+      try { cache = await caches.open("fundos-comp"); const hit = await cache.match(chave);
+        if (hit) { const b = new Uint8Array(await hit.arrayBuffer()); return b.byteLength ? lerParquet(b) : []; } } catch { cache = null; }
+    }
+    const r = await fetch(url);
+    if (!r.ok && r.status !== 404) throw new Error(`${url.slice(baseComp().length)}: HTTP ${r.status}`);
+    const buf = r.ok ? new Uint8Array(await r.arrayBuffer()) : new Uint8Array(0);     // 404: grupo sem fundos neste mês
+    if (cache) try {
+      for (const k of await cache.keys()) if (k.url.startsWith(url + "?")) await cache.delete(k);   // troca a versão anterior
+      await cache.put(chave, new Response(buf));
+    } catch { /* sem espaço: segue sem guardar */ }
+    return buf.byteLength ? lerParquet(buf) : [];
+  })();
+  lidosComp.set(chave, p);
+  p.catch(() => lidosComp.delete(chave));
+  if (lidosComp.size > 40) lidosComp.delete(lidosComp.keys().next().value);
+  return p;
+}
+// linhas de um fundo: parte = "resumo" (todos os meses) ou "AAAAMM" (ativos do mês). null = composição não publicada.
+export async function lerComposicao(cnpj, parte) {
+  const meta = await metaComposicao();
+  if (!meta) return null;
+  let n = 0; for (let i = 0; i < 8; i++) n = n * 10 + (cnpj.charCodeAt(i) - 48);
+  const g = String(n % meta.grupos).padStart(3, "0");
+  const versao = parte === "resumo" ? meta.gerado_em : meta.meses.find((m) => m.mes === parte)?.publicado || meta.gerado_em;
+  return (await lerVersionado(`${baseComp()}${parte}/g${g}.parquet`, versao)).filter((l) => l.CNPJ === cnpj);
+}
+
 // cotas mais recentes de outra fonte (ex.: a planilha da corretora, só com login): Map CNPJ -> { d (dia), q (cota), origem }
 let cotasExtras = null;
 const cotasRecusadas = new Map();

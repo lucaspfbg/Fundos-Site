@@ -1084,6 +1084,7 @@ function agruparLinhas(linhas, tab, campo, info) {
   return out;
 }
 function alternarGrupo(chave) {
+  if (chave.startsWith("comp|")) { st.comp.abertos.has(chave) ? st.comp.abertos.delete(chave) : st.comp.abertos.add(chave); return renderCompTabela(); }
   st.fechados.has(chave) ? st.fechados.delete(chave) : st.fechados.add(chave);
   salvar("gruposFechados", [...st.fechados]);
   if (chave.startsWith("cartAtivos:")) return renderCompResumo();         // grupos das tabelas da comparação
@@ -1186,7 +1187,7 @@ st.colsOcultas = pref("colsOcultas", {});
 const tabColunas = new Map();                          // tabela -> todas as colunas (para a lista do botão "Colunas")
 const COLS_SEMPRE = new Set(["Fundo"]);
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
-  altura = 460, ordenavel = null, classes = [], mediana = null, rotMediana = null }) {
+  altura = 460, ordenavel = null, classes = [], mediana = null, rotMediana = null, fechado = (k) => st.fechados.has(k) }) {
   let ferr = "";
   if (ordenavel) {
     tabColunas.set(ordenavel, colunas);
@@ -1241,13 +1242,15 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
   linhas.forEach((l, i) => {
     if (!passa[i] || (l._cab && comFiltro && filtrosAtivos(ordenavel) && !gruposVivos.has(l.chave))) return;
     if (l._cab) {
-      const fech = st.fechados.has(l.chave);
-      h += `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
+      const fech = fechado(l.chave);
+      const qtd = l.unid ? (l.n ? `${br(l.n, 0)} ${l.n === 1 ? l.unid[0] : l.unid[1]}` : "") : `${l.n} fundo${l.n > 1 ? "s" : ""}`;
+      h += l.vazio ? `<tr class="grupo vazio"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
+        `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
         title="${fech ? "Expandir" : "Recolher"} este grupo"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev">${fech ? "▸" : "▾"}</span>
-        ${esc(l.rotulo)}<span class="g-info"> · ${l.n} fundo${l.n > 1 ? "s" : ""}${l.info ? " · " + l.info : ""}</span></span></td></tr>`;
+        ${l.cor ? `<span class="sw" style="background:${l.cor}"></span>` : ""}${esc(l.rotulo)}<span class="g-info">${[qtd, l.info].filter(Boolean).map((x) => " · " + x).join("")}</span></span></td></tr>`;
       return;
     }
-    const oculta = l._g && st.fechados.has(l._g);
+    const oculta = l._g && fechado(l._g);
     const cls = [destacar[i] ? "dest" : "", separadores.has(i) ? "sep" : "", l._g ? "em-grupo" : "", oculta ? "oculta" : "", classes[i] || ""].join(" ").trim();
     h += `<tr${cls ? ` class="${cls}"` : ""}${l._g ? ` data-gm="${esc(l._g)}"` : ""}${atrLinha ? atrLinha(l) : ""}>`;
     colunas.forEach((c, j) => {
@@ -1636,7 +1639,7 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   const z = st.zoom[st.perAtivo] || [dIni, dFim];
   st.zoom[st.perAtivo] = z;
   configurarSlider(dIni, dFim, z);
-  renderAcum(); renderDd(); renderRisco(); renderCorrelacao();
+  renderAcum(); renderDd(); renderRisco(); renderCorrelacao(); renderComposicao();
   if (semCarteira) st.cartSuja = true; else { st.cartSuja = false; renderCarteira(); }
   avisoDesatualizado();
   if (st.pagina === "xp") renderROA();
@@ -5324,6 +5327,7 @@ function mensalPF(f, nome) {
 function funcaoTab(tab) {
   const LEGENDAS = { acum: renderAcum, dd: renderDd, jm: renderJM, cartAcum: renderCartAcum, cartDd: renderCartDd, cartJM: renderCartJM, rkJM: renderRkJM };
   if (tab.startsWith("cartAtivos:")) return renderCompResumo;
+  if (tab === "comp") return renderCompTabela;
   return tab.startsWith("leg:") ? LEGENDAS[tab.slice(4)] : ({ met: renderMetricas, risco: renderTabRisco, jm: renderTabJM, cartMet: renderCartMetricas,
     cartRisco: renderTabCartRisco, cartJM: renderTabCartJM, cartAtivos: renderCartResumo, cartMetComp: renderCompMetricas, rk: renderRkTabela, rkPts: renderRkPontos, rkJMt: renderRkJMTab, quad: renderROA })[tab];
 }
@@ -6511,6 +6515,145 @@ function desenharTravar() {
   b.setAttribute("aria-pressed", String(!st.travar));
   b.title = st.travar ? "Desligada: a barra fica só no topo da página. Clique para ela acompanhar a rolagem." : "Ligada: a barra acompanha a rolagem. Clique para deixá-la só no topo.";
 }
+
+// ============================== composição da carteira dos fundos (CDA da CVM) ==============================
+// Totais por tipo de aplicação em todos os meses (resumo) e os ativos do mês escolhido (baixados só ao escolher o mês).
+// Nos meses em sigilo a CVM só publica o total de cada tipo de aplicação: os ativos aparecem quando o sigilo acaba.
+const MESES_NOME = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const rotMes = (m) => `${MESES_NOME[(m % 100) - 1]}/${Math.floor(m / 100)}`;
+const brR = (v) => { if (typeof v !== "number" || !Number.isFinite(v)) return ""; const a = Math.abs(v);
+  return a >= 1e9 ? `R$ ${br(v / 1e9, 2)} bi` : a >= 1e6 ? `R$ ${br(v / 1e6, 2)} mi` : a >= 1e3 ? `R$ ${br(v / 1e3, 1)} mil` : `R$ ${br(v, 2)}`; };
+const APLIC_ORDEM = ["Debêntures", "Depósitos a prazo e outros títulos de IF", "Operações Compromissadas", "Cotas de Fundos", "Títulos de Crédito Privado",
+  "Títulos ligados ao agronegócio", "Títulos Públicos", "Investimento no Exterior", "Ações", "Disponibilidades", "Valores a receber", "Valores a pagar"];
+function corAplic(a) {                                     // mesma cor para o mesmo tipo de aplicação em qualquer fundo
+  let i = APLIC_ORDEM.indexOf(a);
+  if (i < 0) { i = 0; for (const ch of a) i = (i * 31 + ch.charCodeAt(0)) >>> 0; }
+  return PALETA[i % PALETA.length];
+}
+const pctComp = (v) => brPct(Math.abs(v) < 5e-5 ? 0 : v);           // sem "-0,00%"
+const diaComp = (v) => (v instanceof Date ? diaDe(v) : v ? diaDe(new Date(v)) : null);
+const dataComp = (v) => { const d = diaComp(v); return d == null ? "" : fmtData(d); };
+st.comp = { c: null, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "" };
+let compId = 0;
+const fundosComp = () => {
+  const d = st.ctx?.dados; if (!d) return [];
+  return [...new Set([...d.linhas.map((l) => l._c), ...d.semDados])].map((c) => ({ c, nome: st.res.apelidos[c] || st.porCnpj.get(c)?.NOME || cnpjFmt(c) }));
+};
+async function renderComposicao() {
+  const sec = $("#secComp"), lista = fundosComp();
+  const meta = lista.length ? await D.metaComposicao() : null;
+  if (!meta || !lista.length) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const chave = lista.map((f) => f.c + f.nome).join("|");
+  if (chave === st.comp.lista && st.comp.resumoDe === st.comp.c) return;     // mesmos fundos (ex.: só o destaque mudou): nada a refazer
+  st.comp.lista = chave;
+  if (!lista.some((f) => f.c === st.comp.c)) { st.comp.c = lista[0].c; st.comp.mes = null; }
+  $("#compFundo").innerHTML = lista.map((f) => `<option value="${esc(f.c)}"${f.c === st.comp.c ? " selected" : ""}>${esc(f.nome)}</option>`).join("");
+  $("#compFundo").disabled = lista.length < 2;
+  carregarComp();
+}
+async function carregarComp() {
+  const id = ++compId, c = st.comp.c;
+  const carregando = (txt) => { $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<div class="comp-aguarde" role="status"><span class="spin"></span>${txt}</div>`; };
+  st.comp.erro = "";
+  if (st.comp.resumoDe !== c) {
+    carregando("Carregando a composição da carteira…"); $("#compNota").textContent = ""; $("#compMes").innerHTML = "";
+    try { const r = await D.lerComposicao(c, "resumo"); if (id !== compId) return; st.comp.resumo = r || []; st.comp.resumoDe = c; }
+    catch (e) { if (id !== compId) return; st.comp.erro = `Não foi possível carregar a composição (${e.message}). Tente de novo mais tarde.`; return renderCompTabela(); }
+  }
+  const R = st.comp.resumo, meses = [...new Set(R.map((l) => l.MES))].sort((a, b) => b - a);
+  if (!meses.includes(st.comp.mes)) st.comp.mes = meses[0] ?? null;
+  $("#compMes").innerHTML = meses.map((m) => {
+    const ls = R.filter((l) => l.MES === m), sig = ls.filter((l) => l.VALOR_SIG != null), so = sig.length && ls.every((l) => !l.N);
+    return `<option value="${m}"${m === st.comp.mes ? " selected" : ""}>${rotMes(m)}${so ? " · só totais (sigilo)" : sig.length ? " · parte em sigilo" : ""}</option>`;
+  }).join("");
+  $("#compMes").disabled = meses.length < 2;
+  const temDet = R.some((l) => l.MES === st.comp.mes && l.N > 0), chave = `${c}|${st.comp.mes}`;
+  if (temDet && st.comp.detDe !== chave) {
+    carregando(`Carregando os ativos de ${rotMes(st.comp.mes).toLowerCase()}…`);
+    try { const d = await D.lerComposicao(c, String(st.comp.mes)); if (id !== compId) return; st.comp.det = d || []; st.comp.detDe = chave; }
+    catch (e) { if (id !== compId) return; st.comp.erro = `Não foi possível carregar os ativos (${e.message}).`; }
+  }
+  if (id === compId) renderCompTabela();
+}
+const LIMITE_ATIVOS_GRUPO = 1500;                         // fundos com dezenas de milhares de opções: mostra os maiores
+function renderCompTabela() {
+  const { c, mes } = st.comp, nomeF = $("#compFundo").selectedOptions[0]?.textContent || "";
+  if (st.comp.erro) { $("#compNota").textContent = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<p class="aviso-calc">${esc(st.comp.erro)}</p>`; return; }
+  const cats = (st.comp.resumo || []).filter((l) => l.MES === mes).sort((a, b) => b.VALOR - a.VALOR);
+  $("#compTodas").hidden = !cats.some((l) => l.N > 0);
+  if (!cats.length) {
+    $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = "";
+    $("#compTab").innerHTML = `<p class="nota">A CVM não tem a composição da carteira de <b>${esc(nomeF)}</b> nos últimos meses publicados. Alguns fundos (por exemplo, os de previdência e os que deixaram de existir) não enviam esse informe.</p>`;
+    return;
+  }
+  const total = cats.reduce((s, l) => s + l.VALOR, 0), pl = cats[0].PL, positivo = cats.reduce((s, l) => s + Math.max(0, l.VALOR), 0);
+  const sig = cats.filter((l) => l.VALOR_SIG != null), fimSig = sig.map((l) => diaComp(l.CONFID)).filter((d) => d != null);
+  $("#compNota").innerHTML = `Fonte: CVM (composição e diversificação das aplicações), posição no fim de ${rotMes(mes).toLowerCase()}` +
+    (typeof pl === "number" ? ` · patrimônio líquido ${brR(pl)}` : "") + `. Percentuais sobre a soma das posições (${brR(total)}), como no informe.` +
+    (sig.length ? ` <span class="comp-sig">${ico("cadeado")}${sig.length === cats.length && cats.every((l) => !l.N) ? "Mês em sigilo: a CVM só mostra o total de cada tipo de aplicação" : "Parte das aplicações está em sigilo (só o total aparece)"}${fimSig.length ? ` até ${fmtData(Math.max(...fimSig))}` : ""}; os ativos aparecem quando o sigilo acaba.</span>` : "");
+  $("#compBarra").innerHTML = `<div class="comp-trilho" role="img" aria-label="Divisão da carteira por tipo de aplicação">` + cats.filter((l) => l.VALOR > 0).map((l) =>
+    `<button type="button" class="comp-seg" data-comp-aplic="${esc(l.APLIC)}" style="flex-basis:${(l.VALOR / positivo * 100).toFixed(3)}%;background:${corAplic(l.APLIC)}"
+      title="${esc(l.APLIC)}: ${pctComp(l.VALOR / total)} · ${brR(l.VALOR)}" aria-label="${esc(l.APLIC)}: ${pctComp(l.VALOR / total)}"></button>`).join("") + `</div>`;
+  const det = st.comp.detDe === `${c}|${mes}` ? st.comp.det || [] : [], porAplic = new Map();
+  for (const a of det) { if (!porAplic.has(a.APLIC)) porAplic.set(a.APLIC, []); porAplic.get(a.APLIC).push(a); }
+  const filtro = filtrosAtivos("comp"), chaveG = (a) => `comp|${c}|${mes}|${a}`, aberto = (k) => filtro || st.comp.abertos.has(k);
+  const cols = [
+    { chave: "Ativo", nome: "Ativo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>${esc(v)}` },
+    { chave: "Tipo", nome: "Tipo", tipo: "txt" },
+    { chave: "Emissor", nome: "Emissor", tipo: "txt" },
+    { chave: "Venc", nome: "Vencimento", tipo: "data", crescente: true },
+    { chave: "Taxa", nome: "Taxa", tipo: "txt" },
+    { chave: "Valor", nome: "Valor", tipo: "valor", html: (v) => brR(v) },
+    { chave: "pc", nome: "% da carteira", linhas: ["%", "carteira"], tipo: "pct" },
+    { chave: "ppl", nome: "% do PL", linhas: ["%", "do PL"], tipo: "pct" },
+    { chave: "Codigo", nome: "Código", tipo: "txt" },
+    { chave: "Qtd", nome: "Quantidade", tipo: "valor", html: (v) => (typeof v === "number" ? br(v, v % 1 ? 2 : 0) : "") },
+  ];
+  const linhas = [];
+  for (const l of cats) {
+    const k = chaveG(l.APLIC), membros = porAplic.get(l.APLIC) || [], cor = corAplic(l.APLIC);
+    const info = [pctComp(l.VALOR / total), brR(l.VALOR)];
+    if (l.VALOR_SIG != null) info.push(`${ico("cadeado")}${l.N ? `${brR(l.VALOR_SIG)} em sigilo` : "em sigilo"}${l.CONFID ? ` até ${dataComp(l.CONFID)}` : ""}`);
+    if (membros.length > LIMITE_ATIVOS_GRUPO) info.push(`mostrando os ${br(LIMITE_ATIVOS_GRUPO, 0)} maiores`);
+    linhas.push({ _cab: true, chave: k, rotulo: l.APLIC, n: l.N, unid: ["ativo", "ativos"], cor, info: info.join(" · "), vazio: !l.N });
+    if (!aberto(k)) continue;
+    const ms = ordenar(membros.map((a) => {
+      // nome: código (ex.: CMGDA2) e descrição ou emissor; "DEB" e outras siglas curtas da CVM não descrevem o ativo
+      const d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || a.EMISSOR;
+      const cnpjCota = a.COD && /^\d{14}$/.test(a.COD), isin = a.COD && /^BR[A-Z0-9]{10}$/.test(a.COD), cod = !cnpjCota && !isin && a.COD !== desc ? a.COD : null;
+      const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
+      return { Ativo: nome, Tipo: a.ATIVO || "",
+        Emissor: a.EMISSOR && a.EMISSOR !== desc ? a.EMISSOR : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
+        Valor: a.VALOR, pc: a.VALOR / total, ppl: typeof pl === "number" && pl ? a.VALOR / pl : null,
+        Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", Qtd: a.QTD, _cor: cor, _g: k };
+    }), "comp", cols).slice(0, LIMITE_ATIVOS_GRUPO);
+    linhas.push(...ms);
+  }
+  redesenharMantendo($("#compTab"), () => {
+    $("#compTab").innerHTML = tabelaHTML({ colunas: cols, linhas, fixas: 1, larguras: [300], ordenavel: "comp", altura: 520, fechado: (k) => !aberto(k) });
+  });
+  const todas = cats.filter((l) => l.N > 0).every((l) => aberto(chaveG(l.APLIC)));
+  $("#compTodas").textContent = todas ? "Recolher todas" : "Abrir todas";
+}
+function abrirTodasComp() {
+  const { c, mes } = st.comp, ks = (st.comp.resumo || []).filter((l) => l.MES === mes && l.N > 0).map((l) => `comp|${c}|${mes}|${l.APLIC}`);
+  if (ks.every((k) => st.comp.abertos.has(k))) ks.forEach((k) => st.comp.abertos.delete(k)); else ks.forEach((k) => st.comp.abertos.add(k));
+  renderCompTabela();
+}
+document.addEventListener("change", (e) => {
+  if (e.target.id === "compFundo") { st.comp.c = e.target.value; st.comp.mes = null; carregarComp(); }
+  else if (e.target.id === "compMes") { st.comp.mes = Number(e.target.value); carregarComp(); }
+});
+document.addEventListener("click", (e) => {
+  if (e.target.closest?.("#compTodas")) return abrirTodasComp();
+  const seg = e.target.closest?.("[data-comp-aplic]");
+  if (!seg) return;
+  const k = `comp|${st.comp.c}|${st.comp.mes}|${seg.dataset.compAplic}`;
+  st.comp.abertos.add(k); renderCompTabela();
+  const tr = [...$$("#compTab tr.grupo")].find((r) => r.dataset.g === k);
+  if (tr) { const w = tr.closest(".tb-wrap"); w.scrollTop = tr.offsetTop - (w.querySelector("thead")?.offsetHeight || 0); w.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+});
 
 // ---------- minigráfico ao passar o mouse sobre um fundo: cota dos últimos 12 meses (dados já carregados)
 let miniTimer = null, miniAlvo = null;
