@@ -1245,7 +1245,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     if (l._cab) {
       const fech = fechado(l.chave);
       const qtd = l.unid ? (l.n ? `${br(l.n, 0)} ${l.n === 1 ? l.unid[0] : l.unid[1]}` : "") : `${l.n} fundo${l.n > 1 ? "s" : ""}`;
-      h += (l.vazio ? `<tr class="grupo vazio" data-gk="${esc(l.chave)}"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
+      h += (l.vazio ? `<tr class="grupo sem-itens" data-gk="${esc(l.chave)}"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
         `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
         title="${fech ? "Expandir" : "Recolher"} este grupo"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev">${fech ? "▸" : "▾"}</span>`) + `
         ${l.cor ? `<span class="sw" style="background:${l.cor}"></span>` : ""}${esc(l.rotulo)}<span class="g-info">${[qtd, l.info].filter(Boolean).map((x) => " · " + x).join("")}</span></span></td></tr>`;
@@ -6723,6 +6723,7 @@ function pizzaComp(cats, total, chaveG) {
 function focoComp(k, ev = null) {
   const box = $("#compBarra .comp-pizza-g"); if (!box) return;
   const fat = k ? [...box.querySelectorAll(".comp-fatia")].find((f) => f.dataset.k === k) : null;
+  destacarEvol(fat?.dataset.compAplic || null);
   box.classList.toggle("foco", !!fat);
   box.querySelectorAll(".comp-fatia.on").forEach((f) => f !== fat && f.classList.remove("on"));
   $$("#compTab tr.comp-real").forEach((tr) => tr.classList.remove("comp-real"));
@@ -6758,7 +6759,9 @@ document.addEventListener("keydown", (e) => {
   if (f && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); f.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
 });
 // mouse na linha do tipo na tabela: a fatia correspondente acende (sem mexer na rolagem)
+const aplicDaChave = (k) => (k ? k.split("|").slice(3).join("|") : null);       // "comp|CNPJ|AAAAMM|tipo" -> tipo
 const acenderFatia = (k) => {
+  destacarEvol(aplicDaChave(k));
   const box = $("#compBarra .comp-pizza-g"); if (!box) return;
   const fat = k ? [...box.querySelectorAll(".comp-fatia")].find((f) => f.dataset.k === k) : null;
   box.classList.toggle("foco", !!fat); box.querySelectorAll(".comp-fatia").forEach((f) => f.classList.toggle("on", f === fat));
@@ -6817,7 +6820,9 @@ function renderEvolComp() {
           ticks: { color: corTexto(), callback: (v) => (pct ? `${br(v, 0)}%` : brR(v)) } },
       },
       plugins: {
-        legend: { position: "bottom", labels: { color: corTexto(), boxWidth: 12, boxHeight: 12, font: { size: 11.5 } } },
+        legend: { position: "bottom", labels: { color: corTexto(), boxWidth: 12, boxHeight: 12, font: { size: 11.5 } },
+          onHover: (e, item, leg) => { leg.chart.canvas.style.cursor = "pointer"; destacarEvol(leg.chart.data.datasets[item.datasetIndex].$tipos[0]); },
+          onLeave: (e, item, leg) => { leg.chart.canvas.style.cursor = "default"; destacarEvol(null); } },
         tooltip: { itemSort: (a, b) => b.raw - a.raw, filter: (it) => it.dataset.$v[it.dataIndex] > 0,
           callbacks: {
             title: (its) => `${rotMes(meses[its[0].dataIndex])}${sig.has(meses[its[0].dataIndex]) ? " · parte em sigilo (só os totais)" : ""}`,
@@ -6831,8 +6836,18 @@ function renderEvolComp() {
       } },
     plugins: [faixaMesComp],
   });
-  ch.$chave = chave; ch.$meses = meses;
+  ch.$chave = chave; ch.$meses = meses; st.comp.evolDest = undefined;
   st.graficos.gCompEvol = ch;
+}
+// tipo em destaque no gráfico de evolução (passar o mouse na fatia da pizza, na linha do tipo na tabela ou na legenda):
+// as outras cores ficam claras. Tipo pequeno, juntado em "Outros", acende o "Outros".
+const corApagada = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c + "33" : c);
+function destacarEvol(aplic) {
+  const ch = st.graficos.gCompEvol; if (!ch || st.comp.evolDest === aplic) return;
+  st.comp.evolDest = aplic;
+  const alvo = aplic ? ch.data.datasets.find((d) => d.$tipos.includes(aplic)) : null;
+  for (const d of ch.data.datasets) { d.$cor ??= d.backgroundColor; d.backgroundColor = !alvo || d === alvo ? d.$cor : corApagada(d.$cor); }
+  ch.update("none");
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-comp-escala]"); if (!b || b.dataset.compEscala === st.comp.escala) return;

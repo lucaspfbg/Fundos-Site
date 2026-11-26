@@ -1514,7 +1514,7 @@ tr.cart-aberta .cart-tog { background: var(--ouro); color: #1a1a1a; }
 .comp-aguarde .spin { width: 16px; height: 16px; border: 2px solid var(--borda); border-top-color: var(--ouro); border-radius: 50%; animation: comp-gira .8s linear infinite; }
 @keyframes comp-gira { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .comp-aguarde .spin { animation: none; } }
-tr.grupo.vazio td { cursor: default; }
+tr.grupo.sem-itens td { cursor: default; }
 
 /* página da composição: busca do fundo, atalhos e título com o nome do fundo */
 .comp-busca #compAtalhos { grid-column: 1 / -1; display: grid; gap: 6px; }
