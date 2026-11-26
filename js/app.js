@@ -6779,6 +6779,12 @@ const faixaMesComp = { id: "faixaMesComp", afterDatasetsDraw(ch) {              
   ctx.save(); ctx.strokeStyle = corTexto(); ctx.lineWidth = 2; ctx.setLineDash([]);
   ctx.strokeRect(cx - passo * 0.47, top - 3, passo * 0.94, bottom - top + 3); ctx.restore();
 } };
+// a ficha do mês só existe com o mouse sobre as barras: ao ir para a legenda (ou sair do gráfico) ela some
+const semDicaEvol = (ch) => { if (ch.tooltip?.getActiveElements().length) { ch.tooltip.setActiveElements([], { x: 0, y: 0 }); ch.setActiveElements([]); return true; } return false; };
+const dicaSoNasBarras = { id: "dicaSoNasBarras", afterEvent(ch, args) {
+  const e = args.event, a = ch.chartArea;
+  if ((e.type === "mousemove" || e.type === "mouseout") && (e.type === "mouseout" || e.x < a.left || e.x > a.right || e.y < a.top || e.y > a.bottom) && semDicaEvol(ch)) args.changed = true;
+} };
 function renderEvolComp() {
   const box = $("#compEvol"), R = st.comp.resumo, c = st.comp.c;
   const meses = R && st.comp.resumoDe === c ? [...new Set(R.map((l) => l.MES))].sort((a, b) => a - b) : [];
@@ -6821,7 +6827,7 @@ function renderEvolComp() {
       },
       plugins: {
         legend: { position: "bottom", labels: { color: corTexto(), boxWidth: 12, boxHeight: 12, font: { size: 11.5 } },
-          onHover: (e, item, leg) => { leg.chart.canvas.style.cursor = "pointer"; destacarEvol(leg.chart.data.datasets[item.datasetIndex].$tipos[0]); },
+          onHover: (e, item, leg) => { leg.chart.canvas.style.cursor = "pointer"; if (semDicaEvol(leg.chart)) leg.chart.update("none"); destacarEvol(leg.chart.data.datasets[item.datasetIndex].$tipos[0]); },
           onLeave: (e, item, leg) => { leg.chart.canvas.style.cursor = "default"; destacarEvol(null); } },
         tooltip: { itemSort: (a, b) => b.raw - a.raw, filter: (it) => it.dataset.$v[it.dataIndex] > 0,
           callbacks: {
@@ -6834,7 +6840,7 @@ function renderEvolComp() {
         const i = chart.getElementsAtEventForMode(e, "index", { intersect: false }, false)[0]?.index; if (i == null || meses[i] === st.comp.mes) return;
         st.comp.mes = meses[i]; $("#compMes").value = String(meses[i]); carregarComp();
       } },
-    plugins: [faixaMesComp],
+    plugins: [faixaMesComp, dicaSoNasBarras],
   });
   ch.$chave = chave; ch.$meses = meses; st.comp.evolDest = undefined;
   st.graficos.gCompEvol = ch;
