@@ -28,6 +28,7 @@
   <symbol id="i-trofeu" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
   <symbol id="i-banco" viewBox="0 0 24 24"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M12 2 20 7H4z"/></symbol>
   <symbol id="i-pizza" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+  <symbol id="i-camadas" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
   <symbol id="i-lista" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
   <symbol id="i-colar" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
   <symbol id="i-pino" viewBox="0 0 24 24"><path d="M15 3l6 6-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z"/></symbol>
@@ -68,6 +69,7 @@
           <button id="abaRankings" role="tab" type="button" data-aba="rankings" aria-controls="pgRankings" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-trofeu"/></svg>Rankings</button>
           <button id="abaXP" role="tab" type="button" data-aba="xp" aria-controls="pgXP" aria-selected="false" tabindex="-1" hidden><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Fundos XP</button>
           <button id="abaCarteira" role="tab" type="button" data-aba="carteira" aria-controls="pgCarteira" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-pizza"/></svg>Carteira</button>
+          <button id="abaComp" role="tab" type="button" data-aba="comp" aria-controls="pgComp" aria-selected="false" tabindex="-1"><svg class="ico" aria-hidden="true"><use href="#i-camadas"/></svg>Composição</button>
         </nav>
       </div>
       <div class="lat-meio">
@@ -230,19 +232,6 @@
             <button class="btn-min" type="button" data-min="corr" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
           <p id="corrNota" class="nota"></p>
           <div id="tabCorr"></div>
-        </section>
-
-        <section id="secComp" class="cartao" data-sec="comp" hidden>
-          <div class="cab"><h2>Composição da carteira</h2>
-            <div class="opcoes">
-              <label>Fundo <select id="compFundo"></select></label>
-              <label>Mês <select id="compMes"></select></label>
-              <button id="compTodas" class="sec mini-btn" type="button">Abrir todas</button>
-            </div>
-            <button class="btn-min" type="button" data-min="comp" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
-          <p id="compNota" class="nota"></p>
-          <div id="compBarra" class="comp-barra"></div>
-          <div id="compTab"></div>
         </section>
       </div>
 
@@ -410,6 +399,25 @@
         <div id="rkPesos" class="rk-pesos"></div>
       </section>
 
+      </div>
+
+      <div id="pgComp" class="pagina" role="tabpanel" aria-labelledby="abaComp" data-pagina="comp" hidden>
+      <section class="xp-busca comp-busca" aria-label="Escolher o fundo">
+        <label class="xp-busca-rot" for="compBuscaIn">Fundo</label>
+        <div class="xp-busca-campo campo-lupa"><svg class="ico" aria-hidden="true"><use href="#i-busca"/></svg><input id="compBuscaIn" type="search" placeholder="Nome, gestor ou CNPJ do fundo" autocomplete="off" spellcheck="false" aria-controls="compBuscaRes">
+          <div id="compBuscaRes" class="xp-busca-res" role="listbox" aria-label="Fundos encontrados" hidden></div></div>
+        <div id="compAtalhos" class="comp-atalhos"></div>
+      </section>
+      <section id="secComp" class="cartao">
+        <div class="cab"><div class="comp-cab"><h2 id="compTit">Composição da carteira</h2><p id="compSub" class="nota"></p></div>
+          <div class="opcoes">
+            <label id="compMesRot">Mês <select id="compMes"></select></label>
+            <button id="compTodas" class="sec mini-btn" type="button" hidden>Abrir todas</button>
+          </div></div>
+        <p id="compNota" class="nota"></p>
+        <div id="compBarra" class="comp-barra"></div>
+        <div id="compTab"></div>
+      </section>
       </div>
 
       <div id="pgCarteira" class="pagina" role="tabpanel" aria-labelledby="abaCarteira" data-pagina="carteira" hidden>

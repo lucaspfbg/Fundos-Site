@@ -1244,9 +1244,9 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     if (l._cab) {
       const fech = fechado(l.chave);
       const qtd = l.unid ? (l.n ? `${br(l.n, 0)} ${l.n === 1 ? l.unid[0] : l.unid[1]}` : "") : `${l.n} fundo${l.n > 1 ? "s" : ""}`;
-      h += l.vazio ? `<tr class="grupo vazio"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
+      h += (l.vazio ? `<tr class="grupo vazio"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
         `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
-        title="${fech ? "Expandir" : "Recolher"} este grupo"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev">${fech ? "▸" : "▾"}</span>
+        title="${fech ? "Expandir" : "Recolher"} este grupo"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev">${fech ? "▸" : "▾"}</span>`) + `
         ${l.cor ? `<span class="sw" style="background:${l.cor}"></span>` : ""}${esc(l.rotulo)}<span class="g-info">${[qtd, l.info].filter(Boolean).map((x) => " · " + x).join("")}</span></span></td></tr>`;
       return;
     }
@@ -1639,7 +1639,7 @@ function renderResultado({ semCarteira = false } = {}) {     // semCarteira: só
   const z = st.zoom[st.perAtivo] || [dIni, dFim];
   st.zoom[st.perAtivo] = z;
   configurarSlider(dIni, dFim, z);
-  renderAcum(); renderDd(); renderRisco(); renderCorrelacao(); renderComposicao();
+  renderAcum(); renderDd(); renderRisco(); renderCorrelacao();
   if (semCarteira) st.cartSuja = true; else { st.cartSuja = false; renderCarteira(); }
   avisoDesatualizado();
   if (st.pagina === "xp") renderROA();
@@ -3556,6 +3556,7 @@ function sincronizarUrl() {
   pon("fim", st.periodos.has("Personalizado") ? $("#pFim").value : "");
   pon("idx", [...st.idxSel].join(","));
   pon("pagina", st.pagina && st.pagina !== "analise" ? st.pagina : "");
+  pon("fundo", st.pagina === "comp" ? st.comp?.c : "");                     // página da composição: o fundo aberto
   history.replaceState(null, "", url);
 }
 function lerUrl() {
@@ -3576,12 +3577,13 @@ function lerUrl() {
 }
 
 // ---------- três páginas: Análise de fundos, Rankings e Montagem de carteira (cada uma mostra só o que é dela)
-const PAGINAS = ["analise", "rankings", "xp", "carteira"];
+const PAGINAS = ["analise", "rankings", "xp", "carteira", "comp"];
 const TITULOS = {
   analise: ["Análise de fundos", "Métricas, gráficos, correlação e janela móvel dos fundos selecionados"],
   rankings: ["Rankings", "Pontuação dos fundos por métricas, janela móvel e correlação de cada ranking"],
   carteira: ["Carteira", "Pesos, rebalanceamento, desempenho e contribuição de cada ativo"],
   xp: ["Fundos XP", "Visão geral dos fundos da XP, cálculo de todos de uma vez e análise do ROA"],
+  comp: ["Composição", "Ativos de cada fundo por tipo de aplicação, mês a mês, conforme informado à CVM"],
 };
 function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
   // a página da XP só existe com login: enquanto os dados da equipe carregam, mostra a análise e volta para a XP quando chegarem
@@ -3604,6 +3606,7 @@ function mostrarPagina(pg, { rolar = true, foco = false } = {}) {
   if (rolar) scrollTo({ top: 0, behavior: "auto" });
   if (pg === "xp") { renderXPGeral(); renderROA(); }
   if (pg === "rankings") rankingsAoAbrir();
+  if (pg === "comp") renderPaginaComp();
   agendarFiltrosFixos();                                                     // tabelas que estavam escondidas
 }
 // durante o relatório todas as páginas ficam visíveis (as imagens dos gráficos saem da tela)
@@ -3621,7 +3624,7 @@ document.addEventListener("keydown", (e) => {                      // setas entr
 // ---------- backup completo das configurações (grupos, rankings, tipos de cálculo, carteira e preferências)
 // As configurações ficam no navegador e presas ao endereço do site: mudar de computador, de navegador ou de endereço
 // (ex.: trocar o usuário do GitHub) começa do zero. O backup leva tudo num arquivo.
-const CHAVES_BACKUP = ["colsOcultas", "pesoPeriodo", "carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados",
+const CHAVES_BACKUP = ["colsOcultas", "pesoPeriodo", "carteirasSalvas", "favoritos", "sel", "grupos", "rankings", "rankingsSel", "modelosRank", "rkCompPadrao", "carteira", "indices", "agrupar", "gruposFechados", "compRecentes",
   "minimizados", "pagina", "relFmt", "relSel", "riscoEixo", "travar", "guardar"];
 function salvarBackup() {
   const dados = {};
@@ -4295,7 +4298,7 @@ function abrirPainelFundo(c, onde = "analise", per = null) {
   $("#pfTit").textContent = nomeXP || l.Fundo;
   $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjTxt)}${botaoCopiar(cnpjTxt, "o CNPJ")}`;
   $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, "o nome");
-  $("#pfHubTopo").innerHTML = q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "";
+  $("#pfHubTopo").innerHTML = botaoComp(c) + (q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "");
   $("#pfSub").innerHTML = [nomeXP ? `CVM: ${esc(l.Fundo)}` : "", fonte.extra ? `<b>${esc(fonte.extra)}</b>` : ""].filter(Boolean).join("<br>");
   $("#pfSelos").innerHTML = q._naXP ? `${cadeado(q["Captação"], q._motivoFechado)}${dinheiroNovo(q._dinheiroNovo)} ${badgeInv(q.Investidor)}` : "";
   const kpi = (rot, v, t = "pct", nome = "") => `<div class="kpi"><div class="l">${rot}</div><div class="v">${valorPF(t, v, nome)}</div></div>`;
@@ -4391,7 +4394,7 @@ async function abrirPainelLista(c) {
   if (fontePainel(c, "analise")) return abrirPainelFundo(c, "analise");
   const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo");
   $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, "o nome");
-  $("#pfHubTopo").innerHTML = ""; $("#pfSelos").innerHTML = "";
+  $("#pfHubTopo").innerHTML = botaoComp(c); $("#pfSelos").innerHTML = "";
   $("#pfSub").textContent = cad._soXP ? "Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos." : "Carregando as cotas…";
   $("#pfConteudo").innerHTML = "";
   if (!d.open) d.showModal();
@@ -6533,25 +6536,70 @@ function corAplic(a) {                                     // mesma cor para o m
 const pctComp = (v) => brPct(Math.abs(v) < 5e-5 ? 0 : v);           // sem "-0,00%"
 const diaComp = (v) => (v instanceof Date ? diaDe(v) : v ? diaDe(new Date(v)) : null);
 const dataComp = (v) => { const d = diaComp(v); return d == null ? "" : fmtData(d); };
-st.comp = { c: null, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "" };
-let compId = 0;
-const fundosComp = () => {
-  const d = st.ctx?.dados; if (!d) return [];
-  return [...new Set([...d.linhas.map((l) => l._c), ...d.semDados])].map((c) => ({ c, nome: st.res.apelidos[c] || st.porCnpj.get(c)?.NOME || cnpjFmt(c) }));
-};
-async function renderComposicao() {
-  const sec = $("#secComp"), lista = fundosComp();
-  const meta = lista.length ? await D.metaComposicao() : null;
-  if (!meta || !lista.length) { sec.hidden = true; return; }
-  sec.hidden = false;
-  const chave = lista.map((f) => f.c + f.nome).join("|");
-  if (chave === st.comp.lista && st.comp.resumoDe === st.comp.c) return;     // mesmos fundos (ex.: só o destaque mudou): nada a refazer
-  st.comp.lista = chave;
-  if (!lista.some((f) => f.c === st.comp.c)) { st.comp.c = lista[0].c; st.comp.mes = null; }
-  $("#compFundo").innerHTML = lista.map((f) => `<option value="${esc(f.c)}"${f.c === st.comp.c ? " selected" : ""}>${esc(f.nome)}</option>`).join("");
-  $("#compFundo").disabled = lista.length < 2;
+// página própria: qualquer fundo da base, pela busca ou pelos atalhos (vistos por último e selecionados na análise)
+const cnpjOk = (c) => typeof c === "string" && /^[0-9A-Z]{14}$/.test(c);
+const recentesComp = (Array.isArray(pref("compRecentes", [])) ? pref("compRecentes", []) : []).filter(cnpjOk).slice(0, 8);
+const fundoUrl = new URLSearchParams(location.search).get("fundo");
+st.comp = { c: cnpjOk(fundoUrl) ? fundoUrl : recentesComp[0] || null, recentes: recentesComp, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "" };
+let compId = 0, tCompBusca;
+const nomeComp = (c) => (st.xp ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || cnpjFmt(c));
+const botaoComp = (c) => `<button type="button" class="sec mini-btn" data-ir-comp="${c}" title="Abrir a página da composição da carteira deste fundo (informes da CVM)">${ico("camadas")}Composição da carteira</button>`;
+function escolherFundoComp(c, desenhar = true) {
+  if (!cnpjOk(c)) return;
+  if (c !== st.comp.c) { st.comp.c = c; st.comp.mes = null; }
+  st.comp.recentes = [c, ...st.comp.recentes.filter((x) => x !== c)].slice(0, 8); salvar("compRecentes", st.comp.recentes);
+  $("#compBuscaIn").value = ""; $("#compBuscaRes").hidden = true;
+  if (desenhar) { sincronizarUrl(); renderPaginaComp(); }
+}
+function renderAtalhosComp() {
+  const chip = (c) => `<button type="button" class="comp-atalho" data-comp-ir="${c}" aria-pressed="${c === st.comp.c}" title="${esc(nomeComp(c))} · ${cnpjFmt(c)}">${esc(curto(nomeComp(c), 34))}</button>`;
+  const grupo = (rot, cs, resto = 0) => cs.length ? `<div class="comp-atalhos-g"><span class="nota">${rot}</span>${cs.map(chip).join("")}${resto ? `<span class="nota">+${resto}</span>` : ""}</div>` : "";
+  const sel = st.sel.filter((c) => c !== st.comp.c);
+  $("#compAtalhos").innerHTML = grupo("Vistos por último", st.comp.recentes.filter((c) => c !== st.comp.c && !st.sel.includes(c))) +
+    grupo("Selecionados na análise", sel.slice(0, 12), Math.max(0, sel.length - 12));
+}
+function renderBuscaComp() {
+  const box = $("#compBuscaRes"), txt = $("#compBuscaIn").value, achados = buscar(txt, 12);
+  box.hidden = semAcento(txt).trim().length < 3;
+  box.innerHTML = achados.length ? achados.map((f) => `<button type="button" class="xp-busca-op" role="option" data-comp-ir="${f.CNPJ}"><span>${esc(nomeComp(f.CNPJ))}</span>` +
+    `<small>${cnpjFmt(f.CNPJ)}${f.GESTOR ? " · " + esc(f.GESTOR) : ""}</small></button>`).join("") : `<p class="nota">Nenhum fundo com esse nome ou CNPJ.</p>`;
+}
+async function renderPaginaComp() {
+  renderAtalhosComp();
+  const c = st.comp.c, limpar = (html) => {
+    $("#compMesRot").hidden = true; $("#compTodas").hidden = true; $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = html; };
+  if (!c) {
+    $("#compTit").textContent = "Composição da carteira"; $("#compSub").innerHTML = "";
+    return limpar(`<p class="nota comp-vazio">Busque um fundo pelo nome, gestor ou CNPJ para ver em que ele investe: os ativos de cada tipo de aplicação, mês a mês, como informado à CVM.</p>`);
+  }
+  const cad = st.porCnpj.get(c), nome = nomeComp(c);
+  $("#compTit").innerHTML = cad ? `<span class="lk-fundo" data-pf="${c}" role="button" tabindex="0" title="Abrir o painel do fundo">${esc(nome)}</span>` : esc(nome);
+  $("#compSub").innerHTML = [`CNPJ ${cnpjFmt(c)}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`, cad?.GESTOR ? `Gestor: ${esc(cad.GESTOR)}` : "",
+    cad?.NOME && cad.NOME !== nome ? `CVM: ${esc(cad.NOME)}` : ""].filter(Boolean).join(" · ");
+  $("#compMesRot").hidden = false;
+  const meta = await D.metaComposicao();
+  if (st.comp.c !== c) return;
+  if (!meta) return limpar(`<p class="aviso-calc">A composição das carteiras não está disponível agora. Tente de novo mais tarde.</p>`);
   carregarComp();
 }
+document.addEventListener("input", (e) => { if (e.target.id === "compBuscaIn") { clearTimeout(tCompBusca); tCompBusca = setTimeout(renderBuscaComp, 120); } });
+document.addEventListener("keydown", (e) => {
+  if (e.target.id === "compBuscaIn") {
+    if (e.key === "Escape") $("#compBuscaRes").hidden = true;
+    else if (e.key === "Enter") { e.preventDefault(); renderBuscaComp(); $("#compBuscaRes [data-comp-ir]")?.click(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); $("#compBuscaRes [data-comp-ir]")?.focus(); }
+    return;
+  }
+  const op = e.target.closest?.("#compBuscaRes [data-comp-ir]"); if (!op) return;          // setas entre os resultados
+  const irmao = e.key === "ArrowDown" ? op.nextElementSibling : e.key === "ArrowUp" ? op.previousElementSibling || $("#compBuscaIn") : null;
+  if (irmao) { e.preventDefault(); irmao.focus(); } else if (e.key === "Escape") { $("#compBuscaRes").hidden = true; $("#compBuscaIn").focus(); }
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest?.("#pgComp .xp-busca-campo") && $("#compBuscaRes")) $("#compBuscaRes").hidden = true;
+  const ir = e.target.closest?.("[data-comp-ir]"); if (ir) return escolherFundoComp(ir.dataset.compIr);
+  const pf = e.target.closest?.("[data-ir-comp]");                       // painel do fundo → página da composição
+  if (pf) { escolherFundoComp(pf.dataset.irComp, false); $("#dlgFundo").close(); mostrarPagina("comp"); }
+});
 async function carregarComp() {
   const id = ++compId, c = st.comp.c;
   const carregando = (txt) => { $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<div class="comp-aguarde" role="status"><span class="spin"></span>${txt}</div>`; };
@@ -6578,7 +6626,7 @@ async function carregarComp() {
 }
 const LIMITE_ATIVOS_GRUPO = 1500;                         // fundos com dezenas de milhares de opções: mostra os maiores
 function renderCompTabela() {
-  const { c, mes } = st.comp, nomeF = $("#compFundo").selectedOptions[0]?.textContent || "";
+  const { c, mes } = st.comp, nomeF = nomeComp(c);
   if (st.comp.erro) { $("#compNota").textContent = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<p class="aviso-calc">${esc(st.comp.erro)}</p>`; return; }
   const cats = (st.comp.resumo || []).filter((l) => l.MES === mes).sort((a, b) => b.VALOR - a.VALOR);
   $("#compTodas").hidden = !cats.some((l) => l.N > 0);
@@ -6642,8 +6690,7 @@ function abrirTodasComp() {
   renderCompTabela();
 }
 document.addEventListener("change", (e) => {
-  if (e.target.id === "compFundo") { st.comp.c = e.target.value; st.comp.mes = null; carregarComp(); }
-  else if (e.target.id === "compMes") { st.comp.mes = Number(e.target.value); carregarComp(); }
+  if (e.target.id === "compMes") { st.comp.mes = Number(e.target.value); carregarComp(); }
 });
 document.addEventListener("click", (e) => {
   if (e.target.closest?.("#compTodas")) return abrirTodasComp();

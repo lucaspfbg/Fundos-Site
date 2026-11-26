@@ -1490,3 +1490,18 @@ tr.cart-aberta .cart-tog { background: var(--ouro); color: #1a1a1a; }
 @keyframes comp-gira { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .comp-aguarde .spin { animation: none; } }
 tr.grupo.vazio td { cursor: default; }
+
+/* página da composição: busca do fundo, atalhos e título com o nome do fundo */
+.comp-busca #compAtalhos { grid-column: 1 / -1; display: grid; gap: 6px; }
+#compAtalhos:empty { display: none; }
+.comp-atalhos-g { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.comp-atalhos-g > .nota { margin: 0 4px 0 0; }
+.comp-atalho { padding: 4px 10px; border: 1px solid var(--borda-forte); border-radius: 999px; background: var(--card); color: var(--txt); cursor: pointer;
+  font: 600 var(--fs-xs) var(--f-corpo); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-atalho:hover { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 7%, var(--card)); }
+.comp-atalho:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; }
+.comp-cab { min-width: 0; }
+.comp-cab h2 { margin: 0; }
+#compSub { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
+#compSub:empty { display: none; }
+.comp-vazio { margin: 6px 0 2px; max-width: 640px; }
