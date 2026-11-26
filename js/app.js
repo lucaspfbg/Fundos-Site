@@ -4373,7 +4373,9 @@ function abrirPainelFundo(c, onde = "analise", per = null) {
   }
   else if (st.xp) secoes.push(bloco("XP · confidencial", [["Situação", '<span class="fora-xp">não está na XP</span>']], "pf-xp"));
   for (const [nome, filtro] of PF_SECOES.slice(1)) secoes.push(bloco(nome, itens(filtro)));
-  $("#pfConteudo").innerHTML = barraPerPF(c, fonte) + kpis + grafs + mensalPF(f, l.Fundo) + `<div class="pf-grade">${secoes.join("")}</div>`;
+  guardarComp();                                                            // a seção da composição sai antes de a ficha ser refeita
+  $("#pfConteudo").innerHTML = barraPerPF(c, fonte) + kpis + grafs + mensalPF(f, l.Fundo) + `<div id="pfCompSlot"></div><div class="pf-grade">${secoes.join("")}</div>`;
+  compNaFicha(c);
   $("#mini").hidden = true;
   for (const id of ["gPfAcum", "gPfDd"]) { st.graficos[id]?.destroy(); delete st.graficos[id]; }   // cada fundo começa sem zoom
   semZoom("gPfAcum", "gPfDd");
@@ -4411,7 +4413,7 @@ async function abrirPainelLista(c) {
   $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, "o nome");
   $("#pfHubTopo").innerHTML = botaoComp(c); $("#pfSelos").innerHTML = "";
   $("#pfSub").textContent = cad._soXP ? "Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos." : "Carregando as cotas…";
-  $("#pfConteudo").innerHTML = "";
+  guardarComp(); $("#pfConteudo").innerHTML = "";
   if (!d.open) d.showModal();
   if (cad._soXP) return;
   try {
@@ -5374,6 +5376,13 @@ function popFiltro() {
     <div class="pf-bts"><button type="button" class="sec mini-btn" id="pfLimpar">Limpar</button><button type="button" class="prim mini-btn" id="pfAplicar">Aplicar</button></div></div>`);
   return $("#popFiltro");
 }
+// janela aberta (ex.: ficha do fundo) fica por cima da página: a janelinha vai para dentro dela, presa à tela
+function posicionarPop(p, btn) {
+  const dlg = btn.closest("dialog"); if (p.parentElement !== (dlg || document.body)) (dlg || document.body).append(p);
+  const r = btn.getBoundingClientRect(); p.hidden = false; p.style.position = dlg ? "fixed" : "";
+  const x = Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left)), y = Math.min(r.bottom + 4, innerHeight - p.offsetHeight - 8);
+  p.style.left = `${dlg ? x : x + scrollX}px`; p.style.top = `${dlg ? y : r.bottom + scrollY + 4}px`;
+}
 function abrirPopFiltro(btn) {
   const p = popFiltro(), tab = btn.dataset.ftab, col = btn.dataset.fcol, f = st.filtrosTab[tab]?.[col];
   const th = btn.closest("table").querySelectorAll("thead tr.h2 th, thead tr:not(.filtros):not(:first-child) th, thead tr:only-child th");
@@ -5383,8 +5392,7 @@ function abrirPopFiltro(btn) {
   $("#pfOp").value = f?.op || ">="; $("#pfA").value = f ? f.a : ""; $("#pfB").value = f?.b ?? "";
   $("#pfUn").textContent = btn.dataset.un === "pct" ? "Valores em % (ex.: 5 = 5%)." : btn.dataset.un === "mi" ? "Valores em R$ milhões (ex.: 50 = R$ 50 mi)." : "";
   mostrarEntre();
-  const r = btn.getBoundingClientRect(); p.hidden = false;
-  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
+  posicionarPop(p, btn);
   $("#pfA").focus();
 }
 function popFiltroData() {
@@ -5402,8 +5410,7 @@ function abrirPopFiltroData(btn) {
   p.dataset.tab = tab; p.dataset.col = col;
   $("#pfdTitulo").textContent = btn.getAttribute("aria-label").replace(/^Filtrar /, "");
   $("#pfdA").value = f?.a != null ? isoDe(f.a) : ""; $("#pfdB").value = f?.b != null ? isoDe(f.b) : "";
-  const r = btn.getBoundingClientRect(); p.hidden = false;
-  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
+  posicionarPop(p, btn);
   $("#pfdA").focus();
 }
 function aplicarPopFiltroData(limpar = false) {
@@ -6625,8 +6632,9 @@ async function renderPaginaComp() {
     return limpar(`<p class="nota comp-vazio">Busque um fundo pelo nome, gestor ou CNPJ para ver em que ele investe: os ativos de cada tipo de aplicação, mês a mês, como informado à CVM.</p>`);
   }
   const cad = st.porCnpj.get(c), nome = nomeComp(c);
-  $("#compTit").innerHTML = cad ? `<span class="lk-fundo" data-pf="${c}" role="button" tabindex="0" title="Abrir o painel do fundo">${esc(nome)}</span>` : esc(nome);
-  $("#compSub").innerHTML = [`CNPJ ${cnpjFmt(c)}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`, cad?.GESTOR ? `Gestor: ${esc(cad.GESTOR)}` : "",
+  if (st.comp.painel) { $("#compTit").textContent = "Composição da carteira"; $("#compSub").innerHTML = "Informes mensais da CVM: tipos de aplicação, ativos e evolução mês a mês"; }
+  else $("#compTit").innerHTML = cad ? `<span class="lk-fundo" data-pf="${c}" role="button" tabindex="0" title="Abrir o painel do fundo">${esc(nome)}</span>` : esc(nome);
+  if (!st.comp.painel) $("#compSub").innerHTML = [`CNPJ ${cnpjFmt(c)}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`, cad?.GESTOR ? `Gestor: ${esc(cad.GESTOR)}` : "",
     cad?.NOME && cad.NOME !== nome ? `CVM: ${esc(cad.NOME)}` : ""].filter(Boolean).join(" · ");
   $("#compMesRot").hidden = false;
   const meta = await D.metaComposicao();
@@ -6634,6 +6642,24 @@ async function renderPaginaComp() {
   if (!meta) return limpar(`<p class="aviso-calc">A composição das carteiras não está disponível agora. Tente de novo mais tarde.</p>`);
   carregarComp();
 }
+// ---------- a mesma seção da composição dentro da ficha do fundo: o bloco muda de lugar (como os resultados da análise na página XP).
+// Ao abrir a ficha, guarda o fundo e o mês da página; ao fechar, a seção volta para a página com o fundo de antes.
+function guardarComp() { const sec = $("#secComp"); if (sec && sec.closest("#pfConteudo")) $("#pgComp").append(sec); }
+function compNaFicha(c) {
+  const slot = $("#pfCompSlot"); if (!slot) return;
+  if (!st.comp.painel) st.comp.painel = { c: st.comp.c, mes: st.comp.mes };
+  slot.append($("#secComp"));
+  if (st.comp.c !== c) { st.comp.c = c; st.comp.mes = null; }
+  renderPaginaComp();
+}
+function compDeVolta() {
+  if (!st.comp.painel) return;
+  guardarComp();
+  const { c, mes } = st.comp.painel; st.comp.painel = null;
+  if (c !== st.comp.c) { st.comp.c = c; st.comp.mes = mes; }
+  if (st.pagina === "comp") renderPaginaComp();
+}
+$("#dlgFundo").addEventListener("close", () => { if (!$("#dlgFundo").open) compDeVolta(); });     // fechou e abriu de novo (troca de fundo): fica
 document.addEventListener("input", (e) => { if (e.target.id === "compBuscaIn") { clearTimeout(tCompBusca); tCompBusca = setTimeout(renderBuscaComp, 120); } });
 document.addEventListener("keydown", (e) => {
   if (e.target.id === "compBuscaIn") {
@@ -6650,7 +6676,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest?.("#pgComp .xp-busca-campo") && $("#compBuscaRes")) $("#compBuscaRes").hidden = true;
   const ir = e.target.closest?.("[data-comp-ir]"); if (ir) return escolherFundoComp(ir.dataset.compIr);
   const pf = e.target.closest?.("[data-ir-comp]");                       // painel do fundo → página da composição
-  if (pf) { escolherFundoComp(pf.dataset.irComp, false); $("#dlgFundo").close(); mostrarPagina("comp"); }
+  if (pf) { compDeVolta(); escolherFundoComp(pf.dataset.irComp, false); $("#dlgFundo").close(); mostrarPagina("comp"); }
 });
 async function carregarComp() {
   const id = ++compId, c = st.comp.c;
