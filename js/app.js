@@ -6604,20 +6604,27 @@ st.comp = { c: cnpjOk(fundoUrl) ? fundoUrl : recentesComp[0] || null, recentes: 
 let compId = 0, tCompBusca;
 const CART_PREF = "CART:", CART_SEM = "Sem composição na CVM", CART_IDX = "Índices de referência";
 const ehCart = (c) => typeof c === "string" && c.startsWith(CART_PREF);
-const nomeComp = (c) => (ehCart(c) ? st.cart.nome || "a carteira montada" : st.xp ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || cnpjFmt(c));
+// carteira mostrada: a montada ou, comparando carteiras salvas, a escolhida no seletor da seção
+function cartDaComp() {
+  const L = st.cartComp;
+  if (!L?.length) return { cart: st.cart, nome: st.cart.nome || "Carteira montada", i: null };
+  const i = Math.min(Math.max(0, st.comp.cartSel || 0), L.length - 1);
+  return { cart: L[i].cart, nome: L[i].nome, i };
+}
+const nomeComp = (c) => (ehCart(c) ? cartDaComp().nome : st.xp ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || cnpjFmt(c));
 // carteira montada: chave com valor, ativos e pesos (muda quando a carteira muda); null sem fundo com peso
 function chaveCartComp() {
-  const its = st.cart.itens.filter((it) => (Number(it.peso) || 0) > 0);
+  const { cart, i } = cartDaComp(), its = (cart.itens || []).filter((it) => (Number(it.peso) || 0) > 0);
   if (!its.some((it) => it.tipo === "f")) return null;
-  return CART_PREF + Math.round(st.cart.valor || 0) + ":" + its.map((it) => `${it.tipo}${it.v}=${Number(it.peso)}`).join(",");
+  return CART_PREF + (i ?? "m") + ":" + Math.round(cart.valor || 0) + ":" + its.map((it) => `${it.tipo}${it.v}=${Number(it.peso)}`).join(",");
 }
 const lerComp = (c, parte) => (ehCart(c) ? compCarteira(parte) : D.lerComposicao(c, parte));
 // composição consolidada: cada fundo entra com o peso que tem na carteira (sobre o valor aplicado), pela fração de cada aplicação
 // na soma das posições do fundo no mês; o mesmo ativo em vários fundos vira uma linha só ("Via fundo" lista os fundos).
 // Índices da carteira e fundos sem informe no mês entram como grupos próprios. Cotas de outros fundos não são abertas.
 async function compCarteira(parte) {
-  const its = st.cart.itens.filter((it) => (Number(it.peso) || 0) > 0), soma = its.reduce((s, it) => s + Number(it.peso), 0);
-  const V = st.cart.valor || 10000, c = chaveCartComp();
+  const { cart } = cartDaComp(), its = (cart.itens || []).filter((it) => (Number(it.peso) || 0) > 0), soma = its.reduce((s, it) => s + Number(it.peso), 0);
+  const V = cart.valor || 10000, c = chaveCartComp();
   if (!soma || !c) return [];
   const ws = its.map((it) => ({ it, w: Number(it.peso) / soma, nome: it.tipo === "f" ? nomeComp(it.v) : nomeItem(it) }));     // nome inteiro (o "…" fica na coluna)
   const resumos = await Promise.all(ws.map(({ it }) => (it.tipo === "f" ? D.lerComposicao(it.v, "resumo") : null)));
@@ -6681,7 +6688,7 @@ function renderBuscaComp() {
     `<small>${cnpjFmt(f.CNPJ)}${f.GESTOR ? " · " + esc(f.GESTOR) : ""}</small></button>`).join("") : `<p class="nota">Nenhum fundo com esse nome ou CNPJ.</p>`;
 }
 async function renderPaginaComp() {
-  renderAtalhosComp();
+  renderAtalhosComp(); $("#compCartRot").hidden = true;
   const c = st.comp.c, limpar = (html) => {
     $("#compMesRot").hidden = true; $("#compTodas").hidden = true; $("#compEvol").hidden = true; $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = html; };
   if (!c) {
@@ -6689,9 +6696,13 @@ async function renderPaginaComp() {
     return limpar(`<p class="nota comp-vazio">Busque um fundo pelo nome, gestor ou CNPJ para ver em que ele investe: os ativos de cada tipo de aplicação, mês a mês, como informado à CVM.</p>`);
   }
   const cad = st.porCnpj.get(c), nome = nomeComp(c);
+  const L = ehCart(c) ? st.cartComp : null;                                  // comparando carteiras: escolhe qual mostrar
+  $("#compCartRot").hidden = !L?.length;
   if (ehCart(c)) {
-    $("#compTit").textContent = "Composição consolidada da carteira";
-    $("#compSub").innerHTML = `${esc(st.cart.nome || "Carteira montada")} · o que há dentro dos fundos, com os pesos da carteira, para ${esc(brR(st.cart.valor || 10000))} aplicados`;
+    const { cart, nome: nc, i } = cartDaComp();
+    if (L?.length) $("#compCartSel").innerHTML = L.map((x, k) => `<option value="${k}"${k === i ? " selected" : ""}>${esc(x.nome)}</option>`).join("");
+    $("#compTit").innerHTML = (i != null ? `<span class="sw" style="background:${corComp(i)}"></span>` : "") + "Composição consolidada da carteira";
+    $("#compSub").innerHTML = `${esc(nc)} · o que há dentro dos fundos, com os pesos da carteira, para ${esc(brR(cart.valor || 10000))} aplicados`;
   } else if (st.comp.painel) { $("#compTit").textContent = "Composição da carteira"; $("#compSub").innerHTML = "Informes mensais da CVM: tipos de aplicação, ativos e evolução mês a mês"; }
   else $("#compTit").innerHTML = cad ? `<span class="lk-fundo" data-pf="${c}" role="button" tabindex="0" title="Abrir o painel do fundo">${esc(nome)}</span>` : esc(nome);
   if (!st.comp.painel && !ehCart(c)) $("#compSub").innerHTML = [`CNPJ ${cnpjFmt(c)}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`, cad?.GESTOR ? `Gestor: ${esc(cad.GESTOR)}` : "",
@@ -7040,6 +7051,7 @@ function abrirTodasComp() {
   renderCompTabela();
 }
 document.addEventListener("change", (e) => {
+  if (e.target.id === "compCartSel") { st.comp.cartSel = Number(e.target.value) || 0; compNaCarteira(); return; }     // o mesmo mês, outra carteira
   if (e.target.id === "compMes") { st.comp.mes = Number(e.target.value); carregarComp(); }
 });
 document.addEventListener("click", (e) => {
