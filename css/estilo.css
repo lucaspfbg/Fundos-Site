@@ -1534,3 +1534,4 @@ tr.grupo.sem-itens td { cursor: default; }
 .comp-evol-graf { height: 340px; }
 .comp-evol-graf canvas { cursor: default; }
 .comp-evol > .nota { margin: 6px 0 0; }
+.pop-filtro .pfd-campo { display: grid; gap: 3px; font-size: var(--fs-sm); font-weight: 600; }

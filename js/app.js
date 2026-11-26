@@ -1128,7 +1128,7 @@ const valorCol = (c, l) => (c.valor ? c.valor(l) : l[c.chave]);
 const semTags = (h) => String(h ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
 const escalaFiltro = (c) => c.escala ?? (c.tipo === "pct" ? 100 : 1);
 const colNumerica = (c) => ["pct", "num", "num2", "num3", "int", "valor"].includes(c.tipo);
-const colFiltravel = (c) => c.ord !== false && c.tipo !== "data" && c.chave !== "_hubId" && !c.semFiltro;
+const colFiltravel = (c) => c.ord !== false && (c.tipo !== "data" || c.filtroData) && c.chave !== "_hubId" && !c.semFiltro;
 function textoCel(c, l) {                                   // o texto que aparece na célula (ou o valor cru, quando a célula é só um símbolo)
   const v = valorCol(c, l), raw = l[c.chave];
   const t = c.html ? semTags(c.html(v, l)) : String((FMT[c.tipo] || FMT.txt)(v) ?? "");
@@ -1148,18 +1148,28 @@ function passaFiltros(tab, colunas, l) {
       if (f.op === "=" && !(Math.abs(v - f.a) <= tol)) return false;
       if (f.op === "entre" && !(v >= Math.min(f.a, f.b) - 1e-9 && v <= Math.max(f.a, f.b) + 1e-9)) return false;
     }
+    else if (f.t === "d") {                                         // datas: a partir de (a) e/ou até (b), em dias
+      const v = valorCol(c, l); if (typeof v !== "number") return false;
+      if (f.a != null && v < f.a) return false; if (f.b != null && v > f.b) return false;
+    }
   }
   return true;
 }
 // linhas que passam nos filtros (usado também pelo gráfico de quadrantes)
 const filtrarLinhas = (tab, colunas, linhas) => linhas.filter((l) => l._cab || passaFiltros(tab, colunas, l));
 const filtrosAtivos = (tab) => Object.keys(st.filtrosTab[tab] || {}).length;
+const dataCurta = (d) => { const t = fmtData(d); return `${t.slice(3, 5)}/${t.slice(8)}`; };     // "03/27"
+const resumoFiltroData = (f) => (f.a != null && f.b != null ? `${dataCurta(f.a)}–${dataCurta(f.b)}` : f.a != null ? `≥ ${dataCurta(f.a)}` : `≤ ${dataCurta(f.b)}`);
 const resumoFiltroNum = (f) => (f.op === "entre" ? `${br(f.a, 2)}–${br(f.b, 2)}` : `${{ ">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "=" }[f.op]} ${br(f.a, 2)}`);
 function linhaFiltros(tab, colunas, linhas, fx) {
   const dados = linhas.filter((l) => !l._cab), fs = st.filtrosTab[tab] || {};
   return `<tr class="filtros">${colunas.map((c, j) => {
     if (!colFiltravel(c)) return `<th${fx(j)}><span class="sr-only">Sem filtro</span></th>`;
     const f = fs[c.chave], rot = esc(c.nome || c.nomeOculto || c.chave), dados_ = `data-ftab="${esc(tab)}" data-fcol="${esc(c.chave)}"`;
+    if (c.tipo === "data")
+      return `<th${fx(j)}><button type="button" class="fnum fdata${f ? " ativo" : ""}" ${dados_} title="Filtrar ${rot} (a partir de, até)" aria-label="Filtrar ${rot}">${f ? esc(resumoFiltroData(f)) : "⏷ filtrar"}</button></th>`;
+    if (c.filtro === "txt")                                          // texto: sempre "contém…" (parte do nome ou do código)
+      return `<th${fx(j)}><input type="search" class="fctxt" ${dados_} value="${esc(f?.t === "c" ? f.v : "")}" placeholder="contém…" aria-label="Filtrar ${rot} (contém)" autocomplete="off"></th>`;
     if (colNumerica(c) && dados.some((l) => typeof valorCol(c, l) === "number")) {
       return `<th${fx(j)}><button type="button" class="fnum${f ? " ativo" : ""}" ${dados_} data-un="${escalaFiltro(c) === 100 ? "pct" : escalaFiltro(c) === 1e-6 ? "mi" : ""}" title="Filtrar ${rot} (maior, menor, igual, entre)" aria-label="Filtrar ${rot}">${f ? esc(resumoFiltroNum(f)) : "⏷ filtrar"}</button></th>`;
     }
@@ -1188,7 +1198,8 @@ st.colsOcultas = pref("colsOcultas", {});
 const tabColunas = new Map();                          // tabela -> todas as colunas (para a lista do botão "Colunas")
 const COLS_SEMPRE = new Set(["Fundo"]);
 function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos = null, destacar = [], separadores = new Set(), atrLinha = null, centralizar = false,
-  altura = 460, ordenavel = null, classes = [], mediana = null, rotMediana = null, fechado = (k) => st.fechados.has(k) }) {
+  altura = 460, ordenavel = null, classes = [], mediana = null, rotMediana = null, fechado = (k) => st.fechados.has(k),
+  sempreFiltros = false, linhasFiltro = null, unidade = ["fundo", "fundos"] }) {
   let ferr = "";
   if (ordenavel) {
     tabColunas.set(ordenavel, colunas);
@@ -1226,14 +1237,16 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       data-txt="${texto ? 1 : 0}" title="${c.dica ? esc(c.dica) + " · clique para ordenar" : "Ordenar"}"><span class="th-txt${c.linhas ? " th-fixo" : ""}">${tituloHTML(c)}${at ? (o.dir > 0 ? " ▲" : " ▼") : ""}</span></button></th>`;
   });
   // filtros: linha de filtros nas tabelas com muitos fundos (ou com filtro ativo); as linhas filtradas somem
-  const nDados = linhas.filter((l) => !l._cab).length, comFiltro = ordenavel && (nDados >= FILTRO_MIN_LINHAS || filtrosAtivos(ordenavel));
+  // linhasFiltro: todas as linhas da tabela, inclusive as de grupos recolhidos (opções dos filtros e contagem)
+  const base = linhasFiltro || linhas, nDados = base.filter((l) => !l._cab).length;
+  const comFiltro = ordenavel && (sempreFiltros || nDados >= FILTRO_MIN_LINHAS || filtrosAtivos(ordenavel));
   let antes = "";
   h += "</tr>";                                                            // fecha a linha dos títulos
   if (comFiltro) {
-    h += linhaFiltros(ordenavel, colunas, linhas, (j) => fx(j, ""));
+    h += linhaFiltros(ordenavel, colunas, base, (j) => fx(j, ""));
     if (filtrosAtivos(ordenavel)) {
-      const nPassa = linhas.filter((l) => !l._cab && passaFiltros(ordenavel, colunas, l)).length;
-      antes = `<div class="filtro-info" role="status">Filtro: <b>${nPassa}</b> de ${nDados} fundo${pl(nDados)} · <button type="button" class="link" data-flimpar="${esc(ordenavel)}">Limpar filtros</button></div>`;
+      const nPassa = base.filter((l) => !l._cab && passaFiltros(ordenavel, colunas, l)).length;
+      antes = `<div class="filtro-info" role="status">Filtro: <b>${nPassa}</b> de ${nDados} ${nDados === 1 ? unidade[0] : unidade[1]} · <button type="button" class="link" data-flimpar="${esc(ordenavel)}">Limpar filtros</button></div>`;
     }
   }
   const passa = linhas.map((l) => !comFiltro || l._cab || passaFiltros(ordenavel, colunas, l));
@@ -5374,6 +5387,33 @@ function abrirPopFiltro(btn) {
   p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
   $("#pfA").focus();
 }
+function popFiltroData() {
+  let p = $("#popFiltroData"); if (p) return p;
+  document.body.insertAdjacentHTML("beforeend", `<div id="popFiltroData" class="pop-filtro" role="dialog" aria-label="Filtro de datas" hidden>
+    <b id="pfdTitulo"></b>
+    <label class="pfd-campo">A partir de <input id="pfdA" type="date"></label>
+    <label class="pfd-campo">Até <input id="pfdB" type="date"></label>
+    <p class="nota">Deixe um dos campos vazio para filtrar só a partir de uma data ou só até uma data.</p>
+    <div class="pf-bts"><button type="button" class="sec mini-btn" id="pfdLimpar">Limpar</button><button type="button" class="prim mini-btn" id="pfdAplicar">Aplicar</button></div></div>`);
+  return $("#popFiltroData");
+}
+function abrirPopFiltroData(btn) {
+  const p = popFiltroData(), tab = btn.dataset.ftab, col = btn.dataset.fcol, f = st.filtrosTab[tab]?.[col];
+  p.dataset.tab = tab; p.dataset.col = col;
+  $("#pfdTitulo").textContent = btn.getAttribute("aria-label").replace(/^Filtrar /, "");
+  $("#pfdA").value = f?.a != null ? isoDe(f.a) : ""; $("#pfdB").value = f?.b != null ? isoDe(f.b) : "";
+  const r = btn.getBoundingClientRect(); p.hidden = false;
+  p.style.left = `${Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX))}px`; p.style.top = `${r.bottom + scrollY + 4}px`;
+  $("#pfdA").focus();
+}
+function aplicarPopFiltroData(limpar = false) {
+  const p = $("#popFiltroData"), tab = p.dataset.tab, col = p.dataset.col;
+  const dia = (iso) => (iso ? Math.floor(Date.parse(iso + "T00:00:00Z") / 86400000) : null);
+  let a = dia($("#pfdA").value), b = dia($("#pfdB").value);
+  if (a != null && b != null && a > b) [a, b] = [b, a];
+  definirFiltro(tab, col, limpar || (a == null && b == null) ? null : { t: "d", a, b });
+  p.hidden = true; redesenharFiltro(tab, col, "fdata");
+}
 const mostrarEntre = () => { const e = $("#pfOp").value === "entre"; $("#pfB").hidden = !e; $("#pfE").hidden = !e; };
 function aplicarPopFiltro(limpar = false) {
   const p = $("#popFiltro"), tab = p.dataset.tab, col = p.dataset.col, op = $("#pfOp").value;
@@ -5395,13 +5435,23 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("click", (e) => {
   const t = e.target;
-  const bn = t.closest?.("button.fnum"); if (bn) { e.stopPropagation(); abrirPopFiltro(bn); return; }
+  const bd = t.closest?.("button.fdata"); if (bd) { e.stopPropagation(); $("#popFiltro") && ($("#popFiltro").hidden = true); abrirPopFiltroData(bd); return; }
+  const bn = t.closest?.("button.fnum"); if (bn) { e.stopPropagation(); $("#popFiltroData") && ($("#popFiltroData").hidden = true); abrirPopFiltro(bn); return; }
+  if (t.id === "pfdAplicar") return aplicarPopFiltroData();
+  if (t.id === "pfdLimpar") return aplicarPopFiltroData(true);
+  const pd = $("#popFiltroData"); if (pd && !pd.hidden && !t.closest("#popFiltroData")) pd.hidden = true;
   if (t.id === "pfAplicar") return aplicarPopFiltro();
   if (t.id === "pfLimpar") return aplicarPopFiltro(true);
   const lim = t.closest?.("[data-flimpar]"); if (lim) { delete st.filtrosTab[lim.dataset.flimpar]; redesenharFiltro(lim.dataset.flimpar); return; }
   const p = $("#popFiltro"); if (p && !p.hidden && !t.closest("#popFiltro")) p.hidden = true;     // clique fora fecha
 });
 document.addEventListener("keydown", (e) => {
+  const pd = $("#popFiltroData");
+  if (pd && !pd.hidden && e.target.closest?.("#popFiltroData")) {
+    if (e.key === "Enter") { e.preventDefault(); aplicarPopFiltroData(); }
+    if (e.key === "Escape") { e.preventDefault(); pd.hidden = true; $(`button.fdata[data-ftab="${CSS.escape(pd.dataset.tab)}"][data-fcol="${CSS.escape(pd.dataset.col)}"]`)?.focus(); }
+    return;
+  }
   const p = $("#popFiltro"); if (!p || p.hidden || !e.target.closest?.("#popFiltro")) return;
   if (e.key === "Enter") { e.preventDefault(); aplicarPopFiltro(); }
   if (e.key === "Escape") { e.preventDefault(); p.hidden = true; $(`button.fnum[data-ftab="${CSS.escape(p.dataset.tab)}"][data-fcol="${CSS.escape(p.dataset.col)}"]`)?.focus(); }
@@ -6658,18 +6708,33 @@ function renderCompTabela() {
     (sig.length ? ` <span class="comp-sig">${ico("cadeado")}${sig.length === cats.length && cats.every((l) => !l.N) ? "Mês em sigilo: a CVM só mostra o total de cada tipo de aplicação" : "Parte das aplicações está em sigilo (só o total aparece)"}${fimSig.length ? ` até ${fmtData(Math.max(...fimSig))}` : ""}; os ativos aparecem quando o sigilo acaba.</span>` : "");
   const chaveG = (a) => `comp|${c}|${mes}|${a}`;
   $("#compBarra").innerHTML = pizzaComp(cats, total, chaveG);
-  const det = st.comp.detDe === `${c}|${mes}` ? st.comp.det || [] : [], porAplic = new Map();
-  for (const a of det) { if (!porAplic.has(a.APLIC)) porAplic.set(a.APLIC, []); porAplic.get(a.APLIC).push(a); }
+  const det = st.comp.detDe === `${c}|${mes}` ? st.comp.det || [] : [];
+  // todas as linhas do mês, já no formato da tabela (refeitas só quando muda o mês, o fundo ou a tabela de emissores)
+  const chaveLinhas = `${c}|${mes}|${det.length}|${st.comp.emis.size}`;
+  if (st.comp.linhasDe !== chaveLinhas) {
+    const porAplic = new Map();
+    for (const a of det) {
+      // nome: código (ex.: CMGDA2) e descrição ou emissor; "DEB" e outras siglas curtas da CVM não descrevem o ativo
+      const emis = emissorDeb(a) || a.EMISSOR, d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || emis;
+      const cnpjCota = a.COD && /^\d{14}$/.test(a.COD), isin = a.COD && /^BR[A-Z0-9]{10}$/.test(a.COD), cod = !cnpjCota && !isin && a.COD !== desc ? a.COD : null;
+      const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
+      if (!porAplic.has(a.APLIC)) porAplic.set(a.APLIC, []);
+      porAplic.get(a.APLIC).push({ Ativo: nome, Tipo: a.ATIVO || "", Emissor: emis && emis !== desc ? emis : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
+        Valor: a.VALOR, pc: a.VALOR / total, Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", _cor: corAplic(a.APLIC), _g: chaveG(a.APLIC) });
+    }
+    Object.assign(st.comp, { linhasPorAplic: porAplic, linhasTodas: [...porAplic.values()].flat(), linhasDe: chaveLinhas });
+  }
+  const porAplic = st.comp.linhasPorAplic;
   const filtro = filtrosAtivos("comp"), aberto = (k) => filtro || st.comp.abertos.has(k);
   const cols = [
-    { chave: "Ativo", nome: "Ativo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>${esc(v)}` },
+    { chave: "Ativo", nome: "Ativo", tipo: "txt", filtro: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>${esc(v)}` },
     { chave: "Tipo", nome: "Tipo", tipo: "txt", max: 110 },
     { chave: "Emissor", nome: "Emissor", tipo: "txt", max: 140 },
-    { chave: "Venc", nome: "Vencimento", linhas: ["Venci-", "mento"], tipo: "data", crescente: true },
+    { chave: "Venc", nome: "Vencimento", linhas: ["Venci-", "mento"], tipo: "data", crescente: true, filtroData: true },
     { chave: "Taxa", nome: "Taxa", tipo: "txt", max: 100 },
     { chave: "Valor", nome: "Valor", tipo: "valor", html: (v) => brR(v) },
     { chave: "pc", nome: "% da carteira", linhas: ["%", "carteira"], tipo: "pct" },
-    { chave: "Codigo", nome: "Código", tipo: "txt", max: 110 },
+    { chave: "Codigo", nome: "Código", tipo: "txt", max: 110, filtro: "txt" },
   ];
   const linhas = [];
   for (const l of cats) {
@@ -6679,20 +6744,13 @@ function renderCompTabela() {
     if (membros.length > LIMITE_ATIVOS_GRUPO) info.push(`mostrando os ${br(LIMITE_ATIVOS_GRUPO, 0)} maiores`);
     linhas.push({ _cab: true, chave: k, rotulo: l.APLIC, n: l.N, unid: ["ativo", "ativos"], cor, info: info.join(" · "), vazio: !l.N });
     if (!aberto(k)) continue;
-    const ms = ordenar(membros.map((a) => {
-      // nome: código (ex.: CMGDA2) e descrição ou emissor; "DEB" e outras siglas curtas da CVM não descrevem o ativo
-      const emis = emissorDeb(a) || a.EMISSOR, d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || emis;
-      const cnpjCota = a.COD && /^\d{14}$/.test(a.COD), isin = a.COD && /^BR[A-Z0-9]{10}$/.test(a.COD), cod = !cnpjCota && !isin && a.COD !== desc ? a.COD : null;
-      const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
-      return { Ativo: nome, Tipo: a.ATIVO || "",
-        Emissor: emis && emis !== desc ? emis : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
-        Valor: a.VALOR, pc: a.VALOR / total,
-        Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", _cor: cor, _g: k };
-    }), "comp", cols).slice(0, LIMITE_ATIVOS_GRUPO);
+    // com filtro, filtra antes do limite: os ativos achados aparecem mesmo num tipo com milhares de linhas
+    const ms = ordenar(filtro ? membros.filter((r) => passaFiltros("comp", cols, r)) : membros.slice(), "comp", cols).slice(0, LIMITE_ATIVOS_GRUPO);
     linhas.push(...ms);
   }
   redesenharMantendo($("#compTab"), () => {
-    $("#compTab").innerHTML = tabelaHTML({ colunas: cols, linhas, fixas: 1, larguras: [230], ordenavel: "comp", altura: 520, fechado: (k) => !aberto(k) });
+    $("#compTab").innerHTML = tabelaHTML({ colunas: cols, linhas, fixas: 1, larguras: [230], ordenavel: "comp", altura: 520, fechado: (k) => !aberto(k),
+      sempreFiltros: true, linhasFiltro: st.comp.linhasTodas, unidade: ["ativo", "ativos"] });
   });
   const todas = cats.filter((l) => l.N > 0).every((l) => aberto(chaveG(l.APLIC)));
   $("#compTodas").textContent = todas ? "Recolher todas" : "Abrir todas";
