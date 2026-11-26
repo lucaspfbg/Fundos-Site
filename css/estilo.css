@@ -1530,3 +1530,7 @@ tr.grupo.vazio td { cursor: default; }
 #compSub { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
 #compSub:empty { display: none; }
 .comp-vazio { margin: 6px 0 2px; max-width: 640px; }
+.comp-evol { margin-top: 8px; }
+.comp-evol-graf { height: 340px; }
+.comp-evol-graf canvas { cursor: default; }
+.comp-evol > .nota { margin: 6px 0 0; }

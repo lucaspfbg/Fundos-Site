@@ -6569,7 +6569,7 @@ function renderBuscaComp() {
 async function renderPaginaComp() {
   renderAtalhosComp();
   const c = st.comp.c, limpar = (html) => {
-    $("#compMesRot").hidden = true; $("#compTodas").hidden = true; $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = html; };
+    $("#compMesRot").hidden = true; $("#compTodas").hidden = true; $("#compEvol").hidden = true; $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = html; };
   if (!c) {
     $("#compTit").textContent = "Composição da carteira"; $("#compSub").innerHTML = "";
     return limpar(`<p class="nota comp-vazio">Busque um fundo pelo nome, gestor ou CNPJ para ver em que ele investe: os ativos de cada tipo de aplicação, mês a mês, como informado à CVM.</p>`);
@@ -6607,7 +6607,7 @@ async function carregarComp() {
   const carregando = (txt) => { $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<div class="comp-aguarde" role="status"><span class="spin"></span>${txt}</div>`; };
   st.comp.erro = "";
   if (st.comp.resumoDe !== c) {
-    carregando("Carregando a composição da carteira…"); $("#compNota").textContent = ""; $("#compMes").innerHTML = "";
+    carregando("Carregando a composição da carteira…"); $("#compNota").textContent = ""; $("#compEvol").hidden = true; $("#compMes").innerHTML = "";
     try { const r = await D.lerComposicao(c, "resumo"); if (id !== compId) return; st.comp.resumo = r || []; st.comp.resumoDe = c; }
     catch (e) { if (id !== compId) return; st.comp.erro = `Não foi possível carregar a composição (${e.message}). Tente de novo mais tarde.`; return renderCompTabela(); }
   }
@@ -6627,7 +6627,7 @@ async function carregarComp() {
     }
     catch (e) { if (id !== compId) return; st.comp.erro = `Não foi possível carregar os ativos (${e.message}).`; }
   }
-  if (id === compId) renderCompTabela();
+  if (id === compId) { renderCompTabela(); renderEvolComp(); }
 }
 // emissor das debêntures pelo código (tabela do SND publicada com a composição). Código fora da tabela (série nova ou
 // repactuada): usa as 4 letras do emissor no código (LIGHB4 → LIGH), se todas as debêntures com essas letras forem da mesma empresa
@@ -6643,7 +6643,7 @@ const emissorDeb = (a) => (a.DOC_EMISSOR && st.comp.emisCnpj.get(a.DOC_EMISSOR))
 const LIMITE_ATIVOS_GRUPO = 1500;                         // fundos com dezenas de milhares de opções: mostra os maiores
 function renderCompTabela() {
   const { c, mes } = st.comp, nomeF = nomeComp(c);
-  if (st.comp.erro) { $("#compNota").textContent = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<p class="aviso-calc">${esc(st.comp.erro)}</p>`; return; }
+  if (st.comp.erro) { $("#compEvol").hidden = true; $("#compNota").textContent = ""; $("#compBarra").innerHTML = ""; $("#compTab").innerHTML = `<p class="aviso-calc">${esc(st.comp.erro)}</p>`; return; }
   const cats = (st.comp.resumo || []).filter((l) => l.MES === mes).sort((a, b) => b.VALOR - a.VALOR);
   $("#compTodas").hidden = !cats.some((l) => l.N > 0);
   if (!cats.length) {
@@ -6765,6 +6765,79 @@ const acenderFatia = (k) => {
 };
 document.addEventListener("pointerover", (e) => { const tr = e.target.closest?.("#compTab tr.grupo"); if (tr) acenderFatia(tr.dataset.g || tr.dataset.gk); });
 document.addEventListener("pointerout", (e) => { if (e.target.closest?.("#compTab tr.grupo") && !e.relatedTarget?.closest?.("#compTab tr.grupo")) acenderFatia(null); });
+// evolução mês a mês: barras empilhadas por tipo de aplicação (inclui o que está em sigilo: o total de cada tipo é público).
+// Clique numa barra abre aquele mês na pizza e na tabela; o mês aberto fica marcado.
+const MESES_CURTO = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const rotMesCurto = (m) => `${MESES_CURTO[(m % 100) - 1]}/${String(Math.floor(m / 100)).slice(2)}`;
+st.comp.escala = pref("compEscala", "pct") === "valor" ? "valor" : "pct";
+const faixaMesComp = { id: "faixaMesComp", afterDatasetsDraw(ch) {                // contorno no mês aberto na pizza e na tabela
+  const i = ch.$meses?.indexOf(st.comp.mes); if (i == null || i < 0) return;
+  const x = ch.scales.x, passo = x.width / ch.$meses.length, { top, bottom } = ch.chartArea, cx = x.getPixelForValue(i), ctx = ch.ctx;
+  ctx.save(); ctx.strokeStyle = corTexto(); ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.strokeRect(cx - passo * 0.47, top - 3, passo * 0.94, bottom - top + 3); ctx.restore();
+} };
+function renderEvolComp() {
+  const box = $("#compEvol"), R = st.comp.resumo, c = st.comp.c;
+  const meses = R && st.comp.resumoDe === c ? [...new Set(R.map((l) => l.MES))].sort((a, b) => a - b) : [];
+  if (!Chart && meses.length >= 2) { chartPronto.then(renderEvolComp); return; }          // biblioteca dos gráficos ainda carregando
+  if (meses.length < 2 || st.comp.erro) { box.hidden = true; st.graficos.gCompEvol?.destroy(); delete st.graficos.gCompEvol; return; }
+  box.hidden = false;
+  $$("[data-comp-escala]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.compEscala === st.comp.escala)));
+  const pct = st.comp.escala === "pct", chave = `${c}|${st.comp.escala}|${meses.join()}`, g = st.graficos.gCompEvol;
+  if (g && g.$chave === chave) { g.update("none"); return; }                       // só mudou o mês aberto: redesenha a marca
+  // positivo de cada mês (as barras somam 100%; "valores a pagar" ficam de fora do gráfico) e valor por tipo e mês
+  const pos = new Map(meses.map((m) => [m, 0])), val = new Map(), sig = new Set();
+  for (const l of R) {
+    if (l.VALOR_SIG != null) sig.add(l.MES);
+    if (!(l.VALOR > 0)) continue;
+    pos.set(l.MES, pos.get(l.MES) + l.VALOR); val.set(`${l.MES}|${l.APLIC}`, l.VALOR);
+  }
+  const peso = new Map();                                                     // ordem: maior participação média em cima… embaixo
+  for (const l of R) if (l.VALOR > 0 && pos.get(l.MES)) peso.set(l.APLIC, (peso.get(l.APLIC) || 0) + l.VALOR / pos.get(l.MES));
+  // até 8 tipos com nome e cor própria; os demais (pequenos) juntam em "Outros", cinza: cores não se repetem no gráfico
+  const ordem = [...peso.keys()].sort((a, b) => peso.get(b) - peso.get(a)), MAX_TIPOS = 8;
+  const aplics = ordem.length > MAX_TIPOS + 1 ? ordem.slice(0, MAX_TIPOS) : ordem, outros = ordem.slice(aplics.length);
+  const fundo = getComputedStyle(box).getPropertyValue("--card").trim() || "#fff";
+  const serie = (label, tipos, cor) => {
+    const v = meses.map((m) => tipos.reduce((t, a) => t + (val.get(`${m}|${a}`) || 0), 0)), p = meses.map((m, i) => (pos.get(m) ? (v[i] / pos.get(m)) * 100 : 0));
+    return { label, data: pct ? p : v, $v: v, $p: p, $tipos: tipos, backgroundColor: cor, borderColor: fundo, borderWidth: { top: 1 }, borderSkipped: false, stack: "s",
+      barPercentage: 0.86, categoryPercentage: 0.92 };
+  };
+  const datasets = aplics.map((a) => serie(a, [a], corAplic(a)));
+  if (outros.length) datasets.push(serie(`Outros (${outros.length} tipos)`, outros, escuro() ? "#6b7390" : "#a3abbd"));
+  g?.destroy();
+  const ch = new Chart($("#gCompEvol"), {
+    type: "bar", data: { labels: meses.map(rotMesCurto), datasets },
+    options: { animation: false, responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { stacked: true, grid: { display: false },
+          ticks: { color: corTexto(), maxRotation: 0, autoSkip: true, font: (ctx) => ({ weight: meses[ctx.index] === st.comp.mes ? "800" : "500" }) } },
+        y: { stacked: true, min: 0, max: pct ? 100 : undefined, grid: { color: "rgba(128,128,128,.15)" },
+          ticks: { color: corTexto(), callback: (v) => (pct ? `${br(v, 0)}%` : brR(v)) } },
+      },
+      plugins: {
+        legend: { position: "bottom", labels: { color: corTexto(), boxWidth: 12, boxHeight: 12, font: { size: 11.5 } } },
+        tooltip: { itemSort: (a, b) => b.raw - a.raw, filter: (it) => it.dataset.$v[it.dataIndex] > 0,
+          callbacks: {
+            title: (its) => `${rotMes(meses[its[0].dataIndex])}${sig.has(meses[its[0].dataIndex]) ? " · parte em sigilo (só os totais)" : ""}`,
+            label: (it) => ` ${it.dataset.label}: ${pctComp(it.dataset.$p[it.dataIndex] / 100)} · ${brR(it.dataset.$v[it.dataIndex])}`,
+            afterLabel: (it) => (it.dataset.$tipos.length > 1 ? "   " + it.dataset.$tipos.filter((a) => val.get(`${meses[it.dataIndex]}|${a}`)).map((a) => curto(a, 28)).join(", ") : ""),
+            footer: (its) => `Total: ${brR(pos.get(meses[its[0].dataIndex]))} · clique para ver os ativos deste mês` } } },
+      onHover: (e, els, chart) => { chart.canvas.style.cursor = chart.getElementsAtEventForMode(e, "index", { intersect: false }, false).length ? "pointer" : "default"; },
+      onClick: (e, els, chart) => {
+        const i = chart.getElementsAtEventForMode(e, "index", { intersect: false }, false)[0]?.index; if (i == null || meses[i] === st.comp.mes) return;
+        st.comp.mes = meses[i]; $("#compMes").value = String(meses[i]); carregarComp();
+      } },
+    plugins: [faixaMesComp],
+  });
+  ch.$chave = chave; ch.$meses = meses;
+  st.graficos.gCompEvol = ch;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-comp-escala]"); if (!b || b.dataset.compEscala === st.comp.escala) return;
+  st.comp.escala = b.dataset.compEscala; salvar("compEscala", st.comp.escala); renderEvolComp();
+});
 function abrirTodasComp() {
   const { c, mes } = st.comp, ks = (st.comp.resumo || []).filter((l) => l.MES === mes && l.N > 0).map((l) => `comp|${c}|${mes}|${l.APLIC}`);
   if (ks.every((k) => st.comp.abertos.has(k))) ks.forEach((k) => st.comp.abertos.delete(k)); else ks.forEach((k) => st.comp.abertos.add(k));
@@ -6926,6 +6999,7 @@ function trocouTema() {                                                  // recr
   desenharChipsIndices(); renderResultado();
   if (!st.res) renderCarteira();                                        // sem análise calculada, a carteira não passa pelo renderResultado
   if (st.rk?.lista.length) renderRankings();
+  renderEvolComp();
 }
 function definirTema(t) {
   document.documentElement.dataset.theme = t;

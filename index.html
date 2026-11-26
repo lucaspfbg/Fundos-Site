@@ -416,6 +416,13 @@
           </div></div>
         <p id="compNota" class="nota"></p>
         <div class="comp-corpo"><div id="compBarra" class="comp-pizza"></div><div id="compTab"></div></div>
+        <div id="compEvol" class="comp-evol" hidden>
+          <div class="cab sub-cab"><h3 class="sub">Evolução mês a mês</h3>
+            <div class="opcoes"><div class="pilulas mini" role="group" aria-label="Escala do gráfico de evolução">
+              <button type="button" data-comp-escala="pct" aria-pressed="true">% da carteira</button><button type="button" data-comp-escala="valor" aria-pressed="false">Valor (R$)</button></div></div></div>
+          <div class="graf comp-evol-graf"><canvas id="gCompEvol" aria-label="Evolução da carteira por tipo de aplicação, mês a mês"></canvas></div>
+          <p class="nota">Cada barra é um mês, dividida pelos tipos de aplicação (os meses em sigilo entram pelos totais, que são públicos). Clique numa barra para ver os ativos daquele mês.</p>
+        </div>
       </section>
       </div>
 
