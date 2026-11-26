@@ -6655,9 +6655,7 @@ function renderCompTabela() {
     { chave: "Taxa", nome: "Taxa", tipo: "txt", max: 100 },
     { chave: "Valor", nome: "Valor", tipo: "valor", html: (v) => brR(v) },
     { chave: "pc", nome: "% da carteira", linhas: ["%", "carteira"], tipo: "pct" },
-    { chave: "ppl", nome: "% do PL", linhas: ["%", "do PL"], tipo: "pct" },
     { chave: "Codigo", nome: "Código", tipo: "txt", max: 110 },
-    { chave: "Qtd", nome: "Quantidade", linhas: ["Quanti-", "dade"], tipo: "valor", html: (v) => (typeof v === "number" ? br(v, v % 1 ? 2 : 0) : "") },
   ];
   const linhas = [];
   for (const l of cats) {
@@ -6674,8 +6672,8 @@ function renderCompTabela() {
       const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
       return { Ativo: nome, Tipo: a.ATIVO || "",
         Emissor: a.EMISSOR && a.EMISSOR !== desc ? a.EMISSOR : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
-        Valor: a.VALOR, pc: a.VALOR / total, ppl: typeof pl === "number" && pl ? a.VALOR / pl : null,
-        Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", Qtd: a.QTD, _cor: cor, _g: k };
+        Valor: a.VALOR, pc: a.VALOR / total,
+        Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", _cor: cor, _g: k };
     }), "comp", cols).slice(0, LIMITE_ATIVOS_GRUPO);
     linhas.push(...ms);
   }
