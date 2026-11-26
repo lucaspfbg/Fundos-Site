@@ -4410,13 +4410,16 @@ document.addEventListener("click", (e) => {
 st.fundosPainel = new Map();
 async function abrirPainelLista(c) {
   if (fontePainel(c, "analise")) return abrirPainelFundo(c, "analise");
-  const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo");
-  $("#pfTit").textContent = cad.NOME || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(cad.NOME, "o nome");
+  const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo"), nome = cad.NOME || st.nomesCota.get(c) || "";
+  $("#pfTit").textContent = nome || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(nome, "o nome");
   $("#pfHubTopo").innerHTML = botaoComp(c); $("#pfSelos").innerHTML = "";
-  $("#pfSub").textContent = cad._soXP ? "Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos." : "Carregando as cotas…";
+  // sem cotas para métricas e gráficos (só na XP, ou fora da base de cotas diárias, como FIDCs): a ficha mostra a composição
+  const soComp = (txt) => { $("#pfSub").textContent = txt; guardarComp(); $("#pfConteudo").innerHTML = `<div id="pfCompSlot"></div>`; compNaFicha(c); };
   guardarComp(); $("#pfConteudo").innerHTML = "";
+  $("#pfSub").textContent = "Carregando as cotas…";
   if (!d.open) d.showModal();
-  if (cad._soXP) return;
+  if (cad._soXP) return soComp("Fundo só na XP: sem cotas na CVM para mostrar métricas e gráficos.");
+  if (!st.porCnpj.has(c)) return soComp("Fora da base de cotas diárias do site (ex.: FIDC ou fundo de outra categoria): sem métricas e gráficos. Abaixo, a composição informada à CVM.");
   try {
     await chartPronto;
     const fs = await D.carregarFundos([c], st.idx.cdiAnterior);
@@ -4424,7 +4427,7 @@ async function abrirPainelLista(c) {
   } catch (err) { console.error(err); }
   if (!d.open) return;                                                 // fechou enquanto carregava
   if (fontePainel(c, "analise")) { d.close(); abrirPainelFundo(c, "analise"); }
-  else $("#pfSub").textContent = "Não foi possível carregar as cotas deste fundo na CVM.";
+  else soComp("Não foi possível carregar as cotas deste fundo na CVM.");
 }
 document.addEventListener("click", (e) => {
   const el = e.target.closest?.("[data-pf]"); if (!el) return;
@@ -6602,6 +6605,7 @@ const recentesComp = (Array.isArray(pref("compRecentes", [])) ? pref("compRecent
 const fundoUrl = new URLSearchParams(location.search).get("fundo");
 st.comp = { c: cnpjOk(fundoUrl) ? fundoUrl : recentesComp[0] || null, recentes: recentesComp, mes: null, abertos: new Set(), resumo: null, resumoDe: null, det: null, detDe: null, erro: "", emis: new Map(), emisCnpj: new Map(), emisPref: new Map() };
 let compId = 0, tCompBusca;
+st.nomesCota = new Map();                                                    // CNPJ da cota -> nome, como veio no informe
 const CART_PREF = "CART:", CART_SEM = "Sem composição na CVM", CART_IDX = "Índices de referência";
 const ehCart = (c) => typeof c === "string" && c.startsWith(CART_PREF);
 // carteira mostrada: a montada ou, comparando carteiras salvas, a escolhida no seletor da seção
@@ -6611,7 +6615,7 @@ function cartDaComp() {
   const i = Math.min(Math.max(0, st.comp.cartSel || 0), L.length - 1);
   return { cart: L[i].cart, nome: L[i].nome, i };
 }
-const nomeComp = (c) => (ehCart(c) ? cartDaComp().nome : st.xp ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || cnpjFmt(c));
+const nomeComp = (c) => (ehCart(c) ? cartDaComp().nome : st.xp && st.porCnpj.has(c) ? nomeXPde(c) : st.porCnpj.get(c)?.NOME || st.nomesCota.get(c) || cnpjFmt(c));
 // carteira montada: chave com valor, ativos e pesos (muda quando a carteira muda); null sem fundo com peso
 function chaveCartComp() {
   const { cart, i } = cartDaComp(), its = (cart.itens || []).filter((it) => (Number(it.peso) || 0) > 0);
@@ -6744,7 +6748,8 @@ function compNaFicha(c) {
   const slot = $("#pfCompSlot"); if (!slot) return;
   if (!st.comp.painel) st.comp.painel = { ctx: st.comp.ctx, c: st.comp.c, mes: st.comp.mes };
   const sec = $("#secComp"); slot.append(sec); sec.hidden = false;
-  if (st.comp.c !== c) { st.comp.c = c; st.comp.mes = null; }
+  st.comp.c = c;                                    // o mês continua (ex.: do feeder para o master no mesmo mês), se o fundo tiver
+
   renderPaginaComp();
 }
 function compDeVolta() {
@@ -6820,7 +6825,7 @@ function renderCompTabela() {
   $("#compTodas").hidden = !cats.some((l) => l.N > 0);
   if (!cats.length) {
     $("#compNota").innerHTML = ""; $("#compBarra").innerHTML = "";
-    $("#compTab").innerHTML = `<p class="nota">A CVM não tem a composição da carteira de <b>${esc(nomeF)}</b> nos últimos meses publicados. Alguns fundos (por exemplo, os de previdência e os que deixaram de existir) não enviam esse informe.</p>`;
+    $("#compTab").innerHTML = `<p class="nota">A CVM não tem a composição da carteira de <b>${esc(nomeF)}</b> nos últimos meses publicados. Alguns fundos não enviam esse informe: FIDCs (mandam outro informe à CVM), fundos de previdência e os que deixaram de existir, por exemplo.</p>`;
     return;
   }
   const total = cats.reduce((s, l) => s + l.VALOR, 0), pl = cats[0].PL, positivo = cats.reduce((s, l) => s + Math.max(0, l.VALOR), 0);
@@ -6843,16 +6848,19 @@ function renderCompTabela() {
       const emis = emissorDeb(a) || a.EMISSOR, d = a.DESCR && a.DESCR.length > 4 ? a.DESCR : null, desc = d || emis;
       const cnpjCota = a.COD && /^\d{14}$/.test(a.COD), isin = a.COD && /^BR[A-Z0-9]{10}$/.test(a.COD), cod = !cnpjCota && !isin && a.COD !== desc ? a.COD : null;
       const nome = cod && desc ? `${cod} - ${desc}` : cod || desc || a.ATIVO || a.APLIC;
+      if (cnpjCota && desc) st.nomesCota.set(a.COD, desc);
       if (!porAplic.has(a.APLIC)) porAplic.set(a.APLIC, []);
       porAplic.get(a.APLIC).push({ Ativo: nome, Tipo: a.ATIVO || "", Emissor: emis && emis !== desc ? emis : "", Venc: diaComp(a.VENC), Taxa: a.TAXA || "",
-        Valor: a.VALOR, pc: a.VALOR / total, Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", Fundos: a.FUNDOS || "", _cor: corAplic(a.APLIC), _g: chaveG(a.APLIC) });
+        Valor: a.VALOR, pc: a.VALOR / total, Codigo: cnpjCota ? cnpjFmt(a.COD) : a.COD || "", Fundos: a.FUNDOS || "", _pf: cnpjCota ? a.COD : null, _cor: corAplic(a.APLIC), _g: chaveG(a.APLIC) });
     }
     Object.assign(st.comp, { linhasPorAplic: porAplic, linhasTodas: [...porAplic.values()].flat(), linhasDe: chaveLinhas });
   }
   const porAplic = st.comp.linhasPorAplic;
   const filtro = filtrosAtivos("comp"), aberto = (k) => filtro || st.comp.abertos.has(k);
   const cols = [
-    { chave: "Ativo", nome: "Ativo", tipo: "txt", filtro: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>${esc(v)}` },
+    // cota de fundo da base: o nome abre a ficha daquele fundo (ex.: o master de um feeder)
+    { chave: "Ativo", nome: "Ativo", tipo: "txt", filtro: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>` +
+      (l._pf ? `<span class="lk-fundo" data-pf="${l._pf}" role="button" tabindex="0" title="Abrir a ficha deste fundo">${esc(v)}</span>` : esc(v)) },
     ...(ehCart(c) ? [{ chave: "Fundos", nome: "Via fundo", tipo: "txt", max: 160 }] : []),
     { chave: "Tipo", nome: "Tipo", tipo: "txt", max: 110 },
     { chave: "Emissor", nome: "Emissor", tipo: "txt", max: 140 },
