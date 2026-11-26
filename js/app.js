@@ -6803,7 +6803,7 @@ function renderEvolComp() {
   const fundo = getComputedStyle(box).getPropertyValue("--card").trim() || "#fff";
   const serie = (label, tipos, cor) => {
     const v = meses.map((m) => tipos.reduce((t, a) => t + (val.get(`${m}|${a}`) || 0), 0)), p = meses.map((m, i) => (pos.get(m) ? (v[i] / pos.get(m)) * 100 : 0));
-    return { label, data: pct ? p : v, $v: v, $p: p, $tipos: tipos, backgroundColor: cor, borderColor: fundo, borderWidth: { top: 1 }, borderSkipped: false, stack: "s",
+    return { label, data: pct ? p : v, $v: v, $p: p, $tipos: tipos, $cor: cor, backgroundColor: corEvol, borderColor: fundo, borderWidth: { top: 1 }, borderSkipped: false, stack: "s",
       barPercentage: 0.86, categoryPercentage: 0.92 };
   };
   const datasets = aplics.map((a) => serie(a, [a], corAplic(a)));
@@ -6842,11 +6842,12 @@ function renderEvolComp() {
 // tipo em destaque no gráfico de evolução (passar o mouse na fatia da pizza, na linha do tipo na tabela ou na legenda):
 // as outras cores ficam claras. Tipo pequeno, juntado em "Outros", acende o "Outros".
 const corApagada = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c + "33" : c);
+// cor calculada a cada desenho (função): o Chart.js guarda as cores fixas e só as relê depois de passar o mouse nas barras
+const corEvol = (ctx) => { const alvo = ctx.chart.$alvo; return !alvo || ctx.dataset === alvo ? ctx.dataset.$cor : corApagada(ctx.dataset.$cor); };
 function destacarEvol(aplic) {
   const ch = st.graficos.gCompEvol; if (!ch || st.comp.evolDest === aplic) return;
   st.comp.evolDest = aplic;
-  const alvo = aplic ? ch.data.datasets.find((d) => d.$tipos.includes(aplic)) : null;
-  for (const d of ch.data.datasets) { d.$cor ??= d.backgroundColor; d.backgroundColor = !alvo || d === alvo ? d.$cor : corApagada(d.$cor); }
+  ch.$alvo = aplic ? ch.data.datasets.find((d) => d.$tipos.includes(aplic)) || null : null;
   ch.update("none");
 }
 document.addEventListener("click", (e) => {
