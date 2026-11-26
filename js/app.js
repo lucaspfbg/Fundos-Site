@@ -118,6 +118,7 @@ const log = (t) => { const el = $("#log"); if (el) el.textContent = t; };
 
 // ============================== inicialização ==============================
 async function iniciar() {
+  const paginaUrl = new URLSearchParams(location.search).get("pagina");      // lida antes: o endereço é reescrito durante a carga
   try {
     $("#status").innerHTML = "carregando…";
     st.meta = await D.iniciar(DADOS_URL);
@@ -141,7 +142,7 @@ async function iniciar() {
     atualizarEspaco();
     renderCarteira();
     iniciarEquipe();
-    mostrarPagina(new URLSearchParams(location.search).get("pagina") || pref("pagina", "analise"), { rolar: false });
+    mostrarPagina(paginaUrl || pref("pagina", "analise"), { rolar: false });
   } catch (e) {
     $("#status").textContent = "Não foi possível carregar a base. Recarregue a página.";
     log("ERRO: " + e.message);
@@ -1244,7 +1245,7 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
     if (l._cab) {
       const fech = fechado(l.chave);
       const qtd = l.unid ? (l.n ? `${br(l.n, 0)} ${l.n === 1 ? l.unid[0] : l.unid[1]}` : "") : `${l.n} fundo${l.n > 1 ? "s" : ""}`;
-      h += (l.vazio ? `<tr class="grupo vazio"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
+      h += (l.vazio ? `<tr class="grupo vazio" data-gk="${esc(l.chave)}"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev"></span>` :   // sem linhas para abrir
         `<tr class="grupo${fech ? " fechado" : ""}" data-g="${esc(l.chave)}" tabindex="0" role="button" aria-expanded="${!fech}"
         title="${fech ? "Expandir" : "Recolher"} este grupo"><td colspan="${colunas.length}"><span class="g-rot"><span class="chev">${fech ? "▸" : "▾"}</span>`) + `
         ${l.cor ? `<span class="sw" style="background:${l.cor}"></span>` : ""}${esc(l.rotulo)}<span class="g-info">${[qtd, l.info].filter(Boolean).map((x) => " · " + x).join("")}</span></span></td></tr>`;
@@ -1263,8 +1264,9 @@ function tabelaHTML({ colunas, linhas, fixas = 0, larguras = [260, 150], grupos 
       const alinh = aEsquerda(c) ? " t" : numCol[j] ? " n" : "";
       if (j < fixas) h += `<td class="fx${ult(j)}${aEsquerda(c) ? " t" : ""}" style="left:${esq[j]}px;min-width:${larguras[j]}px;max-width:${larguras[j]}px;${estilo}" title="${esc(c.titulo ? c.titulo(l) : typeof v === "number" ? "" : v)}">${txt}</td>`;
       else {                                   // texto longo (ex.: "Índice de Preços ao Consumidor Amplo"): largura máxima e "…", texto inteiro ao passar o mouse
-        const longo = c.tipo === "txt" && typeof v === "string" && v.length > 30;
-        h += `<td class="${(alinh + (longo ? " longo" : "")).trim()}" style="${estilo}"${longo ? ` title="${esc(v)}"` : ""}>${txt}</td>`;
+        // c.max: coluna compacta com largura máxima própria (qualquer texto que não couber ganha "…")
+        const corta = c.max && typeof v === "string" && v !== "", longo = !c.max && c.tipo === "txt" && typeof v === "string" && v.length > 30;
+        h += `<td class="${(alinh + (longo ? " longo" : "")).trim()}" style="${estilo}"${longo || corta ? ` title="${esc(v)}"` : ""}>${corta ? `<span class="corta" style="max-width:${c.max}px">${txt}</span>` : txt}</td>`;
       }
     });
     h += "</tr>";
@@ -6640,23 +6642,22 @@ function renderCompTabela() {
   $("#compNota").innerHTML = `Fonte: CVM (composição e diversificação das aplicações), posição no fim de ${rotMes(mes).toLowerCase()}` +
     (typeof pl === "number" ? ` · patrimônio líquido ${brR(pl)}` : "") + `. Percentuais sobre a soma das posições (${brR(total)}), como no informe.` +
     (sig.length ? ` <span class="comp-sig">${ico("cadeado")}${sig.length === cats.length && cats.every((l) => !l.N) ? "Mês em sigilo: a CVM só mostra o total de cada tipo de aplicação" : "Parte das aplicações está em sigilo (só o total aparece)"}${fimSig.length ? ` até ${fmtData(Math.max(...fimSig))}` : ""}; os ativos aparecem quando o sigilo acaba.</span>` : "");
-  $("#compBarra").innerHTML = `<div class="comp-trilho" role="img" aria-label="Divisão da carteira por tipo de aplicação">` + cats.filter((l) => l.VALOR > 0).map((l) =>
-    `<button type="button" class="comp-seg" data-comp-aplic="${esc(l.APLIC)}" style="flex-basis:${(l.VALOR / positivo * 100).toFixed(3)}%;background:${corAplic(l.APLIC)}"
-      title="${esc(l.APLIC)}: ${pctComp(l.VALOR / total)} · ${brR(l.VALOR)}" aria-label="${esc(l.APLIC)}: ${pctComp(l.VALOR / total)}"></button>`).join("") + `</div>`;
+  const chaveG = (a) => `comp|${c}|${mes}|${a}`;
+  $("#compBarra").innerHTML = pizzaComp(cats, total, chaveG);
   const det = st.comp.detDe === `${c}|${mes}` ? st.comp.det || [] : [], porAplic = new Map();
   for (const a of det) { if (!porAplic.has(a.APLIC)) porAplic.set(a.APLIC, []); porAplic.get(a.APLIC).push(a); }
-  const filtro = filtrosAtivos("comp"), chaveG = (a) => `comp|${c}|${mes}|${a}`, aberto = (k) => filtro || st.comp.abertos.has(k);
+  const filtro = filtrosAtivos("comp"), aberto = (k) => filtro || st.comp.abertos.has(k);
   const cols = [
     { chave: "Ativo", nome: "Ativo", tipo: "txt", html: (v, l) => `<span class="sw" style="background:${l._cor}"></span>${esc(v)}` },
-    { chave: "Tipo", nome: "Tipo", tipo: "txt" },
-    { chave: "Emissor", nome: "Emissor", tipo: "txt" },
-    { chave: "Venc", nome: "Vencimento", tipo: "data", crescente: true },
-    { chave: "Taxa", nome: "Taxa", tipo: "txt" },
+    { chave: "Tipo", nome: "Tipo", tipo: "txt", max: 110 },
+    { chave: "Emissor", nome: "Emissor", tipo: "txt", max: 140 },
+    { chave: "Venc", nome: "Vencimento", linhas: ["Venci-", "mento"], tipo: "data", crescente: true },
+    { chave: "Taxa", nome: "Taxa", tipo: "txt", max: 100 },
     { chave: "Valor", nome: "Valor", tipo: "valor", html: (v) => brR(v) },
     { chave: "pc", nome: "% da carteira", linhas: ["%", "carteira"], tipo: "pct" },
     { chave: "ppl", nome: "% do PL", linhas: ["%", "do PL"], tipo: "pct" },
-    { chave: "Codigo", nome: "Código", tipo: "txt" },
-    { chave: "Qtd", nome: "Quantidade", tipo: "valor", html: (v) => (typeof v === "number" ? br(v, v % 1 ? 2 : 0) : "") },
+    { chave: "Codigo", nome: "Código", tipo: "txt", max: 110 },
+    { chave: "Qtd", nome: "Quantidade", linhas: ["Quanti-", "dade"], tipo: "valor", html: (v) => (typeof v === "number" ? br(v, v % 1 ? 2 : 0) : "") },
   ];
   const linhas = [];
   for (const l of cats) {
@@ -6679,11 +6680,79 @@ function renderCompTabela() {
     linhas.push(...ms);
   }
   redesenharMantendo($("#compTab"), () => {
-    $("#compTab").innerHTML = tabelaHTML({ colunas: cols, linhas, fixas: 1, larguras: [300], ordenavel: "comp", altura: 520, fechado: (k) => !aberto(k) });
+    $("#compTab").innerHTML = tabelaHTML({ colunas: cols, linhas, fixas: 1, larguras: [230], ordenavel: "comp", altura: 520, fechado: (k) => !aberto(k) });
   });
   const todas = cats.filter((l) => l.N > 0).every((l) => aberto(chaveG(l.APLIC)));
   $("#compTodas").textContent = todas ? "Recolher todas" : "Abrir todas";
 }
+// gráfico de pizza (rosca) dos tipos de aplicação: passar o mouse mostra nome e % e destaca a linha do tipo na tabela; clique abre o tipo
+function pizzaComp(cats, total, chaveG) {
+  const pos = cats.filter((l) => l.VALOR > 0), soma = pos.reduce((s, l) => s + l.VALOR, 0);
+  if (!pos.length || !(soma > 0)) return "";
+  const C = 110, R = 104, r = 64, pt = (a, raio) => `${(C + raio * Math.cos(a)).toFixed(2)} ${(C + raio * Math.sin(a)).toFixed(2)}`;
+  let a = -Math.PI / 2;
+  const fatias = pos.map((l) => {
+    const a0 = a, a1 = a + (l.VALOR / soma) * 2 * Math.PI, g = a1 - a0 > Math.PI ? 1 : 0; a = a1;
+    const d = pos.length === 1                                              // uma fatia só: anel inteiro (dois meios arcos)
+      ? `M${pt(-Math.PI / 2, R)} A${R} ${R} 0 1 1 ${pt(Math.PI / 2, R)} A${R} ${R} 0 1 1 ${pt(-Math.PI / 2, R)} M${pt(-Math.PI / 2, r)} A${r} ${r} 0 1 0 ${pt(Math.PI / 2, r)} A${r} ${r} 0 1 0 ${pt(-Math.PI / 2, r)}Z`
+      : `M${pt(a0, R)} A${R} ${R} 0 ${g} 1 ${pt(a1, R)} L${pt(a1, r)} A${r} ${r} 0 ${g} 0 ${pt(a0, r)}Z`;
+    const pct = pctComp(l.VALOR / total), meio = (a0 + a1) / 2;
+    return `<path d="${d}" fill-rule="evenodd" class="comp-fatia" fill="${corAplic(l.APLIC)}" data-comp-aplic="${esc(l.APLIC)}" data-k="${esc(chaveG(l.APLIC))}"
+      data-pct="${pct}" data-valor="${brR(l.VALOR)}" data-mx="${(0.5 + 0.42 * Math.cos(meio)).toFixed(3)}" data-my="${(0.5 + 0.42 * Math.sin(meio)).toFixed(3)}"
+      tabindex="0" role="button" aria-label="${esc(l.APLIC)}: ${pct} da carteira, ${brR(l.VALOR)}. Abrir na tabela"></path>`;
+  }).join("");
+  return `<div class="comp-pizza-g"><svg viewBox="0 0 220 220" role="group" aria-label="Divisão da carteira por tipo de aplicação">${fatias}
+      <text class="comp-centro-v" x="110" y="108" text-anchor="middle">${brR(total)}</text>
+      <text class="comp-centro-l" x="110" y="128" text-anchor="middle">${pos.length} tipo${pl(pos.length)} de aplicação</text></svg>
+    <div class="comp-dica" role="status" hidden></div></div>
+    <p class="nota comp-pizza-nota">Passe o mouse para ver cada tipo; clique para abrir os ativos na tabela.</p>`;
+}
+// destaque ligado entre a fatia e a linha do tipo na tabela
+function focoComp(k, ev = null) {
+  const box = $("#compBarra .comp-pizza-g"); if (!box) return;
+  const fat = k ? [...box.querySelectorAll(".comp-fatia")].find((f) => f.dataset.k === k) : null;
+  box.classList.toggle("foco", !!fat);
+  box.querySelectorAll(".comp-fatia.on").forEach((f) => f !== fat && f.classList.remove("on"));
+  $$("#compTab tr.comp-real").forEach((tr) => tr.classList.remove("comp-real"));
+  const dica = box.querySelector(".comp-dica"), [tv, tl] = box.querySelectorAll("text");
+  if (!fat) {
+    dica.hidden = true;
+    if (tv.dataset.orig != null) { tv.textContent = tv.dataset.orig; tl.textContent = tl.dataset.orig; }
+    return;
+  }
+  fat.classList.add("on");
+  tv.dataset.orig ??= tv.textContent; tl.dataset.orig ??= tl.textContent;
+  tv.textContent = fat.dataset.pct; tl.textContent = fat.dataset.valor;
+  dica.innerHTML = `<b>${esc(fat.dataset.compAplic)}</b><span>${fat.dataset.pct} da carteira · ${fat.dataset.valor}</span>`;
+  dica.hidden = false;
+  const caixa = box.getBoundingClientRect();
+  const x = ev ? ev.clientX - caixa.left : Number(fat.dataset.mx) * caixa.width, y = ev ? ev.clientY - caixa.top : Number(fat.dataset.my) * caixa.width;
+  dica.style.left = `${Math.min(Math.max(x, 80), caixa.width - 80)}px`; dica.style.top = `${y}px`;
+  // linha do tipo na tabela: destaca e, se estiver fora da área visível da tabela, rola só a tabela até ela
+  const tr = [...$$("#compTab tr.grupo")].find((t) => (t.dataset.g || t.dataset.gk) === k); if (!tr) return;
+  tr.classList.add("comp-real"); tr.style.setProperty("--cc", fat.getAttribute("fill"));
+  const w = tr.closest(".tb-wrap"), cab = w.querySelector("thead")?.offsetHeight || 0;
+  if (tr.offsetTop < w.scrollTop + cab || tr.offsetTop + tr.offsetHeight > w.scrollTop + w.clientHeight) w.scrollTop = tr.offsetTop - cab - 4;
+}
+document.addEventListener("pointermove", (e) => {
+  const f = e.target.closest?.("#compBarra .comp-fatia");
+  if (f) focoComp(f.dataset.k, e);
+});
+document.addEventListener("pointerout", (e) => { if (e.target.closest?.("#compBarra .comp-fatia") && !e.relatedTarget?.closest?.("#compBarra .comp-fatia")) focoComp(null); });
+document.addEventListener("focusin", (e) => { const f = e.target.closest?.("#compBarra .comp-fatia"); if (f) focoComp(f.dataset.k); });
+document.addEventListener("focusout", (e) => { if (e.target.closest?.("#compBarra .comp-fatia")) focoComp(null); });
+document.addEventListener("keydown", (e) => {
+  const f = e.target.closest?.("#compBarra .comp-fatia");
+  if (f && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); f.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+});
+// mouse na linha do tipo na tabela: a fatia correspondente acende (sem mexer na rolagem)
+const acenderFatia = (k) => {
+  const box = $("#compBarra .comp-pizza-g"); if (!box) return;
+  const fat = k ? [...box.querySelectorAll(".comp-fatia")].find((f) => f.dataset.k === k) : null;
+  box.classList.toggle("foco", !!fat); box.querySelectorAll(".comp-fatia").forEach((f) => f.classList.toggle("on", f === fat));
+};
+document.addEventListener("pointerover", (e) => { const tr = e.target.closest?.("#compTab tr.grupo"); if (tr) acenderFatia(tr.dataset.g || tr.dataset.gk); });
+document.addEventListener("pointerout", (e) => { if (e.target.closest?.("#compTab tr.grupo") && !e.relatedTarget?.closest?.("#compTab tr.grupo")) acenderFatia(null); });
 function abrirTodasComp() {
   const { c, mes } = st.comp, ks = (st.comp.resumo || []).filter((l) => l.MES === mes && l.N > 0).map((l) => `comp|${c}|${mes}|${l.APLIC}`);
   if (ks.every((k) => st.comp.abertos.has(k))) ks.forEach((k) => st.comp.abertos.delete(k)); else ks.forEach((k) => st.comp.abertos.add(k));
@@ -6755,7 +6824,7 @@ if (MINIGRAFICOS && matchMedia("(hover: hover)").matches) {
 document.addEventListener("click", (e) => {
   const t = e.target;
   // grupos de linhas: clique no título ou na linha-guia recolhe/expande
-  const guia = t.closest(".guia"), cabG = !guia && t.closest("tr.grupo");
+  const guia = t.closest(".guia"), cabG = !guia && t.closest("tr.grupo[data-g]");      // grupo vazio: nada para abrir
   if (guia || cabG) { alternarGrupo(guia ? guia.dataset.guia : cabG.dataset.g); return; }
   const ord = t.closest("button.ord");
   if (ord) {

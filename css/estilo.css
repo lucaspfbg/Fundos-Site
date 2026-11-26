@@ -1477,12 +1477,37 @@ tr.cart-aberta td { box-shadow: inset 0 -2px 0 var(--ouro); }
 tr[data-cart-alt]:hover .cart-alt-nome { text-decoration: underline; text-underline-offset: 3px; }
 tr.cart-aberta .cart-tog { background: var(--ouro); color: #1a1a1a; }
 
-/* composição da carteira (CDA da CVM): barra 100% por tipo de aplicação e tabela com os tipos recolhíveis */
+/* composição da carteira (CDA da CVM): pizza por tipo de aplicação à esquerda e tabela com os tipos recolhíveis à direita */
+#secComp { container-type: inline-size; }
 #secComp .opcoes select { max-width: 340px; }
-.comp-barra { margin: 4px 0 12px; }
-.comp-trilho { display: flex; gap: 2px; height: 18px; border-radius: 6px; overflow: hidden; background: var(--borda); }
-.comp-seg { flex: 0 0 auto; min-width: 3px; height: 100%; padding: 0; border: 0; border-radius: 0; cursor: pointer; transition: filter .15s ease; }
-.comp-seg:hover, .comp-seg:focus-visible { filter: brightness(1.15) saturate(1.1); outline: 2px solid var(--txt); outline-offset: -2px; }
+.comp-corpo { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 18px; align-items: start; margin-top: 6px; }
+.comp-corpo:has(> .comp-pizza:empty) { grid-template-columns: minmax(0, 1fr); }
+.comp-pizza:empty { display: none; }
+@container (max-width: 760px) {                                   /* estreito: pizza em cima, tabela embaixo */
+  .comp-corpo { grid-template-columns: minmax(0, 1fr); }
+  .comp-pizza { max-width: 260px; margin: 0 auto; }
+}
+.comp-pizza { position: sticky; top: 12px; }
+.comp-pizza-g { position: relative; }
+.comp-pizza-g svg { display: block; width: 100%; height: auto; overflow: visible; }
+.comp-fatia { stroke: var(--card); stroke-width: 2; stroke-linejoin: round; cursor: pointer; transform-origin: 110px 110px;
+  transition: opacity .15s ease, transform .15s ease; }
+.comp-pizza-g.foco .comp-fatia:not(.on) { opacity: .35; }
+.comp-fatia.on { transform: scale(1.04); }
+.comp-fatia:focus { outline: none; }
+.comp-fatia:focus-visible { stroke: var(--txt); stroke-width: 3; }
+.comp-centro-v { fill: var(--txt); font: 800 19px var(--f-corpo); }
+.comp-centro-l { fill: var(--sub); font: 600 11px var(--f-corpo); }
+.comp-dica { position: absolute; z-index: 5; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; display: grid; gap: 2px; width: max-content; max-width: 220px;
+  padding: 7px 10px; border: 1px solid var(--borda-forte); border-radius: var(--r-md); background: var(--card); color: var(--txt); box-shadow: var(--sh-3); font-size: var(--fs-sm); line-height: 1.3; }
+.comp-dica span { color: var(--sub); font-size: var(--fs-xs); }
+.comp-pizza-nota { margin: 8px 0 0; text-align: center; font-size: var(--fs-xs); }
+@media (prefers-reduced-motion: reduce) { .comp-fatia { transition: none; } .comp-fatia.on { transform: none; } }
+/* tabela compacta: colunas de texto com "…" (texto inteiro ao passar o mouse; selecionar e copiar leva o texto inteiro) */
+#compTab .tb th, #compTab .tb td { padding-left: 7px; padding-right: 7px; }
+#compTab tr.filtros th:not(.fx) :is(.fsel, .fctxt) { width: 100%; min-width: 0; max-width: 110px; }   /* filtros não alargam as colunas compactas */
+.tb td .corta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#compTab tr.comp-real td { background: color-mix(in srgb, var(--cc) 24%, var(--card)) !important; box-shadow: inset 4px 0 0 var(--cc); }
 .comp-sig { display: inline-flex; align-items: center; gap: 4px; color: var(--ouro-txt); font-weight: 600; }
 .comp-sig .ico, #compTab tr.grupo .g-info .ico { width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px; }
 .comp-aguarde { display: flex; align-items: center; gap: 10px; padding: 18px 4px; color: var(--sub); }
