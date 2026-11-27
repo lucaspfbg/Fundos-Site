@@ -3793,8 +3793,27 @@ async function sairEquipe(silencioso = false) {
 }
 // oferta da XP "aberta" = alguma oferta do CNPJ sem captação bloqueada
 const xpAberto = (cnpj) => !!st.xp?.get(cnpj)?.some((o) => !verdadeiro(o.FUNDINGBLOCKED));
+// A entrada é pelo portal, numa janela pequena: já logado lá, ela fecha sozinha e o site entra sem sair da página;
+// se não, a pessoa entra nela e ela fecha. Só vale a resposta que vem de dentro dessa janela.
+let janelaPortal = null;
+function entrarPelaJanela() {
+  const url = PORTAL_URL + (PORTAL_URL.includes("?") ? "&" : "?") + "janela=fundos";
+  const w = 480, h = 640, x = Math.max(0, Math.round((screen.availWidth - w) / 2)), y = Math.max(0, Math.round((screen.availHeight - h) / 2));
+  janelaPortal = window.open(url, "portalAlcance", `popup,width=${w},height=${h},left=${x},top=${y}`);
+  if (!janelaPortal) irAoPortal();                 // janela bloqueada pelo navegador: vai pelo portal (?ir=fundos) e volta à mesma tela
+}
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!janelaPortal || !d || d.tipo !== "portal-login" || typeof d.passe !== "string") return;
+  try {
+    if (!/(^|\.)(googleusercontent\.com|script\.google\.com)$/.test(new URL(e.origin).hostname)) return;   // só páginas do Apps Script
+    if (e.source?.top !== janelaPortal) return;                                                          // e de dentro da janela aberta aqui
+  } catch { return; }
+  janelaPortal = null;
+  entrarPeloPortal(d.passe.replace(/ /g, "+"));
+});
 function abrirLogin() {
-  if (PORTAL_ATIVO) { irAoPortal(); return; }                       // a entrada é pelo portal (ele devolve a pessoa já logada)
+  if (PORTAL_ATIVO) { entrarPelaJanela(); return; }
   $("#loginPasso1").hidden = false; $("#loginPasso2").hidden = true; $("#loginErro").textContent = "";
   $("#dlgLogin").showModal(); $("#loginEmail").focus();
 }
