@@ -112,7 +112,7 @@
 
       <section class="bloco" data-pg="analise xp">
         <h2 class="h-lat"><span class="passo" aria-hidden="true">3</span>Comparar com</h2>
-        <div id="idxChips" class="pilulas"></div>
+        <div id="idxChips" class="pilulas seg-ouro"></div>
       </section>
 
       <div id="log" class="nota"></div>
@@ -155,7 +155,7 @@
       <div id="pgAnalise" class="pagina" role="tabpanel" aria-labelledby="abaAnalise" data-pagina="analise">
       <div id="nucleoAnalise">
       <div class="barra">
-        <div id="barraPer" class="pilulas"></div>
+        <div id="barraPer" class="pilulas seg-ouro"></div>
         <div class="slider">
           <div class="trilho"><div id="zFaixa" class="faixa"></div>
             <input id="zIni" type="range" aria-label="data inicial"><input id="zFim" type="range" aria-label="data final"></div>
@@ -194,7 +194,7 @@
               <label class="tog"><input id="relOn" type="checkbox"> Relativa a…</label>
               <span id="relCtl" hidden>
                 <div id="cbAlvo" class="combo"></div>
-                <span id="relModo" class="pilulas mini"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
+                <span id="relModo" class="pilulas mini seg-ouro"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
               </span>
             </div>
             <button class="btn-min" type="button" data-min="acum" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button>
@@ -217,7 +217,7 @@
 
         <section class="cartao" data-sec="risco">
           <div class="cab"><h2>Risco × Retorno</h2>
-            <div class="opcoes"><span class="ordem">Eixo horizontal <span id="riscoEixo" class="pilulas mini"><button data-e="ret">Retorno a.a.</button><button data-e="sharpe">Sharpe</button></span></span></div>
+            <div class="opcoes"><span class="ordem">Eixo horizontal <span id="riscoEixo" class="pilulas mini seg-ouro"><button data-e="ret">Retorno a.a.</button><button data-e="sharpe">Sharpe</button></span></span></div>
             <button class="btn-min" type="button" data-min="risco" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button></div>
           <p id="riscoNota" class="nota"></p>
           <div class="linha2 larga">
@@ -374,7 +374,7 @@
       </section>
       <section id="secRank" class="cartao" data-sec="rank" hidden>
         <div class="cab rk-fixa"><h2>Rankings</h2>
-          <div class="opcoes"><span id="rkPills" class="pilulas mini"></span></div>
+          <div class="opcoes"><span id="rkPills" class="pilulas mini seg-ouro"></span></div>
           <div class="opcoes"><label class="ordem">Comparar com <select class="rk-comp-sel" aria-label="Data de comparação das posições"></select></label></div>
           <input id="rkDestaque" type="search" placeholder="Destacar fundo…" aria-label="Destacar fundo nas tabelas e gráficos do ranking" autocomplete="off" spellcheck="false">
           <button class="rk-alterna sec mini-btn" type="button" title="Vale para todas as tabelas e gráficos dos rankings"></button>
@@ -419,7 +419,7 @@
         <div class="comp-corpo"><div id="compBarra" class="comp-pizza"></div><div id="compTab"></div></div>
         <div id="compEvol" class="comp-evol" hidden>
           <div class="cab sub-cab"><h3 class="sub">Evolução mês a mês</h3>
-            <div class="opcoes"><div class="pilulas mini" role="group" aria-label="Escala do gráfico de evolução">
+            <div class="opcoes"><div class="pilulas mini seg-ouro" role="group" aria-label="Escala do gráfico de evolução">
               <button type="button" data-comp-escala="pct" aria-pressed="true">% da carteira</button><button type="button" data-comp-escala="valor" aria-pressed="false">Valor (R$)</button></div></div></div>
           <div class="graf comp-evol-graf"><canvas id="gCompEvol" aria-label="Evolução da carteira por tipo de aplicação, mês a mês"></canvas></div>
           <p class="nota">Cada barra é um mês, dividida pelos tipos de aplicação (os meses em sigilo entram pelos totais, que são públicos). Clique numa barra para ver os ativos daquele mês.</p>
@@ -429,7 +429,7 @@
 
       <div id="pgCarteira" class="pagina" role="tabpanel" aria-labelledby="abaCarteira" data-pagina="carteira" hidden>
       <div class="barra barra-cart">
-        <div id="cartPers" class="pilulas" role="group" aria-label="Período da carteira">
+        <div id="cartPers" class="pilulas seg-ouro" role="group" aria-label="Período da carteira">
           <button type="button" data-cm="12">12 meses</button><button type="button" data-cm="24">24 meses</button><button type="button" data-cm="36">36 meses</button>
           <button type="button" data-cm="60">5 anos</button><button id="cartPeriodo" type="button" title="Usa as datas do período escolhido na análise">Período da análise</button></div>
         <div class="cart-datas"><label>De <input id="cartIni" type="date"></label><label>Até <input id="cartFim" type="date"></label></div>
@@ -474,7 +474,7 @@
               <label class="tog"><input id="cartRelOn" type="checkbox"> Relativa a…</label>
               <span id="cartRelCtl" hidden>
                 <div id="cbCartAlvo" class="combo"></div>
-                <span id="cartRelModo" class="pilulas mini"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
+                <span id="cartRelModo" class="pilulas mini seg-ouro"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
               </span>
             </div></div>
           <p id="cartRelNota" class="nota"></p>
@@ -493,7 +493,7 @@
           </div>
 
           <div class="cab sub-cab"><h3 class="sub">Risco × retorno</h3>
-            <div class="opcoes"><span class="ordem">Eixo horizontal <span id="cartRiscoEixo" class="pilulas mini"><button data-e="ret">Retorno a.a.</button><button data-e="sharpe">Sharpe</button></span></span></div></div>
+            <div class="opcoes"><span class="ordem">Eixo horizontal <span id="cartRiscoEixo" class="pilulas mini seg-ouro"><button data-e="ret">Retorno a.a.</button><button data-e="sharpe">Sharpe</button></span></span></div></div>
           <div class="linha2 larga">
             <div class="graf"><canvas id="gCartRR"></canvas></div>
             <div id="tabCartRisco" class="leg"></div>
@@ -621,7 +621,7 @@
     </div>
     <div class="rel-dir">
       <h3 class="sub">Formato</h3>
-      <div id="relFmt" class="pilulas"><button data-f="pdf" type="button">PDF</button><button data-f="png" type="button">PNG (imagem)</button><button data-f="xlsx" type="button">Excel</button></div>
+      <div id="relFmt" class="pilulas seg-ouro"><button data-f="pdf" type="button">PDF</button><button data-f="png" type="button">PNG (imagem)</button><button data-f="xlsx" type="button">Excel</button></div>
       <div id="relOpPdf" class="nota rel-op">Gráficos e tabelas, uma parte por página (A4 deitado). Tabelas largas continuam na página seguinte repetindo o nome do fundo.
         As séries diárias muito longas ficam só no Excel.</div>
       <div id="relOpPng" class="nota rel-op" hidden>
@@ -685,7 +685,7 @@
 
 <dialog id="dlgEnviar" class="dlg-medio" aria-labelledby="envTit">
   <div class="dlg-cab"><h2 id="envTit">Enviar fundos para…</h2><button class="sec" type="button" data-fechar-dlg>Fechar</button></div>
-  <div id="envDest" class="pilulas env-dest" role="group" aria-label="Para onde enviar"></div>
+  <div id="envDest" class="pilulas seg-ouro env-dest" role="group" aria-label="Para onde enviar"></div>
   <p id="envInfo" class="nota"></p>
   <div id="envOpcoes" class="opcoes env-op"></div>
   <p class="nota"><button id="envTodos" class="link" type="button">Marcar todos</button> · <button id="envNenhum" class="link" type="button">Desmarcar</button></p>

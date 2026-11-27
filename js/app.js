@@ -4080,7 +4080,7 @@ function renderEnviar() {
       `O ranking “${esc(NOME_RK_ENV)}” é temporário (não fica salvo); para guardá-lo, use <b>Montar rankings</b>.` +
       (ja.n && add ? ` Os enviados entram junto com os ${nf(ja.n)} que ele já tem.` : "");
   // o destino já tem fundos: adicionar aos de lá ou substituir (como em Grupos)
-  const modoHTML = ja.n ? `<span class="env-modo"><span class="nota">${esc(ja.txt)}:</span><span class="pilulas mini" role="group" aria-label="O que fazer com o que já está lá">` +
+  const modoHTML = ja.n ? `<span class="env-modo"><span class="nota">${esc(ja.txt)}:</span><span class="pilulas mini seg-ouro" role="group" aria-label="O que fazer com o que já está lá">` +
     `<button type="button" data-env-modo="add" aria-pressed="${add}">${ico("mais")}Adicionar</button><button type="button" data-env-modo="sub" aria-pressed="${!add}">Substituir</button></span></span>` : "";
   $("#envOpcoes").innerHTML = modoHTML + (dest === "rk" ? `<label class="ordem">Tipo de cálculo <select id="envModelo">${Object.entries(modelos()).map(([k, X]) => `<option value="${esc(k)}"${k === env.modelo ? " selected" : ""}>${esc(X.nome)}</option>`).join("")}</select></label>
       <span class="nota">${esc(M.periodo)} · ${Object.keys(M.pesos).map((k) => `${esc(metricaRank(k)?.nome || k)} ${Math.abs(M.pesos[k])}%`).join(" · ")}</span>` : "");
@@ -4299,7 +4299,7 @@ function barraPerPF(c, fonte) {
   const pers = fonte.per && st.res ? Object.keys(st.res.periodos) : [];
   const tem = (p) => st.res.periodos[p].linhas.some((x) => x._c === c);
   return `<div class="pf-per"><span class="pf-per-rot">Período</span>` + (pers.length > 1
-    ? `<span class="pilulas mini" role="group" aria-label="Período das métricas do painel">${pers.map((p) => `<button type="button" data-pf-per="${esc(p)}" aria-pressed="${p === fonte.per}"` +
+    ? `<span class="pilulas mini seg-ouro" role="group" aria-label="Período das métricas do painel">${pers.map((p) => `<button type="button" data-pf-per="${esc(p)}" aria-pressed="${p === fonte.per}"` +
       `${tem(p) ? "" : ' disabled title="Sem cotas neste período"'}>${esc(rotPer(p))}</button>`).join("")}</span>`
     : `<span class="pf-per-tag">${esc(fonte.rotulo)}</span>`) + `<span class="nota">${esc(fmtData(fonte.dIni))} a ${esc(fmtData(fonte.dFim))}</span></div>`;
 }
