@@ -3769,7 +3769,7 @@ async function carregarDadosEquipe(tentativa = 0) {
   clearTimeout(carregarDadosEquipe.t); st.equipeFalha = null; desenharEquipe();
   const r = await apiEquipe("dados", { token }, 60000);
   if (!r.ok) {
-    if (sessaoInvalida(r)) { sairEquipe(true); avisoSel(`<span class="neg">${esc(r.erro || "Sessão expirada. Entre de novo.")}</span>`); return; }
+    if (sessaoInvalida(r)) { sairEquipe(true); avisoEquipe(r.erro || "Sessão expirada. Entre de novo."); return; }
     // falha passageira: continua logado, avisa e tenta de novo sozinho (depois de 5 s e de 15 s)
     st.equipeFalha = r.erro || "Não foi possível carregar os dados da XP agora."; desenharEquipe();
     if (tentativa < 2) carregarDadosEquipe.t = setTimeout(() => carregarDadosEquipe(tentativa + 1), [5000, 15000][tentativa]);
@@ -3837,15 +3837,15 @@ async function entrarEquipe() {
   await carregarDadosEquipe();
   if (st.xp) avisoSel(`<span class="ok">Bem-vindo, ${esc(r.nome)}! Dados da equipe carregados: ${st.xp.size} fundos XP${st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas: alguns fundos têm mais de uma)` : ""}.</span>` + avisoCotasIgnoradas());
 }
+// aviso fixo embaixo do botão "Área da equipe" (o do menu lateral fica escondido com o menu fechado); some ao entrar
+function avisoEquipe(texto) { $("#equipeErro").textContent = texto; $("#equipeErro").hidden = false; }
 async function entrarPeloPortal(passe) {
   st.equipe = { nome: "…" }; desenharEquipe();
   const r = await apiEquipe("portal", { passe });
   if (!r.ok) {
     st.equipe = null; desenharEquipe();
-    // aviso fixo embaixo do botão "Área da equipe" (o do menu lateral fica escondido com o menu fechado)
     const erro = r.erro || "Não foi possível entrar pelo portal.";
-    $("#equipeErro").textContent = `Login pelo portal: ${erro}`; $("#equipeErro").hidden = false;
-    console.warn("Login pelo portal recusado:", erro);
+    avisoEquipe(`Login pelo portal: ${erro}`); console.warn("Login pelo portal recusado:", erro);
     return false;
   }
   $("#equipeErro").hidden = true;
@@ -3867,6 +3867,16 @@ async function iniciarEquipe() {
   await carregarDadosEquipe();
   if (!lerSessaoEquipe()) idaAutomaticaAoPortal();                   // o servidor disse que a sessão acabou
 }
+// Voltou para esta aba: confere se a sessão continua (saiu do portal = sai daqui). No máximo uma vez por minuto.
+let ultimaConferenciaEquipe = Date.now();
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || !st.equipe?.email || Date.now() - ultimaConferenciaEquipe < 60000) return;
+  const token = lerSessaoEquipe(); if (!token) return;
+  ultimaConferenciaEquipe = Date.now();
+  const r = await apiEquipe("sessao", { token });
+  if (!r.ok && sessaoInvalida(r)) { sairEquipe(true); avisoEquipe(r.erro || "Sessão expirada. Entre de novo."); }
+  else if (r.ok && r.expira && st.equipe) { st.equipe.expira = r.expira; gravarPerfilEquipe(st.equipe); }   // prazo renovado pelo uso
+});
 document.addEventListener("click", (e) => {
   const id = e.target.id;
   if (id === "equipeEntrar") abrirLogin();
