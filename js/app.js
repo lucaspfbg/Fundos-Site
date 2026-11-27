@@ -7,7 +7,7 @@ import { COLUNAS, PERIODOS, calcularFundo, prepararFundo, serieAcumulada, fmtDat
 import { INDICES, corIndice, nomeIndice, serieIndice, retornoVol, nivelEm, diasUteis } from "./indices.js";
 import { janelaMovel, resumoJanela, retornosFundo, retornosDiarios, matrizCorrelacao } from "./analises.js";
 import { simularCarteira, estatisticas, curvaDrawdown } from "./carteira.js";
-import { EQUIPE_URL } from "./config.js";
+import { EQUIPE_URL, PORTAL_URL } from "./config.js";
 import { GRUPOS_RANK, METRICAS_RANK, metricaRank, grupoMetrica, MODELOS_RANK, JM_ANOS, indiceObjetivo, pontuar, ordenarRanking, COMPARACOES, ROTULO_VAR, dataComparacao, METRICAS_JM, somaPesos, escalaPesos } from "./ranking.js";
 
 // ============================== CONFIGURAÇÃO (único lugar para editar) ==============================
@@ -3689,6 +3689,16 @@ document.addEventListener("click", (e) => { if (e.target.id === "limparTela") li
 // A sessão (uma chave aleatória, que vale 30 dias) fica salva no navegador: continua ao recarregar e ao fechar e reabrir.
 // "Sair" apaga a sessão aqui e no servidor; tirar a pessoa da lista da equipe corta o acesso na hora.
 st.equipe = null; st.xp = null; st.xpCols = [];
+// Login pelo Portal Alcance: o portal abre o site com ?sso=<passe>. Lido aqui, antes de a carga reescrever o endereço,
+// e tirado do endereço na hora (não fica no histórico nem em links copiados).
+const PORTAL_ATIVO = /^https:\/\//.test(PORTAL_URL || "");
+const PASSE_PORTAL = (() => {
+  try {
+    const u = new URL(location.href), p = u.searchParams.get("sso");
+    if (p) { u.searchParams.delete("sso"); history.replaceState(null, "", u); }
+    return p;
+  } catch { return null; }
+})();
 const SESSAO_EQUIPE = "fundos.sessaoEquipe";
 const VERSAO_MIN_EQUIPE = "2026-10-06.5";        // versão do Apps Script que envia o ID (link do Hub)
 const lerSessaoEquipe = () => { try { return localStorage.getItem(SESSAO_EQUIPE) || sessionStorage.getItem(SESSAO_EQUIPE); } catch { return null; } };
@@ -3770,6 +3780,7 @@ async function sairEquipe(silencioso = false) {
 // oferta da XP "aberta" = alguma oferta do CNPJ sem captação bloqueada
 const xpAberto = (cnpj) => !!st.xp?.get(cnpj)?.some((o) => !verdadeiro(o.FUNDINGBLOCKED));
 function abrirLogin() {
+  if (PORTAL_ATIVO) { location.href = PORTAL_URL; return; }          // a entrada é pelo portal (depois ele abre o site já logado)
   $("#loginPasso1").hidden = false; $("#loginPasso2").hidden = true; $("#loginErro").textContent = "";
   $("#dlgLogin").showModal(); $("#loginEmail").focus();
 }
@@ -3797,8 +3808,23 @@ async function entrarEquipe() {
   await carregarDadosEquipe();
   if (st.xp) avisoSel(`<span class="ok">Bem-vindo, ${esc(r.nome)}! Dados da equipe carregados: ${st.xp.size} fundos XP${st.xpOfertas > st.xp.size ? ` (${st.xpOfertas} ofertas: alguns fundos têm mais de uma)` : ""}.</span>` + avisoCotasIgnoradas());
 }
+async function entrarPeloPortal(passe) {
+  st.equipe = { nome: "…" }; desenharEquipe();
+  const r = await apiEquipe("portal", { passe });
+  if (!r.ok) {
+    st.equipe = null; desenharEquipe();
+    avisoSel(`<span class="neg">${esc(r.erro || "Não foi possível entrar pelo portal.")}</span>`);
+    return false;
+  }
+  gravarSessaoEquipe(r.token);
+  st.equipe = { nome: r.nome, email: r.email, expira: r.expira }; gravarPerfilEquipe(st.equipe);
+  desenharEquipe();
+  await carregarDadosEquipe();
+  return true;
+}
 async function iniciarEquipe() {
   desenharEquipe();
+  if (PASSE_PORTAL && EQUIPE_URL && await entrarPeloPortal(PASSE_PORTAL)) return;
   const token = EQUIPE_URL && lerSessaoEquipe(); if (!token) return;
   // mostra o login na hora (nome guardado) e busca os dados num pedido só: a conferência da sessão vem junto
   const p = lerPerfilEquipe();
