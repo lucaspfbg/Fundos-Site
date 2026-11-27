@@ -191,10 +191,9 @@
           <div class="cab">
             <h2>Rentabilidade acumulada</h2>
             <div class="opcoes">
-              <label class="tog"><input id="relOn" type="checkbox"> Relativa a…</label>
-              <span id="relCtl" hidden>
+              <span id="relModo" class="pilulas mini seg-ouro" role="group" aria-label="Rentabilidade absoluta ou relativa a um índice"><button type="button" data-m="abs">Absoluto</button><button type="button" data-m="dif">Diferença (+)</button><button type="button" data-m="pct">% do alvo</button></span>
+              <span id="relCtl" class="rel-alvo" hidden title="Índice ou fundo usado como referência">
                 <div id="cbAlvo" class="combo"></div>
-                <span id="relModo" class="pilulas mini seg-ouro"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
               </span>
             </div>
             <button class="btn-min" type="button" data-min="acum" title="Minimizar esta seção" aria-label="Minimizar esta seção" aria-expanded="true">−</button>
@@ -471,10 +470,9 @@
 
           <div class="cab sub-cab"><h3 class="sub">Rentabilidade acumulada</h3>
             <div class="opcoes">
-              <label class="tog"><input id="cartRelOn" type="checkbox"> Relativa a…</label>
-              <span id="cartRelCtl" hidden>
+              <span id="cartRelModo" class="pilulas mini seg-ouro" role="group" aria-label="Rentabilidade absoluta ou relativa a um índice"><button type="button" data-m="abs">Absoluto</button><button type="button" data-m="dif">Diferença (+)</button><button type="button" data-m="pct">% do alvo</button></span>
+              <span id="cartRelCtl" class="rel-alvo" hidden title="Índice ou fundo usado como referência">
                 <div id="cbCartAlvo" class="combo"></div>
-                <span id="cartRelModo" class="pilulas mini seg-ouro"><button data-m="dif">Diferença (+)</button><button data-m="pct">% do alvo</button></span>
               </span>
             </div></div>
           <p id="cartRelNota" class="nota"></p>

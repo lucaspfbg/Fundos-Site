@@ -1671,9 +1671,8 @@ const finalDe = (s) => (s.y.length ? s.y[s.y.length - 1] : null);
 function renderAcum() {
   const c = st.ctx; if (!c) return;
   const [zi, zf] = st.zoom[st.perAtivo];
-  $("#relOn").checked = st.rel.on;
   $("#relCtl").hidden = !st.rel.on;
-  $$("#relModo button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === st.rel.modo));
+  $$("#relModo button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === (st.rel.on ? st.rel.modo : "abs"))));
   definirCombo("cbAlvo", st.rel.alvo);
   let series = [...c.fundosSeries.map((s) => ({ nome: s.nome, c: s.c, cor: s.cor, x: s.x, y: s.acum, parado: s.parado })), ...seriesIndices(c.dIni, c.dFim)];
   let ref = null, fmtY = (v) => brPct(v, 1);
@@ -2460,8 +2459,8 @@ function renderCompGraficos() {
 function renderCartAcum() {
   const R = vistaCart(); if (!R) return;
   const u = st.cartUI.rel;
-  $("#cartRelOn").checked = u.on; $("#cartRelCtl").hidden = !u.on;
-  $$("#cartRelModo button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === u.modo));
+  $("#cartRelCtl").hidden = !u.on;
+  $$("#cartRelModo button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === (u.on ? u.modo : "abs"))));
   definirCombo("cbCartAlvo", u.alvo);
   let series = st.cartComp ? seriesComp("acum") : seriesCarteira("acum"), ref = null, fmtY = (v) => brPct(v, 1);
   if (u.on) {
@@ -2616,7 +2615,7 @@ document.addEventListener("change", (e) => {
   if (t.id === "cartRebal") { c.rebal = Number(t.value); salvarCart(); calcularCarteira(); }
   else if (t.id === "cartValor") { c.valor = Math.max(0, Number(t.value) || 0); salvarCart(); calcularCarteira(); }
   else if (t.id === "cartIni" || t.id === "cartFim") { c[t.id === "cartIni" ? "ini" : "fim"] = t.value; c.perMeses = 0; salvarCart(); marcarPeriodoCart(); if (c.ini && c.fim) calcularCarteira(); }
-  else if (t.id === "cartRelOn") { st.cartUI.rel.on = t.checked; semZoom("gCartEvol"); renderCartAcum(); }
+
   else if (t.id === "cartJmMeses") st.cartUI.jmMeses = Math.max(1, Math.min(240, Number(t.value) || 12));
   else if (t.id === "cartJmIni" || t.id === "cartJmFim") st.cartUI[t.id === "cartJmIni" ? "jmIni" : "jmFim"] = t.value;
 });
@@ -2638,7 +2637,7 @@ document.addEventListener("click", (e) => {
   else if (t.id === "cartLimpar") { if (c.itens.length && !confirm("Tirar todos os ativos da carteira?")) return; c.itens = []; c.nome = ""; salvarCart(); renderCarteira(); }
   else if (t.id === "cartPeriodo") usarPeriodoAtivo(true);
   else if (t.closest?.("#cartPers [data-cm]")) { c.perMeses = Number(t.closest("[data-cm]").dataset.cm); renderCarteira(); }     // renderCarteira acerta as datas e salva
-  else if (t.closest?.("#cartRelModo button")) { st.cartUI.rel.modo = t.closest("button").dataset.m; semZoom("gCartEvol"); renderCartAcum(); }
+  else if (t.closest?.("#cartRelModo button")) { const m = t.closest("button").dataset.m, r = st.cartUI.rel; r.on = m !== "abs"; if (r.on) r.modo = m; semZoom("gCartEvol"); renderCartAcum(); }
   else if (t.closest?.("#cartRiscoEixo button")) { st.cartUI.eixo = t.closest("button").dataset.e; delete st.ord.cartRisco; semZoom("gCartRR"); renderCartRisco(); }
   else if (t.id === "cartJmAtualizar") {
     st.cartUI.jmMeses = Math.max(1, Math.min(240, Number($("#cartJmMeses").value) || 12));
@@ -4314,7 +4313,7 @@ function abrirPainelFundo(c, onde = "analise", per = null) {
   $("#pfTit").textContent = nomeXP || l.Fundo;
   $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjTxt)}${botaoCopiar(cnpjTxt, "o CNPJ")}`;
   $("#pfCopiar").innerHTML = botaoCopiar(nomeXP || l.Fundo, "o nome");
-  $("#pfHubTopo").innerHTML = botaoComp(c) + (q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "");
+  $("#pfHubTopo").innerHTML = (q._hubId ? `<a class="sec mini-btn" href="${URL_HUB(q._hubId)}" target="_blank" rel="noopener noreferrer" title="Abrir a página do fundo no Hub XP">${ico("externo")}Hub XP</a>` : "");
   $("#pfSub").innerHTML = [nomeXP ? `CVM: ${esc(l.Fundo)}` : "", fonte.extra ? `<b>${esc(fonte.extra)}</b>` : ""].filter(Boolean).join("<br>");
   $("#pfSelos").innerHTML = q._naXP ? `${cadeado(q["Captação"], q._motivoFechado)}${dinheiroNovo(q._dinheiroNovo)} ${badgeInv(q.Investidor)}` : "";
   const kpi = (rot, v, t = "pct", nome = "") => `<div class="kpi"><div class="l">${rot}</div><div class="v">${valorPF(t, v, nome)}</div></div>`;
@@ -4412,7 +4411,7 @@ async function abrirPainelLista(c) {
   if (fontePainel(c, "analise")) return abrirPainelFundo(c, "analise");
   const cad = st.porCnpj.get(c) || {}, d = $("#dlgFundo"), nome = cad.NOME || st.nomesCota.get(c) || "";
   $("#pfTit").textContent = nome || cnpjFmt(c); $("#pfCnpj").innerHTML = `CNPJ ${esc(cnpjFmt(c))}${botaoCopiar(cnpjFmt(c), "o CNPJ")}`; $("#pfCopiar").innerHTML = botaoCopiar(nome, "o nome");
-  $("#pfHubTopo").innerHTML = botaoComp(c); $("#pfSelos").innerHTML = "";
+  $("#pfHubTopo").innerHTML = ""; $("#pfSelos").innerHTML = "";
   // sem cotas para métricas e gráficos (só na XP, ou fora da base de cotas diárias, como FIDCs): a ficha mostra a composição
   const soComp = (txt) => { $("#pfSub").textContent = txt; guardarComp(); $("#pfConteudo").innerHTML = `<div id="pfCompSlot"></div>`; compNaFicha(c); };
   guardarComp(); $("#pfConteudo").innerHTML = "";
@@ -5264,7 +5263,7 @@ function renderCompMetricas() {
   $("#cartGraf").hidden = false;
   $("#cartMetricas").innerHTML = tabelaMetricasCart(colunas, ord, "cartMetComp");
 }
-async function carregarCarteiraSalva(n) {
+async function carregarCarteiraSalva(n, calcular = false) {
   const x = lerCarteiras()[n]; if (!x?.cart?.itens) return false;
   if (st.cart.itens.length && !(await confirmar("Carregar a carteira?", `A carteira montada agora (${st.cart.itens.length} ativo${pl(st.cart.itens.length)}) será substituída por <b>${esc(x._nome)}</b> (${x.cart.itens.length} ativo${pl(x.cart.itens.length)}).`, "Carregar"))) return false;
   if (st.cartComp) { st.cartComp = null; st.cartCompRes = null; st.cartAbertas = new Set(); $("#cartCompBanner").hidden = true; dicasComp(); $("#secCart").classList.remove("comparando"); $("#cartGraf").classList.remove("comparando"); }
@@ -5276,7 +5275,7 @@ async function carregarCarteiraSalva(n) {
   salvarCart(); $("#dlgCarteiras").close(); mostrarPagina("carteira"); renderCarteira();
   const faltam = st.cart.itens.filter((it) => it.tipo === "f" && !fundoCart(it.v)).length;
   $("#cartAviso").innerHTML = `<span class="ok">Carteira "${esc(x._nome)}" carregada${x._origem === "equipe" ? ` (de ${esc(x._autor)})` : ""}.</span>` +
-    (faltam ? ` Clique em Calcular carteira para baixar as cotas de ${faltam} fundo${pl(faltam)}.` : "");
+    (faltam && !calcular ? ` Clique em Calcular carteira para baixar as cotas de ${faltam} fundo${pl(faltam)}.` : "");
   return true;
 }
 document.addEventListener("click", async (e) => {
@@ -5284,7 +5283,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "cartSalvas") return abrirCarteirasSalvas();
   if (t.id === "ctSalvar") return salvarCarteiraAtual();
   if (t.id === "ctComparar") {
-    if (ctSel.size === 1) { const n = [...ctSel][0]; if (st.cartComp) fecharComparacao(); if (await carregarCarteiraSalva(n)) calcularCarteiraBotao(); return; }
+    if (ctSel.size === 1) { const n = [...ctSel][0]; if (st.cartComp) fecharComparacao(); if (await carregarCarteiraSalva(n, true)) calcularCarteiraBotao(); return; }
     return compararCarteiras([...ctSel]);
   }
   if (t.id === "cartCompFechar2") return fecharComparacao();
@@ -6669,7 +6668,6 @@ async function compCarteira(parte) {
   for (const r of out) if (r.FUNDOS instanceof Set) r.FUNDOS = [...r.FUNDOS].join(", ");
   return out;
 }
-const botaoComp = (c) => `<button type="button" class="sec mini-btn" data-ir-comp="${c}" title="Abrir a página da composição da carteira deste fundo (informes da CVM)">${ico("camadas")}Composição da carteira</button>`;
 function escolherFundoComp(c, desenhar = true) {
   if (!cnpjOk(c)) return;
   if (st.comp.ctx !== "pagina") st.comp.pag = { c, mes: null };
@@ -6776,8 +6774,6 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest?.("#pgComp .xp-busca-campo") && $("#compBuscaRes")) $("#compBuscaRes").hidden = true;
   const ir = e.target.closest?.("[data-comp-ir]"); if (ir) return escolherFundoComp(ir.dataset.compIr);
-  const pf = e.target.closest?.("[data-ir-comp]");                       // painel do fundo → página da composição
-  if (pf) { compDeVolta(); escolherFundoComp(pf.dataset.irComp, false); $("#dlgFundo").close(); mostrarPagina("comp"); }
 });
 async function carregarComp() {
   const id = ++compId, c = st.comp.c;
@@ -7171,7 +7167,7 @@ document.addEventListener("click", (e) => {
   }
   else if (t.id === "calcular") calcular();
   else if (t.closest("#barraPer button")) { st.perAtivo = t.closest("button").dataset.per; semZoom("gAcum", "gDd", "gRisco"); renderResultado(); }
-  else if (t.closest("#relModo button")) { st.rel.modo = t.closest("button").dataset.m; semZoom("gAcum"); renderAcum(); }
+  else if (t.closest("#relModo button")) { const m = t.closest("button").dataset.m; st.rel.on = m !== "abs"; if (st.rel.on) st.rel.modo = m; semZoom("gAcum"); renderAcum(); }
 });
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("tr.grupo")) { e.preventDefault(); alternarGrupo(e.target.dataset.g); }
@@ -7187,7 +7183,7 @@ document.addEventListener("change", async (e) => {
   if (false) { /* seleção: tratada no módulo de seleção */ }
   else if (t.dataset.todos) { st.todos[t.dataset.todos] = t.checked; ({ acum: renderAcum, dd: renderDd, jm: renderJM, cartAcum: renderCartAcum, cartDd: renderCartDd, cartJM: renderCartJM, rkJM: renderRkJM })[t.dataset.todos]?.(); }
   else if (t.id === "agrupar") { st.agrupar = t.value; salvar("agrupar", st.agrupar); renderMetricas(); }
-  else if (t.id === "relOn") { st.rel.on = t.checked; semZoom("gAcum"); renderAcum(); }
+
   else if (t.id === "guardar") { await D.definirGuardar(t.checked); atualizarEspaco(); }
   else if (t.id === "jmIni") st.jmIniAuto = false;
   else if (t.id === "jmFim") st.jmFimAuto = false;
