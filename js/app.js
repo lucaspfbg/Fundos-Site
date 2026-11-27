@@ -119,6 +119,9 @@ const log = (t) => { const el = $("#log"); if (el) el.textContent = t; };
 // ============================== inicialização ==============================
 async function iniciar() {
   const paginaUrl = new URLSearchParams(location.search).get("pagina");      // lida antes: o endereço é reescrito durante a carga
+  // da equipe e sem sessão válida: vai ao portal antes de carregar a base (ele devolve já logado)
+  const perfil = lerPerfilEquipe();
+  if ((!lerSessaoEquipe() || (perfil?.expira && perfil.expira < Date.now())) && idaAutomaticaAoPortal()) return;
   try {
     $("#status").innerHTML = "carregando…";
     st.meta = await D.iniciar(DADOS_URL);
@@ -3692,13 +3695,38 @@ st.equipe = null; st.xp = null; st.xpCols = [];
 // Login pelo Portal Alcance: o portal abre o site com ?sso=<passe>. Lido aqui, antes de a carga reescrever o endereço,
 // e tirado do endereço na hora (não fica no histórico nem em links copiados).
 const PORTAL_ATIVO = /^https:\/\//.test(PORTAL_URL || "");
+// ?ir=fundos: o portal devolve a pessoa direto para cá com o passe (sem passar pela tela de cartões)
+const PORTAL_ENTRAR = PORTAL_ATIVO ? PORTAL_URL + (PORTAL_URL.includes("?") ? "&" : "?") + "ir=fundos" : "";
+const VIA_PORTAL = "fundos.viaPortal";        // já entrou pelo portal neste navegador: é da equipe (visitante comum nunca é levado ao portal)
+const VOLTA_PORTAL = "fundos.voltaPortal";    // tela em que estava ao ir ao portal, para voltar a ela
+const TENTOU_PORTAL = "fundos.tentouPortal";  // ida automática: no máximo uma vez por aba (nunca fica indo e voltando)
 const PASSE_PORTAL = (() => {
   try {
     const u = new URL(location.href), p = u.searchParams.get("sso");
-    if (p) { u.searchParams.delete("sso"); history.replaceState(null, "", u); }
+    if (p) {
+      u.searchParams.delete("sso");
+      try {                                       // voltou do portal: reabre a tela em que estava (fundos, página, períodos)
+        const v = JSON.parse(localStorage.getItem(VOLTA_PORTAL) || "null"); localStorage.removeItem(VOLTA_PORTAL);
+        if (v && typeof v.q === "string" && Date.now() - v.em < 15 * 60000 && !u.search) u.search = v.q;
+      } catch { /* sem armazenamento */ }
+      history.replaceState(null, "", u);
+    }
     return p && p.replace(/ /g, "+");               // base64 com "+" sem codificar no link chega como espaço; o passe nunca tem espaço
   } catch { return null; }
 })();
+function irAoPortal() {
+  try { localStorage.setItem(VOLTA_PORTAL, JSON.stringify({ q: location.search, em: Date.now() })); } catch { /* ok */ }
+  location.href = PORTAL_ENTRAR;
+}
+// sem sessão (ou vencida) e já entrou pelo portal antes neste navegador: vai sozinho ao portal, que devolve já logado
+function idaAutomaticaAoPortal() {
+  if (!PORTAL_ATIVO || !EQUIPE_URL || PASSE_PORTAL) return false;
+  try {
+    if (localStorage.getItem(VIA_PORTAL) !== "1" || sessionStorage.getItem(TENTOU_PORTAL)) return false;
+    sessionStorage.setItem(TENTOU_PORTAL, "1");
+  } catch { return false; }
+  irAoPortal(); return true;
+}
 const SESSAO_EQUIPE = "fundos.sessaoEquipe";
 const VERSAO_MIN_EQUIPE = "2026-10-06.5";        // versão do Apps Script que envia o ID (link do Hub)
 const lerSessaoEquipe = () => { try { return localStorage.getItem(SESSAO_EQUIPE) || sessionStorage.getItem(SESSAO_EQUIPE); } catch { return null; } };
@@ -3776,11 +3804,12 @@ async function sairEquipe(silencioso = false) {
   if (st.rk?.lista.some((x) => x._xp)) { st.rk.lista = st.rk.lista.filter((x) => !x._xp); st.rk.ativo = 0; if (!st.rk.lista.length) st.rk = null; renderRankings(); }
   desenharEquipe(); aplicarDadosEquipe();
   if (token && !silencioso) apiEquipe("sair", { token });
+  if (!silencioso) try { localStorage.removeItem(VIA_PORTAL); } catch { /* ok */ }   // "Sair" de propósito: não volta a entrar sozinho
 }
 // oferta da XP "aberta" = alguma oferta do CNPJ sem captação bloqueada
 const xpAberto = (cnpj) => !!st.xp?.get(cnpj)?.some((o) => !verdadeiro(o.FUNDINGBLOCKED));
 function abrirLogin() {
-  if (PORTAL_ATIVO) { location.href = PORTAL_URL; return; }          // a entrada é pelo portal (depois ele abre o site já logado)
+  if (PORTAL_ATIVO) { irAoPortal(); return; }                       // a entrada é pelo portal (ele devolve a pessoa já logada)
   $("#loginPasso1").hidden = false; $("#loginPasso2").hidden = true; $("#loginErro").textContent = "";
   $("#dlgLogin").showModal(); $("#loginEmail").focus();
 }
@@ -3820,6 +3849,7 @@ async function entrarPeloPortal(passe) {
     return false;
   }
   $("#equipeErro").hidden = true;
+  try { localStorage.setItem(VIA_PORTAL, "1"); sessionStorage.removeItem(TENTOU_PORTAL); } catch { /* ok */ }
   gravarSessaoEquipe(r.token);
   st.equipe = { nome: r.nome, email: r.email, expira: r.expira }; gravarPerfilEquipe(st.equipe);
   desenharEquipe();
@@ -3835,6 +3865,7 @@ async function iniciarEquipe() {
   st.equipe = p && (!p.expira || p.expira > Date.now()) ? p : { nome: "…" };
   desenharEquipe();
   await carregarDadosEquipe();
+  if (!lerSessaoEquipe()) idaAutomaticaAoPortal();                   // o servidor disse que a sessão acabou
 }
 document.addEventListener("click", (e) => {
   const id = e.target.id;
