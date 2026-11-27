@@ -1535,3 +1535,21 @@ tr.grupo.sem-itens td { cursor: default; }
 .comp-evol-graf canvas { cursor: default; }
 .comp-evol > .nota { margin: 6px 0 0; }
 .pop-filtro .pfd-campo { display: grid; gap: 3px; font-size: var(--fs-sm); font-weight: 600; }
+
+/* trocar de ranking (Rankings) e de período calculado (Análise): barra de abas dourada, com rótulo, para se destacar
+   das pílulas azuis de opções. Só a aparência muda: os botões continuam os mesmos. */
+#rkPills, #barraPer { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1.5px solid color-mix(in srgb, var(--ouro) 60%, var(--borda));
+  border-radius: var(--r-pill); background: color-mix(in srgb, var(--ouro) 13%, var(--card)); box-shadow: 0 1px 3px color-mix(in srgb, var(--ouro) 25%, transparent); }
+#rkPills::before, #barraPer::before { flex: none; padding: 0 6px 0 9px; font: 800 10.5px var(--f-corpo); letter-spacing: .08em; text-transform: uppercase; color: var(--ouro-txt); }
+#rkPills::before { content: "Ranking"; }
+#barraPer::before { content: "Período"; }
+#barraPer:empty::before, #rkPills:empty::before { content: none; }
+#barraPer:empty, #rkPills:empty { display: none; }
+#rkPills > button, #barraPer > button { display: inline-flex; align-items: center; gap: 4px; padding: 6px 14px; border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--txt); font: 700 13.5px var(--f-corpo); cursor: pointer; transition: background-color .15s, color .15s, box-shadow .15s; }
+@media (hover: hover) { #rkPills > button:not([aria-pressed=true]):hover, #barraPer > button:not([aria-pressed=true]):hover { background: color-mix(in srgb, var(--ouro) 28%, var(--card)); } }
+#rkPills > button[aria-pressed=true], #barraPer > button[aria-pressed=true] { background: var(--ouro); color: #20236a; font-weight: 800;
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--ouro) 55%, transparent); }
+#rkPills > button:focus-visible, #barraPer > button:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; }
+#rkPills .ico { width: 13px; height: 13px; }
+.opcoes:has(> #rkPills) { border: 0; background: none; padding: 0; box-shadow: none; }      /* sem a caixa das opções em volta da barra */
