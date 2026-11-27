@@ -3696,7 +3696,7 @@ const PASSE_PORTAL = (() => {
   try {
     const u = new URL(location.href), p = u.searchParams.get("sso");
     if (p) { u.searchParams.delete("sso"); history.replaceState(null, "", u); }
-    return p;
+    return p && p.replace(/ /g, "+");               // base64 com "+" sem codificar no link chega como espaço; o passe nunca tem espaço
   } catch { return null; }
 })();
 const SESSAO_EQUIPE = "fundos.sessaoEquipe";
@@ -3813,9 +3813,13 @@ async function entrarPeloPortal(passe) {
   const r = await apiEquipe("portal", { passe });
   if (!r.ok) {
     st.equipe = null; desenharEquipe();
-    avisoSel(`<span class="neg">${esc(r.erro || "Não foi possível entrar pelo portal.")}</span>`);
+    // aviso fixo embaixo do botão "Área da equipe" (o do menu lateral fica escondido com o menu fechado)
+    const erro = r.erro || "Não foi possível entrar pelo portal.";
+    $("#equipeErro").textContent = `Login pelo portal: ${erro}`; $("#equipeErro").hidden = false;
+    console.warn("Login pelo portal recusado:", erro);
     return false;
   }
+  $("#equipeErro").hidden = true;
   gravarSessaoEquipe(r.token);
   st.equipe = { nome: r.nome, email: r.email, expira: r.expira }; gravarPerfilEquipe(st.equipe);
   desenharEquipe();
